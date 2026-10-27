@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -16,7 +15,7 @@ void main() {
 
   EmbyHttpClient buildClient({Duration? timeout}) {
     return EmbyHttpClient(
-      dio: Dio(),
+      Dio(),
       deviceId: 'device-1',
       logSink: logs.add,
       defaultConnectTimeout: timeout ?? const Duration(seconds: 5),
@@ -139,7 +138,7 @@ void main() {
 
   test('maps a receive timeout to networkUnreachable', () async {
     final client = EmbyHttpClient(
-      dio: Dio(),
+      Dio(),
       deviceId: 'device-1',
       defaultConnectTimeout: const Duration(milliseconds: 300),
       defaultReceiveTimeout: const Duration(milliseconds: 300),

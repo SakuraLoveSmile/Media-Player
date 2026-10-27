@@ -16,14 +16,13 @@ typedef LogSink = void Function(String line);
 /// `baseUrl`, so a LAN request can never leak onto the WAN endpoint or the
 /// other way round.
 class EmbyHttpClient {
-  EmbyHttpClient({
-    required Dio dio,
+  EmbyHttpClient(
+    this._dio, {
     required this.deviceId,
     this.defaultConnectTimeout = const Duration(seconds: 5),
     this.defaultReceiveTimeout = const Duration(seconds: 10),
     LogSink? logSink,
-  })  : _dio = dio,
-        _log = logSink ?? _discard;
+  }) : _log = logSink ?? _discard;
 
   final Dio _dio;
   final String deviceId;
@@ -76,10 +75,10 @@ class EmbyHttpClient {
           method: method,
           headers: <String, String>{
             Headers.acceptHeader: Headers.jsonContentType,
+            Headers.contentTypeHeader: Headers.jsonContentType,
             EmbyHeaders.deviceId: deviceId,
-            if (token != null) EmbyHeaders.token: token,
-            if (authorization != null) EmbyHeaders.authorization: authorization,
-            if (body != null) Headers.contentTypeHeader: Headers.jsonContentType,
+            EmbyHeaders.token: ?token,
+            EmbyHeaders.authorization: ?authorization,
           },
           // Decode ourselves so a malformed body maps to serverError instead
           // of surfacing as an adapter-level "unknown" network failure.
