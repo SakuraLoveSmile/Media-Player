@@ -2,6 +2,9 @@
 
 用于在 Windows 11 x64 上验证 media_kit/libmpv 能否直连局域网 Emby 并播放 HEVC 4K MKV。
 
+> 目录边界：从 B1 起，仓库根目录是正式 Flutter 工程；本目录是**独立的 M0 冒烟包**（自带 pubspec），
+> 不参与根工程的分析与构建，只由 `.github/workflows/windows-smoke.yml` 单独构建。修改本目录不会触发 `app-ci`。
+
 ## 前置
 
 - Windows 10/11 x64，和 Emby 在同一局域网。
