@@ -12,6 +12,8 @@ import 'package:media_player/data/auth/auth_service.dart';
 import 'package:media_player/data/models/auth_session.dart';
 import 'package:media_player/data/models/server_profile.dart';
 
+import '../support/fake_library_service.dart';
+
 class LoginCall {
   const LoginCall({
     required this.username,
@@ -89,7 +91,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          bootstrapProvider.overrideWith((ref) async => AppServices(auth: auth)),
+          bootstrapProvider.overrideWith(
+            (ref) async =>
+                AppServices(auth: auth, library: FakeLibraryService()),
+          ),
         ],
         child: const MediaPlayerApp(),
       ),
@@ -134,7 +139,7 @@ void main() {
     expect(auth.lastLogin?.profile.wanUrl, 'https://emby.example.com');
     expect(auth.lastLogin?.username, 'test');
     expect(auth.lastLogin?.password, 'secret');
-    expect(find.text('媒体库占位'), findsOneWidget);
+    expect(find.text('媒体库'), findsOneWidget);
   });
 
   testWidgets('a rejected login keeps the form and shows the reason',
@@ -150,7 +155,7 @@ void main() {
 
     expect(find.text('用户名或密码错误'), findsOneWidget);
     expect(find.byKey(const Key('login-submit')), findsOneWidget);
-    expect(find.text('媒体库占位'), findsNothing);
+    expect(find.text('媒体库'), findsNothing);
   });
 
   testWidgets('an unreachable server lists the endpoint reasons',

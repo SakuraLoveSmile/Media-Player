@@ -11,6 +11,7 @@
   - 工程：B1 三平台 CI 绿；B3 探测/登录/持久化/重启恢复在真实 Emby 通过（见 `docs/b3-notes.md`）
   - F1：双地址登录页在 macOS 实机登录成功并重启恢复（见 `docs/f1-notes.md`）
   - B4：视图/分页/详情/季集/图片在真实 Emby 通过（见 `docs/b4-notes.md`）
+  - F2：媒体库页在 macOS 实机加载 13 个视图与真实海报（见 `docs/f2-notes.md`）
   - WAN、PGS、HDR：待验证
 
 ## 文档

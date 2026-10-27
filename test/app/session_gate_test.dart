@@ -11,6 +11,8 @@ import 'package:media_player/data/auth/auth_service.dart';
 import 'package:media_player/data/models/auth_session.dart';
 import 'package:media_player/data/models/server_profile.dart';
 
+import '../support/fake_library_service.dart';
+
 class FakeAuth implements AuthService {
   FakeAuth({this.restoreResult});
 
@@ -63,7 +65,8 @@ Future<void> pumpApp(WidgetTester tester, FakeAuth auth) async {
     ProviderScope(
       overrides: [
         bootstrapProvider.overrideWith(
-          (ref) async => AppServices(auth: auth),
+          (ref) async =>
+              AppServices(auth: auth, library: FakeLibraryService()),
         ),
       ],
       child: const MediaPlayerApp(),
@@ -85,7 +88,7 @@ void main() {
     await pumpApp(tester, FakeAuth(restoreResult: session));
     await tester.pumpAndSettle();
 
-    expect(find.text('媒体库占位'), findsOneWidget);
+    expect(find.text('媒体库'), findsOneWidget);
   });
 
   testWidgets('shows progress until bootstrap completes', (tester) async {
@@ -103,8 +106,10 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-    completer.complete(AppServices(auth: FakeAuth(restoreResult: session)));
+    completer.complete(
+      AppServices(auth: FakeAuth(restoreResult: session), library: FakeLibraryService()),
+    );
     await tester.pumpAndSettle();
-    expect(find.text('媒体库占位'), findsOneWidget);
+    expect(find.text('媒体库'), findsOneWidget);
   });
 }

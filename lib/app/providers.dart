@@ -8,6 +8,7 @@ import '../data/api/emby_http_client.dart';
 import '../data/auth/auth_repository.dart';
 import '../data/endpoints/endpoint_probe.dart';
 import '../data/endpoints/endpoint_resolver.dart';
+import '../data/library/library_repository.dart';
 import '../data/storage/device_id_store.dart';
 import '../data/storage/profile_store.dart';
 import '../data/storage/session_store.dart';
@@ -45,6 +46,7 @@ final bootstrapProvider = FutureProvider<AppServices>((ref) async {
 
   return AppServices(
     auth: auth,
+    library: LibraryRepository(auth),
     client: client,
     resolver: resolver,
     deviceId: deviceId,
