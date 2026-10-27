@@ -504,3 +504,10 @@ abstract class PlaybackEngine {
 - 会话未出现、或 `PlayMethod` / `IsVideoDirect` 字段缺失时，`videoDirect` 必须保持 `null`，UI 显示「未确认」；不得按 URL 形态或默认值猜成 `true`。
 - 收紧理由：实机验收（T5-1 / T5-2）需要在 release 包上读到真实 `PlayMethod`，debug-only 轮询无法作为 release 包的验收证据。
 
+**(g) 裸数组响应的规整（对 §10.4 的补充，B5-7 实测需要）**
+
+- `GET /Sessions` 返回的是**顶层 JSON 数组**，而 `EmbyHttpClient` 的全部方法签名都是 `Map<String, dynamic>`。
+- 处理：`EmbyHttpClient` 把顶层数组规整成 `{"Items": [...]}` 信封，与 `Views` / `Items` / `Seasons` / `Episodes` 的响应形状统一；调用方一律读 `json['Items']`。
+- 这是传输层对响应形状的**唯一**例外：其余非对象、非数组的响应体仍按 §10.4 映射为 `serverError`。
+- 不新增 `authorizedGetList` 之类的第二条读取通道，避免 `ApiSession` 出现两套语义。
+

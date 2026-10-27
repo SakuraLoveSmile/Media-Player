@@ -10,4 +10,7 @@ abstract interface class PlaybackService {
     String itemId, {
     Duration startAt = Duration.zero,
   });
+
+  /// Fills in the server's direct-play verdict (contract §3.5). Never throws.
+  Future<PlaybackPlan> confirmDirect(PlaybackPlan plan);
 }

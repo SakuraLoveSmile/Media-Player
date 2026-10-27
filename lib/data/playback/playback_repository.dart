@@ -8,6 +8,7 @@ import '../models/json_read.dart';
 import '../models/media_source.dart';
 import '../models/playback_plan.dart';
 import '../models/resolved_endpoint.dart';
+import 'direct_play_probe.dart';
 import 'playback_options.dart';
 import 'playback_service.dart';
 
@@ -17,9 +18,14 @@ import 'playback_service.dart';
 /// Every URL is derived from the session's resolved endpoint, so one playback
 /// session can never straddle LAN and WAN (contract §1.3, §10.3).
 class PlaybackRepository implements PlaybackService {
-  PlaybackRepository(this._session);
+  PlaybackRepository(this._session, {DirectPlayProbe? probe})
+      : _probe = probe ?? DirectPlayProbe(_session);
 
   final ApiSession _session;
+  final DirectPlayProbe _probe;
+
+  @override
+  Future<PlaybackPlan> confirmDirect(PlaybackPlan plan) => _probe.confirm(plan);
 
   @override
   Future<PlaybackPlan> resolve(

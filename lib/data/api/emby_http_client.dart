@@ -99,6 +99,10 @@ class EmbyHttpClient {
   Map<String, dynamic> _decode(Object? data) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
+    // `GET /Sessions` answers with a bare array (contract §3.5), while the
+    // session API exposes maps only. Normalise arrays into the same `Items`
+    // envelope the rest of the API uses instead of failing the call.
+    if (data is List) return _items(data);
     if (data is String) {
       if (data.trim().isEmpty) return const <String, dynamic>{};
       final Object? decoded;
@@ -112,6 +116,7 @@ class EmbyHttpClient {
       }
       if (decoded is Map<String, dynamic>) return decoded;
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      if (decoded is List) return _items(decoded);
       throw EmbyException(
         AppErrorCode.serverError,
         message: 'unexpected JSON shape',
@@ -119,6 +124,9 @@ class EmbyHttpClient {
     }
     return const <String, dynamic>{};
   }
+
+  static Map<String, dynamic> _items(List<dynamic> list) =>
+      <String, dynamic>{'Items': List<Object?>.from(list)};
 
   EmbyException _map(DioException error) {
     switch (error.type) {

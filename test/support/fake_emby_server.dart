@@ -33,6 +33,21 @@ class FakeEmbyServer {
   final List<Map<String, dynamic>> playbackInfoBodies =
       <Map<String, dynamic>>[];
 
+  /// `GET /Sessions` reply (contract §3.5): the sessions to return.
+  List<Map<String, dynamic>> sessionsResponse = <Map<String, dynamic>>[];
+  int sessionsStatus = 200;
+
+  /// Session reports in arrival order, with their bodies (contract §3.6).
+  final List<String> sessionReportPaths = <String>[];
+  final List<Map<String, dynamic>> sessionBodies = <Map<String, dynamic>>[];
+
+  /// Paths that answer 500 so retry/failure handling can be exercised.
+  final Set<String> failingSessionPaths = <String>{};
+
+  /// When set, `/Sessions/Playing/Progress` waits for it before replying, so
+  /// tests can prove reports are serialized (contract §10.9 c).
+  Future<void>? progressHold;
+
   /// 130 movies so paging can be exercised with 60-item pages.
   final List<Map<String, dynamic>> movieItems = List<Map<String, dynamic>>.generate(
     130,
@@ -237,6 +252,43 @@ class FakeEmbyServer {
         return;
       }
 
+      if (request.method == 'GET' && path == '/Sessions') {
+        if (sessionsStatus != 200) {
+          await _json(
+            response,
+            sessionsStatus,
+            <String, dynamic>{'error': 'sessions failed'},
+          );
+          return;
+        }
+        await _jsonList(response, 200, sessionsResponse);
+        return;
+      }
+
+      if (request.method == 'POST' &&
+          (path == '/Sessions/Playing' ||
+              path == '/Sessions/Playing/Progress' ||
+              path == '/Sessions/Playing/Stopped')) {
+        final raw = await utf8.decoder.bind(request).join();
+        sessionReportPaths.add(path);
+        sessionBodies.add(raw.isEmpty
+            ? <String, dynamic>{}
+            : Map<String, dynamic>.from(jsonDecode(raw) as Map));
+        if (path == '/Sessions/Playing/Progress' && progressHold != null) {
+          await progressHold;
+        }
+        if (failingSessionPaths.contains(path)) {
+          await _json(
+            response,
+            500,
+            <String, dynamic>{'error': 'report failed'},
+          );
+          return;
+        }
+        await _json(response, 200, <String, dynamic>{});
+        return;
+      }
+
       if (request.method == 'GET' && path == '/expired') {
         expiredRequests++;
         await _json(response, 401, <String, dynamic>{'error': 'expired'});
@@ -255,6 +307,17 @@ class FakeEmbyServer {
     HttpResponse response,
     int status,
     Map<String, dynamic> body,
+  ) async {
+    response.statusCode = status;
+    response.headers.contentType = ContentType.json;
+    response.write(jsonEncode(body));
+    await response.close();
+  }
+
+  Future<void> _jsonList(
+    HttpResponse response,
+    int status,
+    List<Map<String, dynamic>> body,
   ) async {
     response.statusCode = status;
     response.headers.contentType = ContentType.json;
