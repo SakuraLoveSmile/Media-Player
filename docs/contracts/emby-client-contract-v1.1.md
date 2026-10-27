@@ -345,6 +345,7 @@ enum AppErrorCode {
 - `DirectStreamUrl` 为相对路径、带 `api_key`，请求 302；media_kit 跟随重定向可播。
 - header 鉴权（`X-Emby-Token`）与 URL `api_key` 两种方式均可播放真实直连流。
 - macOS media_kit 播放 MKV/H.264 1080p、MP4/HEVC Main10 4K、MKV/HEVC 4K 成功。
+- Windows 11 x64（release，media_kit/libmpv）：MKV/HEVC 4K 与 MKV/H.264 1080p 直连成功，PlaybackInfo 返回 `SupportsDirectPlay=true`、无 `TranscodingUrl`，播放位置递增、错误列表为空。
 
 待实测：
 

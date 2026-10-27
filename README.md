@@ -7,7 +7,7 @@
 - 当前进度：
   - macOS：直连 H.264 1080p、HEVC Main10 4K、HEVC 4K MKV 通过
   - Android 真机（Mi 10）：HEVC 4K MKV 直连通过
-  - Windows：构建/运行验证待完成
+  - Windows 11 x64：release 构建直连 HEVC 4K MKV、H.264 1080p MKV 通过（`directPlay=True`，无转码）
   - WAN、PGS、HDR：待验证
 
 ## 文档

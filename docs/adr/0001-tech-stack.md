@@ -78,7 +78,7 @@
 - 网络预检（macOS）：HTTP MP4、HEVC Main10 MKV（1280x720）、HLS、外挂 SRT、Header 鉴权全部通过；HTTP Range 需服务端支持（本地测试服务器补 206 后 MP4 可播）。
 - **macOS App Sandbox 必须包含 `com.apple.security.network.client`**；Flutter 默认模板只有 `network.server`，缺失时所有网络播放报 `Operation not permitted`（已实测）。Debug/Release 两份 entitlements 都要加。
 - Android 模拟器：本地 asset 可播，但网络流 position 恒为 0（模拟器特有）。**Mi 10 真机已通过 HEVC 4K MKV 直连**（query/header 两种鉴权、3840×2160、无 FATAL），模拟器结果不作为验收依据。
-- **无 Windows 主机**：Windows 构建与运行验证需 Windows 机器或 CI runner，属 M0 未闭环项。
+- **Windows 已闭环**：`windows-latest` CI 完成 `flutter analyze/test` + `build windows --release` 并上传 artifact；Win11 x64 真机（i7-14650HX / RTX 5060 Laptop / 1920×1080）release 冒烟直连 HEVC 4K MKV 与 H.264 1080p MKV，`errors=[]`。未覆盖纯核显与 HDR 环境。
 
 ## 重新评估触发条件
 
