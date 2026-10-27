@@ -75,7 +75,7 @@ Content-Type: application/json
 成功响应关键字段：`User.Id`、`User.Name`、`AccessToken`、`ServerId`。
 
 - 首次登录必须把 `ServerId` 写入 `ServerProfile.serverId`。
-- 添加第二个地址时探测其 `System/Info/Public.Id`，必须与已存 `serverId` 一致，否则拒绝。
+- 添加第二个地址时探测其 `System/Info/Public.Id`，必须与已存 `serverId` 一致，否则拒绝（`serverMismatch`）。
 - `DeviceId` 首次生成 UUID 后持久化；`DeviceName` 使用平台 + 主机名。
 - 除登录请求外，所有 API 请求带：
 
@@ -309,12 +309,15 @@ enum AppErrorCode {
   forbidden,
   notFound,
   serverError,
+  serverMismatch,
   directPlayDenied,
   playbackUnsupported,
   transcodeFailed,
   subtitleFailed,
 }
 ```
+
+- `serverMismatch`（B3 新增）：用户添加的第二个地址探测到的 `System/Info/Public.Id` 与已存 `ServerProfile.serverId` 不一致，见 §1.4。
 
 - 每个错误必须可映射到用户文案 + 是否可重试。
 - 网络类错误附带 `endpointKind` 与各端点失败原因。
@@ -359,3 +362,73 @@ enum AppErrorCode {
 8. 服务端转码原因字段名（未触发转码）。
 9. Android 真机（Mi 10）已验证 HEVC 4K MKV 直连；headless 模拟器 position=0 为模拟器特有，不作为验收依据。
 10. PGS、HDR10、60–80 Mbps（扫描前 800 条未发现 PGS；HDR 未验证）。
+
+## 10. 实现附录（B3，2026-10-27）
+
+本附录只记录实现级细节，不改变 §1–§7 的字段与语义。改动此节不需要重新冻结契约，但必须与代码同批提交。
+
+### 10.1 持久化
+
+| 存储键 | 内容 |
+|---|---|
+| `mp.token.v1` | `AccessToken` 原文字符串 |
+| `mp.session.v1` | `{userId, userName, deviceId}`，**不含** token |
+| `mp.profile.v1` | `{schemaVersion: 1, profile: ServerProfile}` |
+| `mp.deviceId.v1` | UUID v4 字符串 |
+
+- 首选 `flutter_secure_storage`；任一次读/写/删除自检失败即整体降级到文件实现，并记录一次 WARN（不含值）。
+- 文件实现：`<Application Support>/<bundleId>/mp_storage_v1.json`，权限 `0600`，写入走临时文件 + rename。
+- 读取失败（JSON 损坏、字段缺失、`schemaVersion` 未知）一律返回 `null`，不抛异常。
+- 登出删除 `mp.token.v1`、`mp.session.v1`，保留 `mp.profile.v1` 供重登。
+- DeviceId 丢失后重新生成：服务端会视为新设备，可接受。
+
+### 10.2 超时
+
+| 请求 | 连接 | 读取 |
+|---|---|---|
+| `System/Info/Public` 探测（LAN） | 1.5s | 1.5s |
+| `System/Info/Public` 探测（WAN） | 3s | 3s |
+| 登录与业务 API | 5s | 10s |
+
+- 探测超时以 `Future.timeout` 兜底，不依赖 dio 的超时语义。
+
+### 10.3 端点
+
+- 候选 base 顺序：规范化值 → 规范化值 + `/emby`；已以 `/emby` 结尾则不重复追加。
+- `profile.serverId` 为空（首次登录）时跳过 Id 校验，采用探测到的 Id，由登录响应回写。
+- 单飞：同一 profile 的并发 `resolve` 共享一个 Future；结果缓存 5 分钟（`Clock` 可注入）。
+- resolver 不写盘；`lastGoodEndpoint` 由 `AuthRepository` 持久化。
+- 一次播放会话内所有 URL 使用同一个 `ResolvedEndpoint.baseUrl`（B5 执行）。
+
+### 10.4 错误映射
+
+| 条件 | 错误码 | 可重试 |
+|---|---|---|
+| 连接/读取超时、`SocketException`、连接被拒绝 | `networkUnreachable` | 是 |
+| `HandshakeException` / `badCertificate` | `tlsUntrusted` | 否 |
+| HTTP 401 | `unauthorized`（清会话） | 否 |
+| HTTP 403 | `forbidden` | 否 |
+| HTTP 404 | `notFound` | 否 |
+| HTTP 5xx、非 JSON、JSON 解析失败 | `serverError` | 是 |
+| 探测到的 Id 与 `profile.serverId` 不一致 | `serverMismatch` | 否 |
+
+- 端点全部失败时顶层为 `networkUnreachable`，`failures[]` 内保留每个候选的真实原因。
+
+### 10.5 认证与会话
+
+- 登录成功后必须用响应的 `ServerId` 回写 `profile.serverId`。
+- `restore()` 不额外请求校验 token；首次业务请求 401 再登出。
+- 401 → 清 token/session + 清端点缓存 + 回登录页；不自动重试。
+- `logout()` 只清本地，不调用服务端。
+- 地址格式在 UI 边界用 `UrlNormalizer` 校验；非法地址不进入数据层。
+
+### 10.6 日志
+
+- 只记录 `method + host + path`，query 整体丢弃。
+- token、密码、`api_key` 永不写入日志、永不进入仓库。
+
+### 10.7 DeviceId / DeviceName
+
+- `DeviceId`：UUID v4，首次生成后持久化（§10.1）。
+- `DeviceName`：`<os> <hostname>`，例如 `macos MacBook-Pro`。
+- `X-Emby-Authorization` 中的 `Device` 字段需转义引号。
