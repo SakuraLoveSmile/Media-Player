@@ -11,13 +11,28 @@ typedef StorageLogger = void Function(String message);
 
 /// Chooses the credential backend once per process (contract §7, §10.1).
 ///
-/// Prefers the platform keystore; if a write/read/delete round-trip fails —
-/// which happens on macOS builds signed ad-hoc without a Developer ID — it
-/// falls back to a `0600` JSON file in Application Support.
+/// Android/Windows use the platform keystore after a write/read/delete probe.
+/// macOS ad-hoc builds go straight to a `0600` JSON file in Application
+/// Support, because re-signing on every build makes the keychain prompt for
+/// access to items created by the previous build.
 Future<KeyValueStore> createKeyValueStore({
   Directory? fallbackDirectory,
   StorageLogger? log,
 }) async {
+  // Ad-hoc signed macOS builds get a new code signature on every rebuild. The
+  // login keychain then prompts "Media Player wants to use ... in your
+  // keychain" for items created by the previous build — and the prompt blocks
+  // the probe. Contract §7 allows the 0600 file fallback in exactly this case.
+  // Switch to the keychain explicitly once a Developer ID exists:
+  //   flutter build macos --dart-define=USE_KEYCHAIN_MACOS=true
+  if (Platform.isMacOS && !_useKeychainOnMacOS) {
+    log?.call(
+      'macOS ad-hoc build: using 0600 file store; pass '
+      '--dart-define=USE_KEYCHAIN_MACOS=true to use the keychain',
+    );
+    return _fileStore(fallbackDirectory);
+  }
+
   const probeKey = '__mp_storage_probe__';
   final secure = SecureKeyValueStore(_buildSecureStorage());
 
@@ -34,9 +49,15 @@ Future<KeyValueStore> createKeyValueStore({
     );
   }
 
+  return _fileStore(fallbackDirectory);
+}
+
+Future<FileKeyValueStore> _fileStore(Directory? fallbackDirectory) async {
   final directory = fallbackDirectory ?? await getApplicationSupportDirectory();
   return FileKeyValueStore(File('${directory.path}/mp_storage_v1.json'));
 }
+
+const bool _useKeychainOnMacOS = bool.fromEnvironment('USE_KEYCHAIN_MACOS');
 
 FlutterSecureStorage _buildSecureStorage() {
   if (Platform.isMacOS) {

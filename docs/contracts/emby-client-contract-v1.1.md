@@ -328,13 +328,14 @@ enum AppErrorCode {
 - 接口 `TokenStore { read/write/delete }`。
 - 首选 `flutter_secure_storage`（Android Keystore / Windows DPAPI / macOS Keychain）。
 - macOS 无 Developer ID、ad-hoc 构建下若 Keychain 不可用或反复授权：回退到 Application Support 下 0600 文件，仅内测；有证书后切回 Keychain。
+  B3/F1 实测：ad-hoc 重新签名后读取旧 Keychain 项会弹授权并阻塞启动，因此 macOS 默认直接使用文件实现（`--dart-define=USE_KEYCHAIN_MACOS=true` 可切回）。
 - F4 必须验证 macOS 回退路径在重启后可恢复会话。
 
 ## 8. 验收门
 
 | 门 | 条件 |
 |---|---|
-| 平台前置 | macOS Debug/Release entitlements 含 `com.apple.security.network.client`；Android 允许 LAN 明文 HTTP；缺失时网络播放不可用（已实测） |
+| 平台前置 | macOS Debug/Release entitlements 含 `com.apple.security.network.client`；macOS 内测包关闭 App Sandbox 并在 Info.plist 声明 `NSLocalNetworkUsageDescription`（沙箱开启时 LAN 请求被拦截，已实测）；Android 允许 LAN 明文 HTTP；缺失时网络播放不可用（已实测） |
 | M1 | 双端点探测/登录/浏览可用；B2 在三平台直连 HEVC（MKV/MP4）成功；库内存在 PGS 时 PGS 也必须过 |
 | M2 | LAN 下三平台 `videoDirect=true`；续播误差 ≤5s；控制项完整 |
 | M3 | T2 LAN 矩阵 ≥11/12；库内存在 PGS 时 PGS 全过；T3 WAN 全项通过；三平台包可安装 |
@@ -376,7 +377,8 @@ enum AppErrorCode {
 | `mp.profile.v1` | `{schemaVersion: 1, profile: ServerProfile}` |
 | `mp.deviceId.v1` | UUID v4 字符串 |
 
-- 首选 `flutter_secure_storage`；任一次读/写/删除自检失败即整体降级到文件实现，并记录一次 WARN（不含值）。
+- Android/Windows 首选 `flutter_secure_storage`，任一次读/写/删除自检失败即整体降级到文件实现，并记录一次 WARN（不含值）。
+- macOS：默认直接使用文件实现（ad-hoc 签名每次构建都会变，读旧 Keychain 项会弹授权并阻塞启动）；`--dart-define=USE_KEYCHAIN_MACOS=true` 时走 login keychain。
 - 文件实现：`<Application Support>/<bundleId>/mp_storage_v1.json`，权限 `0600`，写入走临时文件 + rename。
 - 读取失败（JSON 损坏、字段缺失、`schemaVersion` 未知）一律返回 `null`，不抛异常。
 - 登出删除 `mp.token.v1`、`mp.session.v1`，保留 `mp.profile.v1` 供重登。

@@ -32,7 +32,9 @@ cd <repo>
 
 | 平台 | 要求 | 状态 |
 |---|---|---|
-| macOS | Debug/Release entitlements 均含 `com.apple.security.network.client` | 已写入 `macos/Runner/*.entitlements` |
+| macOS | Debug/Release entitlements 含 `com.apple.security.network.client` | 已写入 `macos/Runner/*.entitlements` |
+| macOS | **App Sandbox 关闭**（内测期 ad-hoc 分发，M0 决策） | `macos/Runner/*.entitlements` 中 `app-sandbox` = false；开启沙箱会拦截局域网请求 |
+| macOS | `NSLocalNetworkUsageDescription` | 已写入 `macos/Runner/Info.plist` |
 | Android | `INTERNET` 权限 + 应用级 `usesCleartextTraffic="true"`（LAN HTTP） | 已写入 `android/app/src/main/AndroidManifest.xml` |
 | Windows | 无额外配置（media_kit 自带 libmpv dll） | — |
 
@@ -59,7 +61,7 @@ export LANG=en_US.UTF-8     # CocoaPods 在非 UTF-8 locale 下会告警
 
 | 平台 | 路径 |
 |---|---|
-| macOS | `build/macos/Build/Products/Release/media_player.app` |
+| macOS | `build/macos/Build/Products/Release/Media Player.app` |
 | Android | `build/app/outputs/flutter-apk/app-<abi>-release.apk` |
 | Windows | `build/windows/x64/runner/Release/` |
 
@@ -82,6 +84,8 @@ export LANG=en_US.UTF-8     # CocoaPods 在非 UTF-8 locale 下会告警
 | Android 模拟器网络流 position 恒为 0 | 模拟器特有 | 以真机（Mi 10）为准 |
 | Gradle 首次构建 5–10 分钟 | 无缓存 | CI 使用 `cache: true`；本地可忽略 |
 | CocoaPods locale 告警 | 终端非 UTF-8 | `export LANG=en_US.UTF-8` |
+| macOS release 连不上局域网 | App Sandbox 开启时被 Local Network 隐私拦截，且不会给出提示 | 内测包关闭 sandbox（已配）；正式签名后再评估 |
+| macOS 启动卡在转圈且弹出钥匙串授权 | ad-hoc 签名变更后，旧签名写入的 Keychain 项需要重新授权 | 默认用 0600 文件；有 Developer ID 后 `--dart-define=USE_KEYCHAIN_MACOS=true` |
 
 ## 7. 验收命令（B1）
 
@@ -89,7 +93,7 @@ export LANG=en_US.UTF-8     # CocoaPods 在非 UTF-8 locale 下会告警
 ./tool/check_layering.sh
 ~/devsdk/flutter/bin/flutter analyze              # No issues found
 ~/devsdk/flutter/bin/flutter test                 # 4 tests pass
-codesign -d --entitlements :- build/macos/Build/Products/Release/media_player.app | grep network.client
+codesign -d --entitlements :- "build/macos/Build/Products/Release/Media Player.app" | grep -E "network.client|app-sandbox"
 ~/Library/Android/sdk/build-tools/36.0.0/aapt2 dump xmltree --file AndroidManifest.xml \
   build/app/outputs/flutter-apk/app-debug.apk | grep usesCleartextTraffic
 ```
