@@ -1,19 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'app/app.dart';
 
 void main() {
-  runApp(const MediaPlayerApp());
-}
-
-class MediaPlayerApp extends StatelessWidget {
-  const MediaPlayerApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      title: 'Media Player',
-      home: Scaffold(
-        body: Center(child: Text('Media Player')),
-      ),
-    );
-  }
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const ProviderScope(child: MediaPlayerApp()));
 }
