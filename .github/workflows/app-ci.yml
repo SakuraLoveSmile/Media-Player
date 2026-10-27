@@ -1,0 +1,134 @@
+name: app-ci
+
+on:
+  push:
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'tool/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'analysis_options.yaml'
+      - 'android/**'
+      - 'macos/**'
+      - 'windows/**'
+      - '.github/workflows/app-ci.yml'
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'tool/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'analysis_options.yaml'
+      - 'android/**'
+      - 'macos/**'
+      - 'windows/**'
+      - '.github/workflows/app-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: app-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Layer guard
+        run: ./tool/check_layering.sh
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Build split APKs
+        run: flutter build apk --release --split-per-abi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-android-apk
+          path: build/app/outputs/flutter-apk/app-*-release.apk
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+    env:
+      # CocoaPods warns and may misbehave under a non-UTF-8 locale.
+      LANG: en_US.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Build macOS
+        run: flutter build macos --release
+
+      - name: Package app bundle
+        run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/media_player.app media_player-macos.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-macos
+          path: media_player-macos.zip
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-windows-x64
+          path: build/windows/x64/runner/Release/
+          if-no-files-found: error
