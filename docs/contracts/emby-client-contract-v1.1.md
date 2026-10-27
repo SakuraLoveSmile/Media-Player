@@ -440,3 +440,67 @@ enum AppErrorCode {
 - `DeviceId`：UUID v4，首次生成后持久化（§10.1）。
 - `DeviceName`：`<os> <hostname>`，例如 `macos MacBook-Pro`。
 - `X-Emby-Authorization` 中的 `Device` 字段需转义引号。
+
+### 10.9 播放实现附录（B5）
+
+本节是对 §3.4 / §5 的实现级补充，不改变其语义；只固定播放编排需要的签名与取值，B5-2～B5-7 共同引用这一份定义。
+
+**(a) PlaybackPlan 增加 `itemId`（对 §3.4 的补充）**
+
+```dart
+class PlaybackPlan {
+  final String itemId; // 新增，其余字段同 §3.4
+  // ...
+}
+```
+
+§3.6 的三个上报请求（`/Sessions/Playing`、`/Sessions/Playing/Progress`、`/Sessions/Playing/Stopped`）都必带 `ItemId`，而 plan 是上报数据的唯一来源。从 URL 反解 item id 不可靠（`DirectStreamUrl` / `TranscodingUrl` 的路径形态由服务端决定），因此把 `itemId` 固化进 plan：由 PlaybackInfo 协商阶段（B5-2）写入，上报阶段（B5-6）直接读取。
+
+**(b) PlaybackEngine 增加 `Widget createSurface()`（对 §5 的补充）**
+
+```dart
+abstract class PlaybackEngine {
+  // ... §5 既有成员不变
+  Widget createSurface();
+}
+```
+
+理由：`media_kit_video` 的 `Video` widget 必须拿到 `VideoController`，而 `tool/check_layering.sh` 明确禁止 `lib/features` 引用 `media_kit` / `media_kit_video`。由引擎自己返回渲染用 Widget 是唯一能同时满足两者的做法：返回值类型是 Flutter 的 `Widget`（不出现 media_kit 类型），UI 侧只把它当普通 Widget 放进 widget 树。UI 不得对返回对象做类型判断或强转。
+
+**(c) 上报节流（对 §3.6 的细化）**
+
+| 时机 | 行为 |
+|---|---|
+| 播放中每 10s | `Progress` |
+| 暂停 / 恢复 / seek 完成 / 退到后台 | 立即 `Progress`，每个事件各发一次 |
+| 退出播放页 | 必发 `Stopped` |
+
+- `Stopped` 幂等：重复调用（返回手势 + 页面销毁重复触发）只发一次，由上报层持「已停」标志保证。
+- 上报失败重试 1 次、退避 2s；再失败只记一条 WARN（不含 token、不含 URL query），**不得抛给 UI、不得阻塞播放**。
+- 心跳与事件上报共用一条串行队列，避免 `Progress` 乱序覆盖位置。
+
+**(d) 续播阈值**
+
+- 详情响应 `UserData.PlaybackPositionTicks` 换算成秒后 > 10s 且 `UserData.Played == false` → 以该位置作为 `startAt`，并在 UI 明示（例如「从 12:34 继续播放」）。
+- `UserData.Played == true` 或位置 ≤ 10s → `startAt = 0`。
+- 阈值固定 10s，不做用户配置；`PlaybackPositionTicks` 缺失按 0 处理。
+
+**(e) 码率与直连取值（对 §3.3 的固化）**
+
+| 条件 | `MaxStreamingBitrate` | `EnableTranscoding` |
+|---|---|---|
+| `endpointKind == lan` | `1_000_000_000` | `true` |
+| `endpointKind == wan` | `wanBitrateCapMbps × 1_000_000` | `true` |
+| `endpointKind == wan` 且 `forceDirectOnWan == true` | `1_000_000_000` | `false` |
+| `profile == null` 或 `wanBitrateCapMbps <= 0` | `1_000_000_000`（按 LAN 兜底） | `true` |
+
+- 取值来自内存缓存的 `ServerProfile`（`ApiSession.profile`），播放路径不得 await 读盘。
+- 兜底分支覆盖「profile 未加载」与「设置异常」两种情况，行为等同 LAN：先尽力争取直连。
+
+**(f) `/Sessions` 直连核对的时机（对 §3.5 的收紧）**
+
+- 起播后 3 秒查询一次 `GET /Sessions`，**所有构建都执行**，不再只限 debug。
+- 结果只用于回填 `PlaybackPlan.videoDirect` / `audioTranscoded` 并记日志，不参与起播决策、不重试。
+- 会话未出现、或 `PlayMethod` / `IsVideoDirect` 字段缺失时，`videoDirect` 必须保持 `null`，UI 显示「未确认」；不得按 URL 形态或默认值猜成 `true`。
+- 收紧理由：实机验收（T5-1 / T5-2）需要在 release 包上读到真实 `PlayMethod`，debug-only 轮询无法作为 release 包的验收证据。
+

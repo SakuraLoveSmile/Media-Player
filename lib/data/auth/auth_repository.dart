@@ -26,18 +26,25 @@ class AuthRepository implements AuthService, ApiSession {
     required this.tokenStore,
     required this.sessionStore,
     required this.profileStore,
-    required this.deviceId,
+    required String deviceId,
     this.clientName = AppConfig.clientName,
     this.deviceName = '',
     this.appVersion = AppConfig.appVersion,
-  });
+    // The public `deviceId` getter is session-scoped (§10.9), so the install
+    // id lives in `_deviceId`. The lint's fix (`this._deviceId`) does not
+    // compile: named parameters cannot be private.
+    // ignore: prefer_initializing_formals
+  }) : _deviceId = deviceId;
 
   final EmbyHttpClient client;
   final EndpointResolver resolver;
   final TokenStore tokenStore;
   final SessionStore sessionStore;
   final ProfileStore profileStore;
-  final String deviceId;
+
+  /// Stable id of this install; the public `deviceId` getter exposes the
+  /// session's copy instead so it turns null on logout (contract §10.9).
+  final String _deviceId;
   final String clientName;
   final String deviceName;
   final String appVersion;
@@ -47,6 +54,10 @@ class AuthRepository implements AuthService, ApiSession {
 
   AuthSession? _session;
   ResolvedEndpoint? _endpoint;
+
+  /// In-memory copy of the profile so playback can read the bitrate policy
+  /// synchronously (contract §10.9). Kept in sync with [_endpoint].
+  ServerProfile? _profile;
 
   @override
   AuthSession? get current => _session;
@@ -64,6 +75,14 @@ class AuthRepository implements AuthService, ApiSession {
   @override
   String? get accessToken => _session?.accessToken;
 
+  /// From the session rather than the constructor argument so it turns null
+  /// on logout (contract §10.9).
+  @override
+  String? get deviceId => _session?.deviceId;
+
+  @override
+  ServerProfile? get profile => _profile;
+
   @override
   Future<AuthSession> login({
     required String username,
@@ -78,7 +97,7 @@ class AuthRepository implements AuthService, ApiSession {
       authorization: EmbyHeaders.authorizationValue(
         client: clientName,
         device: deviceName,
-        deviceId: deviceId,
+        deviceId: _deviceId,
         version: appVersion,
       ),
     );
@@ -112,7 +131,7 @@ class AuthRepository implements AuthService, ApiSession {
       userId: userId,
       userName: asString(user['Name']) ?? username,
       accessToken: accessToken,
-      deviceId: deviceId,
+      deviceId: _deviceId,
     );
 
     await tokenStore.write(accessToken);
@@ -125,6 +144,7 @@ class AuthRepository implements AuthService, ApiSession {
     await profileStore.write(storedProfile);
 
     _endpoint = endpoint;
+    _profile = storedProfile;
     _emit(session);
     return session;
   }
@@ -150,6 +170,7 @@ class AuthRepository implements AuthService, ApiSession {
     }
 
     final session = meta.copyWith(accessToken: token);
+    _profile = profile;
     _emit(session);
     return session;
   }
@@ -203,6 +224,7 @@ class AuthRepository implements AuthService, ApiSession {
         ? profile.copyWith(lanUrl: endpoint.baseUrl)
         : profile.copyWith(wanUrl: endpoint.baseUrl);
     await profileStore.write(updated);
+    _profile = updated;
     return updated;
   }
 
@@ -224,6 +246,24 @@ class AuthRepository implements AuthService, ApiSession {
     }
   }
 
+  /// Same contract as [authorizedGet], for the POST calls of §3.1 / §3.6.
+  @override
+  Future<Map<String, dynamic>> authorizedPost(Uri url, {Object? body}) async {
+    final session = _session;
+    if (session == null) {
+      throw EmbyException(AppErrorCode.unauthorized);
+    }
+
+    try {
+      return await client.postJson(url, body: body, token: session.accessToken);
+    } on EmbyException catch (error) {
+      if (error.code == AppErrorCode.unauthorized) {
+        await handleUnauthorized();
+      }
+      rethrow;
+    }
+  }
+
   @override
   Future<void> logout() => handleUnauthorized();
 
@@ -233,6 +273,7 @@ class AuthRepository implements AuthService, ApiSession {
     await sessionStore.delete();
     resolver.invalidate();
     _endpoint = null;
+    _profile = null;
     _emit(null);
   }
 

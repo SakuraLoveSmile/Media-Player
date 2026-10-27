@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/core/errors/app_error.dart';
@@ -232,5 +235,105 @@ void main() {
     expect(await kv.read(TokenStore.key), isNull);
     expect(await ProfileStore(kv).read(), isNotNull);
     expect(emissions, <Object?>[null]);
+  });
+
+  test('a 401 on authorizedPost clears the session exactly once', () async {
+    final repository = await buildRepository();
+    await repository.login(
+      username: 'test',
+      password: 'correct',
+      profile: profileFor(server),
+    );
+    final emissions = <Object?>[];
+    final subscription = repository.session.listen(emissions.add);
+    addTearDown(subscription.cancel);
+
+    await expectLater(
+      repository.authorizedPost(
+        Uri.parse('${server.base}/Users/AuthenticateByName'),
+        body: <String, String>{'Pw': 'wrong'},
+      ),
+      throwsA(isA<EmbyException>()
+          .having((e) => e.code, 'code', AppErrorCode.unauthorized)),
+    );
+
+    expect(repository.current, isNull);
+    expect(await kv.read(TokenStore.key), isNull);
+    expect(await kv.read(SessionStore.key), isNull);
+    await Future<void>.delayed(Duration.zero);
+    expect(emissions, <Object?>[null]);
+  });
+
+  test('authorizedPost without a session never reaches the server', () async {
+    final repository = await buildRepository();
+
+    await expectLater(
+      repository.authorizedPost(
+        Uri.parse('${server.base}/Items/movie-1/PlaybackInfo'),
+      ),
+      throwsA(isA<EmbyException>()
+          .having((e) => e.code, 'code', AppErrorCode.unauthorized)),
+    );
+
+    expect(server.requestLog, isEmpty);
+  });
+
+  test('authorizedPost sends the token and returns the decoded payload',
+      () async {
+    final repository = await buildRepository();
+    await repository.login(
+      username: 'test',
+      password: 'correct',
+      profile: profileFor(server),
+    );
+
+    // The fake server has no 200 POST route that checks `X-Emby-Token`, so
+    // this test brings its own HTTP surface instead of editing that helper.
+    String? tokenHeader;
+    final echo = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => echo.close(force: true));
+    echo.listen((request) async {
+      tokenHeader = request.headers.value('X-Emby-Token');
+      request.response.statusCode = 200;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(jsonEncode(<String, dynamic>{
+        'PlaySessionId': 'ps-1',
+        'MediaSources': <Object>[],
+      }));
+      await request.response.close();
+    });
+
+    final json = await repository.authorizedPost(
+      Uri.parse('http://127.0.0.1:${echo.port}/Items/movie-1/PlaybackInfo'),
+      body: <String, dynamic>{'StartTimeTicks': 0},
+    );
+
+    expect(tokenHeader, server.token);
+    expect(json['PlaySessionId'], 'ps-1');
+    expect(json['MediaSources'], isEmpty);
+  });
+
+  test('profile and deviceId follow the session lifecycle', () async {
+    final first = await buildRepository();
+    await first.login(
+      username: 'test',
+      password: 'correct',
+      profile: profileFor(server),
+    );
+
+    final second = await buildRepository();
+    final restored = await second.restore();
+    final stored = (await ProfileStore(kv).read())!;
+
+    expect(restored, isNotNull);
+    expect(second.deviceId, 'device-1');
+    expect(second.profile, isNotNull);
+    expect(second.profile!.serverId, stored.serverId);
+    expect(second.profile!.serverId, 'server-1');
+
+    await second.logout();
+
+    expect(second.profile, isNull);
+    expect(second.deviceId, isNull);
   });
 }
