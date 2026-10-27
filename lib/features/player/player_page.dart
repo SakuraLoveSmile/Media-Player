@@ -63,6 +63,26 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     }
   }
 
+  /// Retrying re-negotiates the session, so it rebuilds the controller instead
+  /// of calling `load()` again: the reporter latches "already stopped" after
+  /// its final report, so a reused one would either leave the previous
+  /// `PlaySessionId` without `Sessions/Playing/Stopped` (contract §3.6) or
+  /// silence the new session. Disposing first sends that `Stopped` and frees
+  /// the engine exactly once (contract §10.9 c).
+  Future<void> _reload() async {
+    final previous = _controller;
+    if (previous != null) {
+      previous.removeListener(_onChanged);
+      // Detached before disposing so `State.dispose()` cannot reach this
+      // instance again.
+      _controller = null;
+      previous.dispose();
+    }
+    if (!mounted) return;
+    setState(() => _fatal = null);
+    await _bootstrap();
+  }
+
   void _onChanged() {
     final controller = _controller;
     if (controller == null) return;
@@ -108,7 +128,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   Widget _body() {
     final fatal = _fatal;
     if (fatal != null) {
-      return _NoticeView(message: fatal, onBack: _leave, onRetry: _bootstrap);
+      return _NoticeView(message: fatal, onBack: _leave, onRetry: _reload);
     }
 
     final controller = _controller;
@@ -128,7 +148,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
       return _NoticeView(
         message: error,
         onBack: _leave,
-        onRetry: controller.load,
+        onRetry: _reload,
       );
     }
 

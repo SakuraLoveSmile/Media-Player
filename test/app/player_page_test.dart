@@ -85,9 +85,13 @@ void main() {
 
   /// Opens the library, taps the poster and settles on the player page. The
   /// extra 4 s covers the §10.9 f verdict check scheduled 3 s after start.
+  /// [createEngine] / [createReporter] default to the shared doubles; the
+  /// retry tests pass factories so each playback gets its own pair.
   Future<void> pumpPlayer(
     WidgetTester tester, {
     MediaItem? item,
+    FakePlaybackEngine Function()? createEngine,
+    FakePlaybackReporter Function()? createReporter,
   }) async {
     final media = item ?? playerItem();
     final library = FakeLibraryService(
@@ -105,8 +109,8 @@ void main() {
               auth: StaticAuth(),
               library: library,
               playback: playback,
-              createEngine: () => engine,
-              createReporter: () => reporter,
+              createEngine: createEngine ?? () => engine,
+              createReporter: createReporter ?? () => reporter,
             ),
           ),
         ],
@@ -250,5 +254,70 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(engine.volumes.last, 0);
+  });
+
+  group('retrying after a playback error', () {
+    final List<FakePlaybackEngine> engines = <FakePlaybackEngine>[];
+    final List<FakePlaybackReporter> reporters = <FakePlaybackReporter>[];
+
+    setUp(() {
+      engines.clear();
+      reporters.clear();
+    });
+
+    /// The first playback fails inside the engine, which is the only error
+    /// that reaches the retry button: a snapshot error on a ready session is
+    /// shown as a banner over the running surface instead.
+    Future<void> pumpFailingPlayer(WidgetTester tester) async {
+      await pumpPlayer(
+        tester,
+        createEngine: () {
+          final next = FakePlaybackEngine();
+          if (engines.isEmpty) {
+            next.openError = EmbyException(AppErrorCode.transcodeFailed);
+          }
+          engines.add(next);
+          return next;
+        },
+        createReporter: () {
+          final next = FakePlaybackReporter();
+          reporters.add(next);
+          return next;
+        },
+      );
+      expect(find.byKey(const Key('player-error')), findsOneWidget);
+    }
+
+    /// Taps 重试 and pumps the rebuild: one frame for the teardown plus the
+    /// fresh bootstrap, then past the 3 s §10.9 f verdict probe.
+    Future<void> tapRetry(WidgetTester tester) async {
+      await tester.tap(find.text('重试'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump();
+    }
+
+    testWidgets('closes the failed session and builds a new pair',
+        (tester) async {
+      await pumpFailingPlayer(tester);
+      await tapRetry(tester);
+
+      // Contract §3.6: the re-negotiated session is a track change, so the
+      // first `PlaySessionId` has to be stopped before the second starts.
+      expect(reporters.first.stoppedCalls, 1);
+      expect(engines.first.disposeCalls, 1);
+      expect(engines, hasLength(2));
+      expect(reporters, hasLength(2));
+    });
+
+    testWidgets('resumes playback on the fresh session', (tester) async {
+      await pumpFailingPlayer(tester);
+      await tapRetry(tester);
+
+      expect(find.byKey(const Key('player-error')), findsNothing);
+      expect(find.byKey(const Key('player-play-toggle')), findsOneWidget);
+      expect(reporters.last.startedCalls, 1);
+      expect(engines.last.openedPlans, hasLength(1));
+    });
   });
 }
