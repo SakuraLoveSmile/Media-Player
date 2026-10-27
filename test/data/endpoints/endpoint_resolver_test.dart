@@ -31,7 +31,7 @@ void main() {
     Duration? timeout,
   }) {
     return EndpointResolver(
-      probe: probe,
+      probe,
       clock: () => now,
       lanTimeout: timeout ?? const Duration(milliseconds: 60),
       wanTimeout: timeout ?? const Duration(milliseconds: 60),

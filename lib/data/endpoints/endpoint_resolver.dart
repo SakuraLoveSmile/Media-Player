@@ -16,14 +16,13 @@ typedef Clock = DateTime Function();
 /// Pure: never writes to disk, so `lastGoodEndpoint` persistence stays in
 /// [AuthRepository] and every rule here is unit-testable.
 class EndpointResolver {
-  EndpointResolver({
-    required EndpointProbe probe,
+  EndpointResolver(
+    this._probe, {
     Clock? clock,
     this.cacheTtl = const Duration(minutes: 5),
     this.lanTimeout = const Duration(milliseconds: 1500),
     this.wanTimeout = const Duration(seconds: 3),
-  })  : _probe = probe,
-        _clock = clock ?? DateTime.now;
+  }) : _clock = clock ?? DateTime.now;
 
   final EndpointProbe _probe;
   final Clock _clock;
