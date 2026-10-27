@@ -65,6 +65,10 @@ class SessionReporter implements PlaybackReporter {
   Future<void> _queue = Future<void>.value();
   bool _stopped = false;
 
+  /// Latest pause state; the heartbeat must not overwrite the most recent
+  /// pause/resume event with a hardcoded `false` (contract §10.9 c).
+  bool _paused = false;
+
   static void _discard(String _) {}
 
   @override
@@ -75,6 +79,7 @@ class SessionReporter implements PlaybackReporter {
   }) {
     if (_stopped) return Future<void>.value();
     _endpoint = _session.endpoint;
+    _paused = false;
 
     final first =
         _enqueue(() => _report(plan, _playingPath, initialPosition, paused: false));
@@ -82,7 +87,9 @@ class SessionReporter implements PlaybackReporter {
     _ticks = _heartbeat.listen((_) {
       if (_stopped) return;
       final at = position();
-      unawaited(_enqueue(() => _report(plan, _progressPath, at, paused: false)));
+      final paused = _paused;
+      unawaited(
+          _enqueue(() => _report(plan, _progressPath, at, paused: paused)));
     });
     return first;
   }
@@ -94,6 +101,8 @@ class SessionReporter implements PlaybackReporter {
     required bool paused,
   }) {
     if (_stopped) return Future<void>.value();
+    // Update before enqueueing so subsequent heartbeats read the newest state.
+    _paused = paused;
     return _enqueue(() => _report(plan, _progressPath, position, paused: paused));
   }
 

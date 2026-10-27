@@ -171,6 +171,33 @@ void main() {
     );
   });
 
+  test('the heartbeat keeps the latest pause state from progress', () async {
+    final reporterUnderTest = reporter();
+    await reporterUnderTest.started(
+      plan(),
+      Duration.zero,
+      position: () => Duration.zero,
+    );
+
+    await reporterUnderTest.progress(
+      plan(),
+      const Duration(seconds: 1),
+      paused: true,
+    );
+    heartbeat.add(null);
+    await waitForReports(3);
+    expect(progressBodies().last['IsPaused'], isTrue);
+
+    await reporterUnderTest.progress(
+      plan(),
+      const Duration(seconds: 2),
+      paused: false,
+    );
+    heartbeat.add(null);
+    await waitForReports(5);
+    expect(progressBodies().last['IsPaused'], isFalse);
+  });
+
   test('a transcode plan reports PlayMethod Transcode', () async {
     final reporterUnderTest = reporter();
     await reporterUnderTest.started(
