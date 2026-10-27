@@ -1,0 +1,13 @@
+.DS_Store
+.idea/
+*.iml
+
+**/.dart_tool/
+**/build/
+
+**/emby_config.json
+**/m0_smoke.log
+**/m0_result.json
+**/m0_windows_report.zip
+**/playback-info.txt
+**/system.txt

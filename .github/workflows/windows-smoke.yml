@@ -1,0 +1,55 @@
+name: windows-smoke
+
+on:
+  push:
+    paths:
+      - 'spike/windows_smoke/**'
+      - '.github/workflows/windows-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: spike/windows_smoke
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Include smoke script
+        shell: pwsh
+        run: |
+          Copy-Item -Path run-smoke.ps1 -Destination build/windows/x64/runner/Release/
+          Copy-Item -Path README.md -Destination build/windows/x64/runner/Release/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-smoke-x64
+          path: spike/windows_smoke/build/windows/x64/runner/Release/
+          if-no-files-found: error
