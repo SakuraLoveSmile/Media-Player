@@ -1,6 +1,6 @@
 # MediaPlayer（Emby 客户端）文档索引
 
-当前阶段：**M0 已签核；B2 直连在 macOS、Android 真机（Mi 10）、Windows 11 x64 三平台均通过（H.264 / HEVC 4K），WAN、PGS/HDR 待验证。**
+当前阶段：**M0 已签核；B1 工程与三平台 CI 完成；B2 直连在三平台通过；B3 登录/端点/持久化在真实 Emby 通过；WAN、PGS/HDR 待验证。**
 
 ## 文档
 
