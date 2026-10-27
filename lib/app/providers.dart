@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/config/app_config.dart';
@@ -17,7 +18,9 @@ import 'services.dart';
 /// Builds the single app-wide service graph. Widget tests override this
 /// provider so no plugin or network call happens.
 final bootstrapProvider = FutureProvider<AppServices>((ref) async {
-  final store = await createKeyValueStore();
+  final store = await createKeyValueStore(
+    log: (message) => debugPrint('[storage] $message'),
+  );
   final deviceId = await DeviceIdStore(store).getOrCreate();
 
   final dio = Dio();

@@ -37,7 +37,7 @@ RESULT pass
 | `serverMismatch` 拒绝第二地址 | 单测通过；真实第二服务器未提供 | 第 6 行 |
 | 业务请求 401 → 自动登出、不重试 | fake server 单测；真实环境尚无业务请求 | `test/data/auth` |
 | WAN frp HTTPS | 未验证 | 地址未提供 |
-| macOS Keychain 实际路径 | 未验证 | 需在 app 内运行；F1 首次登录时确认 |
+| macOS Keychain 启动探针 | 通过（login keychain，见 §5） | 无回退目录、无 WARN |
 
 ## 3. 复现方式
 
@@ -57,6 +57,20 @@ unset EMBY_PASS
 ## 4. 未覆盖与后续
 
 1. WAN 地址就绪后，用同一工具把 `EMBY_LAN_URL` 指向 frp HTTPS 地址复跑，并补 `EMBY_WAN_URL` 版本。
-2. macOS ad-hoc 构建下 Keychain 是否可用：F1 首次真实登录时观察日志中的降级 WARN。
+2. 真实 token 的跨进程重启：F1 首次登录后杀进程重开验证（探针已通过，但探针不等于 token 持久化）。
 3. 第二台 Emby 或临时改端口伪造 serverId 的实测：当前只有单测覆盖。
 4. `PlayMethod` 核对仍等 B5 上报。
+
+## 5. macOS ad-hoc 签名下的 Keychain（实测）
+
+默认的 data protection keychain 需要 team identifier，ad-hoc 签名没有，实测表现：
+
+1. 首版 release（`MacOsOptions` 默认 `usesDataProtectionKeychain: true`）启动后，
+   沙箱容器内出现 `<bundle>/Data/Library/Application Support/dev.mediaplayer.mediaPlayer/`
+   —— 说明探针抛错、工厂降级到了文件实现。
+2. 改为 `usesDataProtectionKeychain: false`（login keychain）后重新构建并清理该目录再启动：
+   进程存活 6s、无 `[storage]` WARN、目录未重建 —— 探针的 write/read/delete 全部走通 Keychain。
+
+因此 `storage_factory.dart` 在 macOS 上先试 login keychain，失败才落 0600 文件。
+仍未验证的是真实 token 跨重启读取（依赖 F1 的真实登录）。
+

@@ -19,18 +19,33 @@ Future<KeyValueStore> createKeyValueStore({
   StorageLogger? log,
 }) async {
   const probeKey = '__mp_storage_probe__';
-  final secure = SecureKeyValueStore(const FlutterSecureStorage());
+  final secure = SecureKeyValueStore(_buildSecureStorage());
 
   try {
     await secure.write(probeKey, 'ok');
     final value = await secure.read(probeKey);
     await secure.delete(probeKey);
     if (value == 'ok') return secure;
-  } catch (_) {
-    // Fall through to the file backend.
+  } catch (error) {
+    // Only the exception type is logged; values never reach the log.
+    log?.call(
+      'secure storage unavailable (${error.runtimeType}); '
+      'using 0600 file fallback',
+    );
   }
 
-  log?.call('secure storage unavailable; using 0600 file fallback');
   final directory = fallbackDirectory ?? await getApplicationSupportDirectory();
   return FileKeyValueStore(File('${directory.path}/mp_storage_v1.json'));
+}
+
+FlutterSecureStorage _buildSecureStorage() {
+  if (Platform.isMacOS) {
+    // The data-protection keychain requires a team identifier, which ad-hoc
+    // builds do not have (errSecMissingEntitlement). The login keychain works
+    // without one, so try it first and keep the file fallback for the rest.
+    return const FlutterSecureStorage(
+      mOptions: MacOsOptions(usesDataProtectionKeychain: false),
+    );
+  }
+  return const FlutterSecureStorage();
 }
