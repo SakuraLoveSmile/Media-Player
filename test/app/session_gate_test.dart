@@ -26,6 +26,9 @@ class FakeAuth implements AuthService {
   Future<AuthSession?> restore() async => restoreResult;
 
   @override
+  Future<ServerProfile?> lastProfile() async => null;
+
+  @override
   Future<AuthSession> login({
     required String username,
     required String password,
@@ -74,7 +77,8 @@ void main() {
     await pumpApp(tester, FakeAuth());
     await tester.pumpAndSettle();
 
-    expect(find.text('登录页占位'), findsOneWidget);
+    expect(find.byKey(const Key('login-submit')), findsOneWidget);
+    expect(find.text('连接你的 Emby 服务器'), findsOneWidget);
   });
 
   testWidgets('with a session the gate opens the library', (tester) async {

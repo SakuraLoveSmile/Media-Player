@@ -147,6 +147,9 @@ class AuthRepository implements AuthService {
   }
 
   @override
+  Future<ServerProfile?> lastProfile() => profileStore.read();
+
+  @override
   Future<ServerProfile> adoptAddress({
     required ServerProfile profile,
     required EndpointKind kind,

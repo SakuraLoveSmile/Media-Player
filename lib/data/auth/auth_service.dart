@@ -20,6 +20,10 @@ abstract interface class AuthService {
 
   Future<AuthSession?> restore();
 
+  /// Last stored profile, used to prefill the login form (addresses only;
+  /// never credentials). Null when nothing has been stored yet.
+  Future<ServerProfile?> lastProfile();
+
   /// Adds or replaces one address; rejects a different server id with
   /// `serverMismatch` (contract §1.4).
   Future<ServerProfile> adoptAddress({
