@@ -22,7 +22,16 @@ class FakeEmbyServer {
   bool revokeToken = false;
   String? lastAuthorizationHeader;
   Map<String, String>? lastItemsQuery;
+  Map<String, String>? lastPlaybackInfoQuery;
+  String? lastPlaybackInfoToken;
   final List<String> requestLog = <String>[];
+
+  /// PlaybackInfo replies (contract §3.1), consumed in order; the last entry
+  /// repeats when more requests arrive. Empty means "no playable sources".
+  final List<Map<String, dynamic>> playbackInfoResponses =
+      <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> playbackInfoBodies =
+      <Map<String, dynamic>>[];
 
   /// 130 movies so paging can be exercised with 60-item pages.
   final List<Map<String, dynamic>> movieItems = List<Map<String, dynamic>>.generate(
@@ -204,6 +213,27 @@ class FakeEmbyServer {
         response.headers.contentType = ContentType('image', 'png');
         response.add(<int>[0x89, 0x50, 0x4E, 0x47]);
         await response.close();
+        return;
+      }
+
+      if (request.method == 'POST' &&
+          path.startsWith('/Items/') &&
+          path.endsWith('/PlaybackInfo')) {
+        lastPlaybackInfoQuery = request.uri.queryParameters;
+        lastPlaybackInfoToken = request.headers.value('X-Emby-Token');
+        final body = await utf8.decoder.bind(request).join();
+        playbackInfoBodies.add(jsonDecode(body) as Map<String, dynamic>);
+
+        final index = playbackInfoBodies.length - 1;
+        final reply = playbackInfoResponses.isEmpty
+            ? <String, dynamic>{
+                'MediaSources': <Map<String, dynamic>>[],
+              }
+            : playbackInfoResponses[
+                index < playbackInfoResponses.length
+                    ? index
+                    : playbackInfoResponses.length - 1];
+        await _json(response, 200, reply);
         return;
       }
 
