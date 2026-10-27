@@ -1,8 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Emby API and media streams are HTTPS on WAN and HTTP on the LAN. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Cleartext is allowed app-wide because Network Security Config cannot
+         express RFC1918 ranges. WAN endpoints must stay HTTPS; see README
+         "约束". -->
     <application
-        android:label="media_player"
+        android:label="Media Player"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -8,5 +8,10 @@
 	<true/>
 	<key>com.apple.security.network.server</key>
 	<true/>
+	<!-- Required for any outbound request (Emby API and media streams).
+	     Verified in B2: without it every network load fails with
+	     "Operation not permitted". -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>
