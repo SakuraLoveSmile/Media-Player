@@ -14,6 +14,9 @@ import 'package:media_player/data/models/media_item.dart';
 import 'package:media_player/data/models/server_profile.dart';
 
 import '../support/fake_library_service.dart';
+import '../support/fake_playback_engine.dart';
+import '../support/fake_playback_reporter.dart';
+import '../support/fake_playback_service.dart';
 
 class StaticAuth implements AuthService {
   @override
@@ -66,7 +69,13 @@ void main() {
         overrides: [
           bootstrapProvider.overrideWith(
             (ref) async =>
-                AppServices(auth: StaticAuth(), library: library),
+                AppServices(
+                  auth: StaticAuth(),
+                  library: library,
+                  playback: FakePlaybackService(),
+                  createEngine: FakePlaybackEngine.new,
+                  createReporter: FakePlaybackReporter.new,
+                ),
           ),
         ],
         child: const MediaPlayerApp(),

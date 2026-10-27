@@ -12,6 +12,9 @@ import 'package:media_player/data/models/auth_session.dart';
 import 'package:media_player/data/models/server_profile.dart';
 
 import '../support/fake_library_service.dart';
+import '../support/fake_playback_engine.dart';
+import '../support/fake_playback_reporter.dart';
+import '../support/fake_playback_service.dart';
 
 class FakeAuth implements AuthService {
   FakeAuth({this.restoreResult});
@@ -66,7 +69,13 @@ Future<void> pumpApp(WidgetTester tester, FakeAuth auth) async {
       overrides: [
         bootstrapProvider.overrideWith(
           (ref) async =>
-              AppServices(auth: auth, library: FakeLibraryService()),
+              AppServices(
+                auth: auth,
+                library: FakeLibraryService(),
+                playback: FakePlaybackService(),
+                createEngine: FakePlaybackEngine.new,
+                createReporter: FakePlaybackReporter.new,
+              ),
         ),
       ],
       child: const MediaPlayerApp(),
@@ -107,7 +116,13 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     completer.complete(
-      AppServices(auth: FakeAuth(restoreResult: session), library: FakeLibraryService()),
+      AppServices(
+        auth: FakeAuth(restoreResult: session),
+        library: FakeLibraryService(),
+        playback: FakePlaybackService(),
+        createEngine: FakePlaybackEngine.new,
+        createReporter: FakePlaybackReporter.new,
+      ),
     );
     await tester.pumpAndSettle();
     expect(find.text('媒体库'), findsOneWidget);

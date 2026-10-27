@@ -13,6 +13,9 @@ import 'package:media_player/data/models/auth_session.dart';
 import 'package:media_player/data/models/server_profile.dart';
 
 import '../support/fake_library_service.dart';
+import '../support/fake_playback_engine.dart';
+import '../support/fake_playback_reporter.dart';
+import '../support/fake_playback_service.dart';
 
 class LoginCall {
   const LoginCall({
@@ -93,7 +96,13 @@ void main() {
         overrides: [
           bootstrapProvider.overrideWith(
             (ref) async =>
-                AppServices(auth: auth, library: FakeLibraryService()),
+                AppServices(
+                  auth: auth,
+                  library: FakeLibraryService(),
+                  playback: FakePlaybackService(),
+                  createEngine: FakePlaybackEngine.new,
+                  createReporter: FakePlaybackReporter.new,
+                ),
           ),
         ],
         child: const MediaPlayerApp(),

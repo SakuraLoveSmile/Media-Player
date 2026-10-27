@@ -9,6 +9,9 @@ import '../data/auth/auth_repository.dart';
 import '../data/endpoints/endpoint_probe.dart';
 import '../data/endpoints/endpoint_resolver.dart';
 import '../data/library/library_repository.dart';
+import '../data/playback/media_kit_engine.dart';
+import '../data/playback/playback_repository.dart';
+import '../data/playback/session_reporter.dart';
 import '../data/storage/device_id_store.dart';
 import '../data/storage/profile_store.dart';
 import '../data/storage/session_store.dart';
@@ -47,6 +50,11 @@ final bootstrapProvider = FutureProvider<AppServices>((ref) async {
   return AppServices(
     auth: auth,
     library: LibraryRepository(auth),
+    playback: PlaybackRepository(auth),
+    // Factories, not instances: each playback needs its own libmpv instance
+    // and its own "already stopped" flag (contract §5, §10.9 c).
+    createEngine: MediaKitEngine.new,
+    createReporter: () => SessionReporter(auth),
     client: client,
     resolver: resolver,
     deviceId: deviceId,
