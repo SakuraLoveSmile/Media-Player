@@ -16,6 +16,19 @@
 - [Emby 客户端契约](docs/contracts/emby-client-contract-v1.1.md)
 - [M0 签核](docs/m0-signoff.md)
 - [B2 直连 PoC](docs/b2-poc.md)
+- [开发环境与构建](docs/dev-setup.md)
+
+## 构建
+
+```bash
+export LANG=en_US.UTF-8
+~/devsdk/flutter/bin/flutter pub get
+~/devsdk/flutter/bin/flutter build macos --release
+~/devsdk/flutter/bin/flutter build apk --release --split-per-abi
+~/devsdk/flutter/bin/flutter build windows --release
+```
+
+必须使用 `~/devsdk/flutter`（3.47.7）；PATH 中的 3.41.3 不可复现。详见 `docs/dev-setup.md`。
 
 ## Windows 冒烟
 

@@ -8,6 +8,7 @@
 - [Emby 客户端契约 v1.1](contracts/emby-client-contract-v1.1.md) — 双端点、认证、媒体库、直连策略、进度上报、播放引擎接口、验收门。
 - [M0 签核记录](m0-signoff.md) — 环境实测、未闭环项、M1 开工顺序。
 - [B2 直连 PoC 记录](b2-poc.md) — 真实 Emby 4.10.1 的直连结果与契约差异。
+- [开发环境与构建](dev-setup.md) — Flutter 3.47.7 路径、平台前置、构建与质量门命令。
 
 ## 当前硬约束
 
