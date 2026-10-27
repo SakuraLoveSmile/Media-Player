@@ -18,7 +18,22 @@ class FakeEmbyServer {
   int authRequests = 0;
   int viewRequests = 0;
   int expiredRequests = 0;
+  int imageRequests = 0;
+  bool revokeToken = false;
   String? lastAuthorizationHeader;
+  Map<String, String>? lastItemsQuery;
+  final List<String> requestLog = <String>[];
+
+  /// 130 movies so paging can be exercised with 60-item pages.
+  final List<Map<String, dynamic>> movieItems = List<Map<String, dynamic>>.generate(
+    130,
+    (index) => <String, dynamic>{
+      'Id': 'movie-${index + 1}',
+      'Name': 'Movie ${index + 1}',
+      'Type': 'Movie',
+      'RunTimeTicks': 6000000000,
+    },
+  );
 
   String get base => 'http://127.0.0.1:${_server.port}';
 
@@ -34,6 +49,7 @@ class FakeEmbyServer {
   Future<void> _handle(HttpRequest request) async {
     final response = request.response;
     final path = request.uri.path;
+    requestLog.add('${request.method} $path');
 
     try {
       if (request.method == 'GET' && path == '/System/Info/Public') {
@@ -68,7 +84,7 @@ class FakeEmbyServer {
 
       if (request.method == 'GET' && path == '/Users/user-1/Views') {
         viewRequests++;
-        if (request.headers.value('X-Emby-Token') != token) {
+        if (revokeToken || request.headers.value('X-Emby-Token') != token) {
           await _json(response, 401, <String, dynamic>{'error': 'no token'});
           return;
         }
@@ -82,6 +98,112 @@ class FakeEmbyServer {
           ],
           'TotalRecordCount': 1,
         });
+        return;
+      }
+
+      if (request.method == 'GET' && path == '/Users/user-1/Items') {
+        lastItemsQuery = request.uri.queryParameters;
+        final parentId = request.uri.queryParameters['ParentId'];
+        final start = int.tryParse(request.uri.queryParameters['StartIndex'] ?? '') ?? 0;
+        final limit = int.tryParse(request.uri.queryParameters['Limit'] ?? '') ?? 60;
+        final all = parentId == 'view-1' ? movieItems : const <Map<String, dynamic>>[];
+        final slice = all.skip(start).take(limit).toList(growable: false);
+
+        await _json(response, 200, <String, dynamic>{
+          'Items': slice,
+          'TotalRecordCount': all.length,
+          'StartIndex': start,
+        });
+        return;
+      }
+
+      if (request.method == 'GET' && path.startsWith('/Users/user-1/Items/')) {
+        final id = path.split('/').last;
+        await _json(response, 200, <String, dynamic>{
+          'Id': id,
+          'Name': 'Detail $id',
+          'Type': 'Movie',
+          'MediaSources': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'Id': 'source-1',
+              'Container': 'mkv',
+              'Bitrate': 12100000,
+              'SupportsDirectPlay': true,
+              'SupportsDirectStream': true,
+              'DirectStreamUrl': '/videos/$id/stream.mkv?Static=true',
+              'MediaStreams': <Map<String, dynamic>>[
+                <String, dynamic>{'Type': 'Video', 'Index': 0, 'Codec': 'hevc'},
+              ],
+            },
+          ],
+        });
+        return;
+      }
+
+      if (request.method == 'GET' && path == '/Shows/series-1/Seasons') {
+        await _json(response, 200, <String, dynamic>{
+          'Items': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'Id': 'season-1',
+              'Name': 'Season 1',
+              'Type': 'Season',
+              'SeriesId': 'series-1',
+              'IndexNumber': 1,
+            },
+            <String, dynamic>{
+              'Id': 'season-2',
+              'Name': 'Season 2',
+              'Type': 'Season',
+              'SeriesId': 'series-1',
+              'IndexNumber': 2,
+            },
+          ],
+          'TotalRecordCount': 2,
+        });
+        return;
+      }
+
+      if (request.method == 'GET' && path == '/Shows/series-1/Episodes') {
+        final seasonId = request.uri.queryParameters['SeasonId'];
+        final all = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'Id': 'ep-1',
+            'Name': 'Episode 1',
+            'Type': 'Episode',
+            'SeriesId': 'series-1',
+            'SeasonId': 'season-1',
+            'IndexNumber': 1,
+          },
+          <String, dynamic>{
+            'Id': 'ep-2',
+            'Name': 'Episode 2',
+            'Type': 'Episode',
+            'SeriesId': 'series-1',
+            'SeasonId': 'season-1',
+            'IndexNumber': 2,
+          },
+          <String, dynamic>{
+            'Id': 'ep-3',
+            'Name': 'Episode 3',
+            'Type': 'Episode',
+            'SeriesId': 'series-1',
+            'SeasonId': 'season-2',
+            'IndexNumber': 1,
+          },
+        ];
+        await _json(response, 200, <String, dynamic>{
+          'Items': all.where((e) => seasonId == null || e['SeasonId'] == seasonId).toList(),
+          'TotalRecordCount': all.length,
+        });
+        return;
+      }
+
+      if (request.method == 'GET' && path.startsWith('/Items/') && path.endsWith('/Images/Primary')) {
+        imageRequests++;
+        response.statusCode = 200;
+        response.headers.contentType = ContentType('image', 'png');
+        response.add(<int>[0x89, 0x50, 0x4E, 0x47]);
+        await response.close();
         return;
       }
 

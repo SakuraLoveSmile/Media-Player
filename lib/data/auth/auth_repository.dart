@@ -15,10 +15,11 @@ import '../models/server_profile.dart';
 import '../storage/profile_store.dart';
 import '../storage/session_store.dart';
 import '../storage/token_store.dart';
+import 'api_session.dart';
 import 'auth_service.dart';
 
 /// Login, session restore and logout (contract §1.4, §7, §10.5).
-class AuthRepository implements AuthService {
+class AuthRepository implements AuthService, ApiSession {
   AuthRepository({
     required this.client,
     required this.resolver,
@@ -54,7 +55,14 @@ class AuthRepository implements AuthService {
   Stream<AuthSession?> get session => _controller.stream;
 
   /// Endpoint used by the current session; all URLs must be derived from it.
+  @override
   ResolvedEndpoint? get endpoint => _endpoint;
+
+  @override
+  String? get userId => _session?.userId;
+
+  @override
+  String? get accessToken => _session?.accessToken;
 
   @override
   Future<AuthSession> login({
@@ -199,6 +207,7 @@ class AuthRepository implements AuthService {
   }
 
   /// Performs an authenticated GET and logs out on 401 (contract §10.5).
+  @override
   Future<Map<String, dynamic>> authorizedGet(Uri url) async {
     final session = _session;
     if (session == null) {

@@ -350,6 +350,7 @@ enum AppErrorCode {
 - header 鉴权（`X-Emby-Token`）与 URL `api_key` 两种方式均可播放真实直连流。
 - macOS media_kit 播放 MKV/H.264 1080p、MP4/HEVC Main10 4K、MKV/HEVC 4K 成功。
 - Windows 11 x64（release，media_kit/libmpv）：MKV/HEVC 4K 与 MKV/H.264 1080p 直连成功，PlaybackInfo 返回 `SupportsDirectPlay=true`、无 `TranscodingUrl`，播放位置递增、错误列表为空。
+- 媒体库（B4，2026-10-27）：`Views` 返回 13 个库；`Items` 分页与字段裁剪按 §2 生效；详情返回 `MediaSources`；`Seasons`/`Episodes` 可用；Primary 图片带 `api_key` 返回 200。
 
 待实测：
 
@@ -429,7 +430,12 @@ enum AppErrorCode {
 - 只记录 `method + host + path`，query 整体丢弃。
 - token、密码、`api_key` 永不写入日志、永不进入仓库。
 
-### 10.7 DeviceId / DeviceName
+### 10.7 媒体库模型补充
+
+- `MediaItem.mediaSources` 只从详情响应填充；列表响应里恒为空列表（§2 约定列表不请求 `MediaSources`）。
+- 分页游标由调用方持有：`ItemsPage.nextStartIndex` / `isLast`，客户端不排序、不去重。
+
+### 10.8 DeviceId / DeviceName
 
 - `DeviceId`：UUID v4，首次生成后持久化（§10.1）。
 - `DeviceName`：`<os> <hostname>`，例如 `macos MacBook-Pro`。

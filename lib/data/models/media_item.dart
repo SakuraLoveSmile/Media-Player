@@ -1,4 +1,5 @@
 import 'json_read.dart';
+import 'media_source.dart';
 
 /// Library list/detail entry (contract §4).
 class MediaItem {
@@ -13,6 +14,7 @@ class MediaItem {
     this.imageTag,
     this.overview,
     this.userData = const UserItemData(),
+    this.mediaSources = const <MediaSource>[],
   });
 
   factory MediaItem.fromJson(Map<String, dynamic> json) {
@@ -27,6 +29,9 @@ class MediaItem {
       imageTag: asString(asMap(json['ImageTags'])['Primary']),
       overview: asString(json['Overview']),
       userData: UserItemData.fromJson(asMap(json['UserData'])),
+      mediaSources: asMapList(json['MediaSources'])
+          .map(MediaSource.fromJson)
+          .toList(growable: false),
     );
   }
 
@@ -40,6 +45,9 @@ class MediaItem {
   final String? imageTag;
   final String? overview;
   final UserItemData userData;
+
+  /// Present only on the detail response (contract §2).
+  final List<MediaSource> mediaSources;
 
   Duration get duration => Duration(microseconds: runTimeTicks ~/ 10);
 }

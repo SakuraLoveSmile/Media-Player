@@ -10,6 +10,7 @@
   - Windows 11 x64：release 构建直连 HEVC 4K MKV、H.264 1080p MKV 通过（`directPlay=True`，无转码）
   - 工程：B1 三平台 CI 绿；B3 探测/登录/持久化/重启恢复在真实 Emby 通过（见 `docs/b3-notes.md`）
   - F1：双地址登录页在 macOS 实机登录成功并重启恢复（见 `docs/f1-notes.md`）
+  - B4：视图/分页/详情/季集/图片在真实 Emby 通过（见 `docs/b4-notes.md`）
   - WAN、PGS、HDR：待验证
 
 ## 文档
