@@ -337,8 +337,44 @@ enum AppErrorCode {
 |---|---|
 | 平台前置 | macOS Debug/Release entitlements 含 `com.apple.security.network.client`；macOS 内测包关闭 App Sandbox 并在 Info.plist 声明 `NSLocalNetworkUsageDescription`（沙箱开启时 LAN 请求被拦截，已实测）；Android 允许 LAN 明文 HTTP；缺失时网络播放不可用（已实测） |
 | M1 | 双端点探测/登录/浏览可用；B2 在三平台直连 HEVC（MKV/MP4）成功；库内存在 PGS 时 PGS 也必须过 |
-| M2 | LAN 下三平台 `videoDirect=true`；续播误差 ≤5s；控制项完整 |
+| M2 | **macOS + Android**：LAN 下 `videoDirect=true`；续播误差 ≤5s；控制项完整。已签核 2026-10-28（见 `docs/m2-signoff.md`） |
+| M2-W | **Windows**：与 M2 同一组判据，条件见 §8.1；未签核前不得把 M2 记为「三平台通过」 |
 | M3 | T2 LAN 矩阵 ≥11/12；库内存在 PGS 时 PGS 全过；T3 WAN 全项通过；三平台包可安装 |
+
+### 8.1 M2-W：Windows 验收条件
+
+M2 按平台分别签核。macOS 与 Android 已签；**Windows 是独立的一门**，在下列全部条目有实测证据前保持 open。
+
+**环境与产物（前置，缺一即不算开始）**
+
+- Windows 11 x64，同一 LAN 内可达已授权 Emby 端点。
+- 在目标机（或同版本工具链的 Windows 构建机）用 Flutter 3.47.7 执行 `flutter build windows --release`；记录 `flutter --version` 与 `pubspec.lock` 中 media_kit 三件套版本。
+- 产物目录内含 `media_kit_libs_video` 的 libmpv DLL；缺失时起播必然失败，属构建问题而非播放问题。
+- 应用为 release 构建、无调试器附加；用 `--dart-define=PLAYBACK_TRACE=true` 构建时，日志里每次上报应有一行脱敏 `[report]`。
+
+**播放矩阵（逐条留证，缺一条即整门不通过）**
+
+| # | 判据 | 通过标准 |
+|---|---|---|
+| W1 | 登录与库 | LAN 登录成功，进入媒体库并看到视图 chips 与真实海报 |
+| W2 | 起播 | 画面可见；`duration > 0`；两个不同时刻的 position 递增（记录秒数） |
+| W3 | 控制项 | 播放/暂停、进度条、音量、返回四项齐全且可操作 |
+| W4 | 直连判定 | 起播后匹配唯一活动会话（`DeviceId + NowPlayingItem`），`PlayMethod` 为 `DirectPlay` 或 `DirectStream`，且**无 `TranscodingInfo`**；出现 `Transcode` 时必须读 `IsVideoDirect`，`false` 即 LAN 直连失败 |
+| W5 | 暂停跨心跳 | 暂停后即时与 ≥13s（跨一个 10s 心跳）两次读服务端 `IsPaused` 均为 `true` |
+| W6 | 恢复 | 恢复后即时与 ≥13s 两次读均为 `false`，位置继续推进 |
+| W7 | seek | 拖动后 15s 内服务端位置与 UI 位置差 ≤2s |
+| W8 | 退出 | 返回后该 `DeviceId + NowPlayingItem` 匹配会话数归零（`Stopped` 生效） |
+| W9 | 退出位置 | 退出点必须超过库的续播阈值（实测 <5% 会被服务端清零）；服务端 `PlaybackPositionTicks` 与客户端 `Stopped` 上报值 tick 级一致 |
+| W10 | 续播 | 重进同一条目，起播位置与退出位置误差 ≤5s，且 UI 出现「已从 mm:ss 继续播放」 |
+| W11 | 二次退出 | 再次返回后会话数仍为 0，无悬挂会话 |
+
+**证据与判定**
+
+- 每个条目记录：时间、客户端数值（position/暂停态/上报载荷）、服务端读数（`/Sessions` 或 `UserData`）、结论 PASS/FAIL。
+- 截图只截应用窗口；不得包含地址、token、片名或库名。
+- `PlayMethod` 是客户端上报值，W4 的独立判据是 `TranscodingInfo` 是否出现（§3.5）。
+- 判定：W1–W11 全部 PASS 才签 M2-W；任一条 FAIL 按阻断缺陷立卡，不得以「macOS/Android 已通过」「CI 构建成功」「spike 冒烟通过」替代 Windows 实测。
+- 失败即记录、不恢复默认值掩盖：禁用沙箱、放宽 TLS、关闭明文限制等平台开关不得为过门而修改（B2 阶段的历史 spike 结论不适用于主工程）。
 
 ## 9. 实测状态（Emby 4.10.1.0，2026-10-27）
 

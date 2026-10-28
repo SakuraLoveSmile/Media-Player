@@ -13,7 +13,8 @@
   - B4：视图/分页/详情/季集/图片在真实 Emby 通过（见 `docs/b4-notes.md`）
   - F2：媒体库页在 macOS 实机加载 13 个视图与真实海报（见 `docs/f2-notes.md`）
   - B5 + F3：macOS release 与 Android（Mi 10）真机直连起播、暂停跨心跳、退出位置落盘、续播误差 <1s、退出会话归零（见 `docs/b5-notes.md`）
-  - WAN、PGS、HDR：待验证；Windows 播放实机：待验证
+  - M2：macOS + Android 已签核（见 `docs/m2-signoff.md`）；Windows 拆为 M2-W，验收条件见契约 §8.1
+  - WAN、PGS、HDR：待验证
 
 ## 文档
 

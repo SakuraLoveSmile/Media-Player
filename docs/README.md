@@ -1,6 +1,6 @@
 # MediaPlayer（Emby 客户端）文档索引
 
-当前阶段：**M0 已签核；B1–B5 数据层与 F1–F3 界面完成；macOS 与 Android（Mi 10）已打通「登录 → 库 → 播放 → 上报 → 续播」；Windows 播放实机、WAN、PGS/HDR 待验证。**
+当前阶段：**M0 已签核；B1–B5 数据层与 F1–F3 界面完成；M2（macOS + Android）已签核；Windows 拆为 M2-W，条件已冻结、待验收；WAN、PGS/HDR 待验证。**
 
 ## 文档
 
@@ -13,7 +13,8 @@
 - [F1 登录页与双地址](f1-notes.md) — 实机登录/重启恢复截图与 macOS 平台坑。
 - [B4 媒体库查询层](b4-notes.md) — 视图/分页/详情/季集/图片的实测与边界。
 - [F2 媒体库页](f2-notes.md) — 视图切换、海报网格、分页与各状态的实机截图。
-- [B5 播放编排与 F3 播放页](b5-notes.md) — PlaybackInfo/URL 回退/上报/续播/直连判定的实机矩阵与 T5-BUG-1。
+- [B5 播放编排与 F3 播放页](b5-notes.md) — PlaybackInfo/URL 回退/上报/续播/直连判定的实机矩阵与 T5-BUG-1/2。
+- [M2 签核记录](m2-signoff.md) — macOS + Android 已签；Windows 拆为 M2-W，验收条件见契约 §8.1。
 
 ## 当前硬约束
 
