@@ -1,6 +1,6 @@
 # MediaPlayer（Emby 客户端）文档索引
 
-当前阶段：**M0 已签核；B1–B5 数据层与 F1–F3 界面完成；macOS release 已打通「登录 → 库 → 播放 → 上报 → 续播」；Android/Windows 播放实机、WAN、PGS/HDR 待验证。**
+当前阶段：**M0 已签核；B1–B5 数据层与 F1–F3 界面完成；macOS 与 Android（Mi 10）已打通「登录 → 库 → 播放 → 上报 → 续播」；Windows 播放实机、WAN、PGS/HDR 待验证。**
 
 ## 文档
 

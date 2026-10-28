@@ -12,8 +12,8 @@
   - F1：双地址登录页在 macOS 实机登录成功并重启恢复（见 `docs/f1-notes.md`）
   - B4：视图/分页/详情/季集/图片在真实 Emby 通过（见 `docs/b4-notes.md`）
   - F2：媒体库页在 macOS 实机加载 13 个视图与真实海报（见 `docs/f2-notes.md`）
-  - B5 + F3：播放页在 macOS release 实机直连起播、暂停/恢复跨心跳、seek 差 0.819s、续播误差 0s、退出会话归零（见 `docs/b5-notes.md`）
-  - WAN、PGS、HDR：待验证；Android/Windows 播放实机：待验证
+  - B5 + F3：macOS release 与 Android（Mi 10）真机直连起播、暂停跨心跳、退出位置落盘、续播误差 <1s、退出会话归零（见 `docs/b5-notes.md`）
+  - WAN、PGS、HDR：待验证；Windows 播放实机：待验证
 
 ## 文档
 

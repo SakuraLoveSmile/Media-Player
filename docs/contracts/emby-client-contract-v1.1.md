@@ -353,6 +353,8 @@ enum AppErrorCode {
 - 媒体库（B4，2026-10-27）：`Views` 返回 13 个库；`Items` 分页与字段裁剪按 §2 生效；详情返回 `MediaSources`；`Seasons`/`Episodes` 可用；Primary 图片带 `api_key` 返回 200。
 - 直连会话（B5，2026-10-28，macOS release）：客户端上报后 `GET /Sessions` 的唯一匹配会话返回 `PlayState.PlayMethod = "DirectPlay"`，且**没有 `TranscodingInfo` 字段**；`IsVideoDirect` / `IsAudioDirect` 在该会话中不存在（不返回 null 值）。
 - 会话上报实测：暂停/恢复后 `PlayState.IsPaused` 随事件翻转，且保持到下一个 10s 心跳；退出播放页后该 `DeviceId + NowPlayingItem` 的匹配会话数归零（`Stopped` 生效）。
+- 直连会话（B5，2026-10-28，Android 16 / Mi 10 release）：连续采样同样为 `PlayMethod=DirectPlay` 且无 `TranscodingInfo`；暂停状态跨 2 个心跳保持；客户端退出上报的 `PositionTicks` 与服务端 `UserData.PlaybackPositionTicks` tick 级一致。
+- 服务端续播语义（B5，2026-10-28）：退出位置低于库的续播百分比阈值（实测 0.35%）时，服务端把 `PlaybackPositionTicks` 清成 0 并保持 `Played=false`；高于阈值（实测 39.6% / 56.3%）时精确保留。**验收帧必须让退出点超过阈值**，否则会把服务端清理误判为上报失败。
 
 > 判定口径补充：`PlayMethod` 由客户端上报，不是服务端独立结论；服务端唯一的独立信号是 **`TranscodingInfo` 是否出现**。无 `TranscodingInfo` 才算视频未被转码，`PlayMethod` 只作辅证（§3.5）。
 
