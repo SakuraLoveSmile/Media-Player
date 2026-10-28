@@ -351,12 +351,16 @@ enum AppErrorCode {
 - macOS media_kit 播放 MKV/H.264 1080p、MP4/HEVC Main10 4K、MKV/HEVC 4K 成功。
 - Windows 11 x64（release，media_kit/libmpv）：MKV/HEVC 4K 与 MKV/H.264 1080p 直连成功，PlaybackInfo 返回 `SupportsDirectPlay=true`、无 `TranscodingUrl`，播放位置递增、错误列表为空。
 - 媒体库（B4，2026-10-27）：`Views` 返回 13 个库；`Items` 分页与字段裁剪按 §2 生效；详情返回 `MediaSources`；`Seasons`/`Episodes` 可用；Primary 图片带 `api_key` 返回 200。
+- 直连会话（B5，2026-10-28，macOS release）：客户端上报后 `GET /Sessions` 的唯一匹配会话返回 `PlayState.PlayMethod = "DirectPlay"`，且**没有 `TranscodingInfo` 字段**；`IsVideoDirect` / `IsAudioDirect` 在该会话中不存在（不返回 null 值）。
+- 会话上报实测：暂停/恢复后 `PlayState.IsPaused` 随事件翻转，且保持到下一个 10s 心跳；退出播放页后该 `DeviceId + NowPlayingItem` 的匹配会话数归零（`Stopped` 生效）。
+
+> 判定口径补充：`PlayMethod` 由客户端上报，不是服务端独立结论；服务端唯一的独立信号是 **`TranscodingInfo` 是否出现**。无 `TranscodingInfo` 才算视频未被转码，`PlayMethod` 只作辅证（§3.5）。
 
 待实测：
 
 1. Emby 4.8 / 4.9 回归（当前只验证 4.10.1）。
 2. `/Sessions/Capabilities/Full` 与 PlaybackInfo 内 DeviceProfile 的优先级/缓存。
-3. `PlayState.PlayMethod` 与 `TranscodingInfo.IsVideoDirect/IsAudioDirect` 的实际取值（需 B5 上报后）。
+3. `Transcode` 分支下 `PlayState.PlayMethod` 与 `TranscodingInfo.IsVideoDirect/IsAudioDirect` 的实际取值（直连分支已实测，见上；转码分支仍未触发）。
 4. 字幕 `DeliveryUrl` / 回退路径（当前样本为内嵌 subrip，未测外挂）。
 5. 强制转码、`TranscodingUrl`、HLS 对真实 Emby（当前均未触发转码）。
 6. 同一 token 在 LAN 与 WAN 两个 base 上是否通用（WAN 未提供）。
