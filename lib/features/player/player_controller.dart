@@ -134,16 +134,21 @@ class PlayerController extends ChangeNotifier {
   PlaybackPlan? _plan;
   StreamSubscription<PlaybackSnapshot>? _ticks;
   Widget? _surface;
+  Duration _lastTrustedPosition = Duration.zero;
+  Future<void>? _stopFuture;
+  bool _stopped = false;
   bool _disposed = false;
 
   PlayerState get state => _state;
+
+  Duration get _reportPosition => _lastTrustedPosition;
 
   /// The engine owns the render widget (contract §10.9 b). Cached so the
   /// platform view is created once instead of on every rebuild.
   Widget get surface => _surface ??= _engine.createSurface();
 
   Future<void> load() async {
-    if (_disposed || _state.loading) return;
+    if (_disposed || _stopped || _state.loading) return;
 
     _set(_state.copyWith(
       loading: true,
@@ -154,7 +159,7 @@ class PlayerController extends ChangeNotifier {
 
     try {
       final item = await _library.item(_itemId);
-      if (_disposed) return;
+      if (_disposed || _stopped) return;
       _set(_state.copyWith(itemName: item.name, duration: item.duration));
 
       // Picking an episode belongs to the detail page, so stop before
@@ -176,14 +181,19 @@ class PlayerController extends ChangeNotifier {
       final startAt = resume ? userData.position : Duration.zero;
 
       final plan = await _playback.resolve(_itemId, startAt: startAt);
-      if (_disposed) return;
+      if (_disposed || _stopped) return;
       _plan = plan;
 
       await _ticks?.cancel();
+      if (_disposed || _stopped) return;
+      // Reset at open (including a genuine zero start); uncommanded zero
+      // snapshots may be teardown noise. A completed ready-state seek below
+      // explicitly accepts zero, so seeking to the beginning is not lost.
+      _lastTrustedPosition = startAt;
       _ticks = _engine.state.listen(_onSnapshot);
 
       await _engine.open(plan);
-      if (_disposed) return;
+      if (_disposed || _stopped) return;
       _set(_state.copyWith(
         loading: false,
         ready: true,
@@ -191,12 +201,11 @@ class PlayerController extends ChangeNotifier {
         resumedFrom: resume ? startAt : null,
       ));
 
-      // The heartbeat polls the engine instead of this state so a report can
-      // never lag a frame behind (contract §3.6).
+      // Heartbeats and final reports share the teardown-safe position.
       await _reporter.started(
         plan,
         startAt,
-        position: () => _engine.snapshot.position,
+        position: () => _reportPosition,
       );
 
       unawaited(_confirmDirect(plan));
@@ -209,7 +218,7 @@ class PlayerController extends ChangeNotifier {
 
   Future<void> togglePlayPause() async {
     final plan = _plan;
-    if (_disposed || !_state.ready || plan == null) return;
+    if (_disposed || _stopped || !_state.ready || plan == null) return;
 
     final wasPlaying = _state.playing;
     if (wasPlaying) {
@@ -217,41 +226,42 @@ class PlayerController extends ChangeNotifier {
     } else {
       await _engine.play();
     }
-    if (_disposed) return;
+    if (_disposed || _stopped) return;
     // Flipped eagerly so the button reacts; the engine stream stays
     // authoritative and overwrites this on the next snapshot.
     _set(_state.copyWith(playing: !wasPlaying));
 
     // Contract §10.9 c: pause / resume reports immediately, next to the
     // 10 s heartbeat.
-    await _reporter.progress(
-      plan,
-      _engine.snapshot.position,
-      paused: wasPlaying,
-    );
+    await _reporter.progress(plan, _reportPosition, paused: wasPlaying);
   }
 
   Future<void> seekTo(Duration position) async {
     final plan = _plan;
-    if (_disposed || !_state.ready || plan == null) return;
+    if (_disposed || _stopped || !_state.ready || plan == null) return;
 
     await _engine.seekTo(position);
-    if (_disposed) return;
+    if (_disposed || _stopped) return;
+    _lastTrustedPosition = position;
     _set(_state.copyWith(position: position));
 
     // Contract §10.9 c: a finished seek reports immediately.
-    await _reporter.progress(plan, position, paused: !_state.playing);
+    await _reporter.progress(plan, _reportPosition, paused: !_state.playing);
   }
 
   /// [zeroToOne] is the slider value; [PlaybackEngine.setVolume] takes the
   /// player's own 0–100 scale, so the conversion lives here and nowhere else.
   Future<void> setVolume(double zeroToOne) async {
-    if (_disposed) return;
+    if (_disposed || _stopped) return;
     final level = zeroToOne.clamp(0.0, 1.0);
     await _engine.setVolume(level * 100);
   }
 
   void _onSnapshot(PlaybackSnapshot snapshot) {
+    if (_disposed || _stopped) return;
+    if (snapshot.position > Duration.zero) {
+      _lastTrustedPosition = snapshot.position;
+    }
     _set(_state.copyWith(
       position: snapshot.position,
       // The engine reports a zero duration until the demuxer read it; keep
@@ -269,12 +279,12 @@ class PlayerController extends ChangeNotifier {
 
   Future<void> _confirmDirect(PlaybackPlan plan) async {
     await _delay(_probeDelay);
-    if (_disposed) return;
+    if (_disposed || _stopped) return;
 
     // Contract §10.9 f: /Sessions is the only source of the verdict, and it
     // stays null when the server did not say.
     final confirmed = await _playback.confirmDirect(plan);
-    if (_disposed) return;
+    if (_disposed || _stopped) return;
     _plan = confirmed;
     _set(_state.copyWith(
       videoDirect: confirmed.videoDirect,
@@ -294,25 +304,32 @@ class PlayerController extends ChangeNotifier {
   }
 
   void _set(PlayerState state) {
-    if (_disposed) return;
+    if (_disposed || _stopped) return;
     _state = state;
     notifyListeners();
   }
 
-  /// Idempotent: the back gesture and the widget teardown both land here, and
-  /// `Stopped` must be sent exactly once (contract §10.9 c).
+  /// Repeated callers share the pending final report (contract §10.9 c).
+  Future<void> stop() {
+    if (_stopped) return _stopFuture ?? Future<void>.value();
+
+    final plan = _plan;
+    _stopFuture = plan == null
+        ? Future<void>.value()
+        : _reporter.stopped(plan, _reportPosition);
+    _stopped = true;
+    return _stopFuture!;
+  }
+
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
 
+    // Fallback for teardown without the page's awaited exit path.
+    unawaited(stop());
     unawaited(_ticks?.cancel());
     _ticks = null;
-
-    final plan = _plan;
-    if (plan != null) {
-      unawaited(_reporter.stopped(plan, _engine.snapshot.position));
-    }
     unawaited(_engine.dispose());
     super.dispose();
   }

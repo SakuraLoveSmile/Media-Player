@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,12 +14,58 @@ import 'package:media_player/data/auth/auth_service.dart';
 import 'package:media_player/data/models/auth_session.dart';
 import 'package:media_player/data/models/library_view.dart';
 import 'package:media_player/data/models/media_item.dart';
+import 'package:media_player/data/models/playback_plan.dart';
 import 'package:media_player/data/models/server_profile.dart';
+import 'package:media_player/data/playback/playback_engine.dart';
 
 import '../support/fake_library_service.dart';
 import '../support/fake_playback_engine.dart';
 import '../support/fake_playback_reporter.dart';
 import '../support/fake_playback_service.dart';
+
+class PendingStopReporter extends FakePlaybackReporter {
+  final completion = Completer<void>();
+
+  @override
+  Future<void> stopped(PlaybackPlan plan, Duration position) {
+    unawaited(super.stopped(plan, position));
+    return completion.future;
+  }
+}
+
+class ResettingSurfaceEngine extends FakePlaybackEngine {
+  ResettingSurfaceEngine(this.onSurfaceDispose);
+
+  final VoidCallback onSurfaceDispose;
+
+  @override
+  Widget createSurface() => _TeardownSurface(
+        onDispose: () {
+          emit(const PlaybackSnapshot());
+          onSurfaceDispose();
+        },
+      );
+}
+
+class _TeardownSurface extends StatefulWidget {
+  const _TeardownSurface({required this.onDispose});
+
+  final VoidCallback onDispose;
+
+  @override
+  State<_TeardownSurface> createState() => _TeardownSurfaceState();
+}
+
+class _TeardownSurfaceState extends State<_TeardownSurface> {
+  @override
+  void dispose() {
+    widget.onDispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
 
 class StaticAuth implements AuthService {
   @override
@@ -162,25 +210,73 @@ void main() {
     expect(reporter.progressReports, hasLength(1));
   });
 
-  testWidgets('the back button reports stopped exactly once', (tester) async {
+  testWidgets(
+    'the back button retains position and stops before surface teardown',
+    (tester) async {
+      int? stoppedCallsAtSurfaceDispose;
+      engine = ResettingSurfaceEngine(() {
+        stoppedCallsAtSurfaceDispose = reporter.stoppedCalls;
+      });
+      await pumpPlayer(tester);
+      engine.emit(const PlaybackSnapshot(position: Duration(seconds: 100)));
+      await tester.pump();
+      engine.emit(const PlaybackSnapshot());
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('player-back')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('媒体库'), findsOneWidget);
+      expect(reporter.stoppedCalls, 1);
+      expect(reporter.stoppedAt, const Duration(seconds: 100));
+      expect(stoppedCallsAtSurfaceDispose, 1);
+      expect(engine.disposeCalls, 1);
+    },
+  );
+
+  testWidgets(
+    'a system back retains position and reports stopped exactly once',
+    (tester) async {
+      await pumpPlayer(tester);
+      engine.emit(const PlaybackSnapshot(position: Duration(seconds: 61)));
+      await tester.pump();
+      engine.emit(const PlaybackSnapshot());
+      await tester.pump();
+
+      await systemBack(tester);
+      await systemBack(tester);
+
+      expect(find.text('媒体库'), findsOneWidget);
+      expect(reporter.stoppedCalls, 1);
+      expect(reporter.stoppedAt, const Duration(seconds: 61));
+    },
+  );
+
+  testWidgets('back waits for stopped completion before popping', (
+    tester,
+  ) async {
+    final pending = PendingStopReporter();
+    reporter = pending;
     await pumpPlayer(tester);
+    engine.emit(const PlaybackSnapshot(position: Duration(seconds: 100)));
+    await tester.pump();
 
     await tester.tap(find.byKey(const Key('player-back')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('player-back')));
+    await systemBack(tester);
+
+    expect(find.byKey(const Key('player-play-toggle')), findsOneWidget);
+    expect(engine.disposeCalls, 0);
+    expect(reporter.stoppedCalls, 1);
+    expect(reporter.stoppedAt, const Duration(seconds: 100));
+
+    pending.completion.complete();
     await tester.pumpAndSettle();
 
     expect(find.text('媒体库'), findsOneWidget);
     expect(reporter.stoppedCalls, 1);
     expect(engine.disposeCalls, 1);
-  });
-
-  testWidgets('a system back reports stopped exactly once', (tester) async {
-    await pumpPlayer(tester);
-
-    await systemBack(tester);
-    await systemBack(tester);
-
-    expect(find.text('媒体库'), findsOneWidget);
-    expect(reporter.stoppedCalls, 1);
   });
 
   testWidgets('a transcoding verdict is called out', (tester) async {

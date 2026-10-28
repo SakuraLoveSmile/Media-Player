@@ -38,8 +38,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
 
   @override
   void dispose() {
-    // Single teardown point: the controller sends `Stopped` here and is
-    // idempotent, so the back gesture may run it early (contract §10.9 c).
+    // Also covers exits that bypass _leave; an earlier stop is idempotent.
     _controller?.dispose();
     super.dispose();
   }
@@ -98,9 +97,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     if (mounted) setState(() {});
   }
 
-  void _leave() {
+  Future<void> _leave() async {
     if (_leaving || _redirecting) return;
     _leaving = true;
+    // Report before pop to avoid Video teardown zeroing the position first.
+    await _controller?.stop();
+    if (!mounted || _redirecting) return;
     if (context.canPop()) {
       context.pop();
     } else {
