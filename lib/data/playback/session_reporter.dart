@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../../core/errors/app_error.dart';
 import '../../core/errors/emby_exception.dart';
 import '../../core/logging/redact.dart';
@@ -32,6 +34,10 @@ abstract interface class PlaybackReporter {
   Future<void> stopped(PlaybackPlan plan, Duration position);
 }
 
+/// Off by default; enable with `--dart-define=PLAYBACK_TRACE=true` to capture
+/// what release builds really send. Device forensics only, never shipped on.
+const bool _trace = bool.fromEnvironment('PLAYBACK_TRACE');
+
 /// Emby session reporting with a serial queue, one retry and a heartbeat.
 ///
 /// Every report goes through [_queue] so a stale `Progress` can never land
@@ -43,10 +49,12 @@ class SessionReporter implements PlaybackReporter {
     Stream<void>? heartbeat,
     Future<void> Function(Duration)? delay,
     LogSink? logSink,
+    bool trace = _trace,
   })  : _heartbeat =
             heartbeat ?? Stream<void>.periodic(const Duration(seconds: 10)),
         _delay = delay ?? Future<void>.delayed,
-        _log = logSink ?? _discard;
+        _log = logSink ?? _discard,
+        _traceEnabled = trace;
 
   static const Duration _retryBackoff = Duration(seconds: 2);
   static const String _playingPath = '/Sessions/Playing';
@@ -57,6 +65,9 @@ class SessionReporter implements PlaybackReporter {
   final Stream<void> _heartbeat;
   final Future<void> Function(Duration) _delay;
   final LogSink _log;
+
+  /// Defaults to the [_trace] compile-time switch; injectable for tests.
+  final bool _traceEnabled;
 
   /// Snapshot taken at [started] so one playback session never straddles
   /// endpoints (contract §10.3).
@@ -131,6 +142,7 @@ class SessionReporter implements PlaybackReporter {
     required bool paused,
   }) async {
     final body = _body(plan, position, paused: paused);
+    _dumpTrace(plan, path, position, paused: paused);
     try {
       await _post(path, body);
       return;
@@ -171,11 +183,31 @@ class SessionReporter implements PlaybackReporter {
       'ItemId': plan.itemId,
       'MediaSourceId': plan.mediaSourceId,
       'PlaySessionId': plan.playSessionId,
-      'PositionTicks': position.inMicroseconds * 10,
+      'PositionTicks': _positionTicks(position),
       'IsPaused': paused,
-      'PlayMethod':
-          plan.mode == PlaybackMode.direct ? 'DirectPlay' : 'Transcode',
+      'PlayMethod': _playMethod(plan),
       'CanSeek': true,
     };
+  }
+
+  int _positionTicks(Duration position) => position.inMicroseconds * 10;
+
+  String _playMethod(PlaybackPlan plan) =>
+      plan.mode == PlaybackMode.direct ? 'DirectPlay' : 'Transcode';
+
+  /// Emits one redacted line per report when tracing is on. Never logs the URL,
+  /// token, media source or full ids, and only reads state.
+  void _dumpTrace(
+    PlaybackPlan plan,
+    String path,
+    Duration position, {
+    required bool paused,
+  }) {
+    if (!_traceEnabled) return;
+    final itemId = plan.itemId;
+    final prefix = itemId.length <= 6 ? itemId : itemId.substring(0, 6);
+    debugPrint('[report] $path item=$prefix posTicks=${_positionTicks(position)} '
+        'paused=$paused playMethod=${_playMethod(plan)} '
+        'playSessionId=${plan.playSessionId.length}');
   }
 }

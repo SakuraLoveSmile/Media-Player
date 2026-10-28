@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/core/network/endpoint_kind.dart';
 import 'package:media_player/data/api/emby_http_client.dart';
@@ -287,5 +288,48 @@ void main() {
     final positions =
         progressBodies().map((body) => body['PositionTicks']).toList();
     expect(positions, <int>[10000000, 20000000]);
+  });
+
+  test('trace is silent by default and redacted when switched on', () async {
+    final printed = <String>[];
+    final previousDebugPrint = debugPrint;
+    debugPrint = (String? message, {int? wrapWidth}) {
+      if (message != null) printed.add(message);
+    };
+    addTearDown(() => debugPrint = previousDebugPrint);
+
+    // No --dart-define in test runs, so the compile-time switch stays off.
+    final quiet = reporter();
+    await quiet.started(plan(), Duration.zero, position: () => Duration.zero);
+    await quiet.stopped(plan(), const Duration(seconds: 1));
+    expect(printed.where((line) => line.startsWith('[report]')), isEmpty);
+
+    // The switch is injectable so the line format is assertable in tests.
+    final traced = SessionReporter(
+      auth,
+      heartbeat: heartbeat.stream,
+      delay: (Duration _) async {},
+      logSink: logs.add,
+      trace: true,
+    );
+    final longId = plan().copyWith(itemId: 'abcdef1234567890');
+    await traced.stopped(longId, const Duration(seconds: 3));
+
+    final lines = printed.where((line) => line.startsWith('[report]')).toList();
+    expect(lines, hasLength(1));
+    final line = lines.single;
+    expect(
+      line,
+      matches(RegExp(r'^\[report\] /Sessions/Playing(?:/Progress|/Stopped)? '
+          r'item=\S{1,6} posTicks=\d+ paused=(?:true|false) '
+          r'playMethod=(?:DirectPlay|Transcode) playSessionId=\d+$')),
+    );
+    expect(line, contains('item=abcdef '));
+    expect(line, contains('posTicks=30000000'));
+    expect(line, endsWith('playSessionId=4'));
+    expect(line, isNot(contains('http')));
+    expect(line, isNot(contains('api_key')));
+    expect(line, isNot(contains('secret')));
+    expect(line, isNot(contains('abcdef1234567890')));
   });
 }
