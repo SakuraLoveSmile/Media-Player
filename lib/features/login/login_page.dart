@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:feedback_widget/feedback_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -128,133 +129,153 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Text(
-                    'Media Player',
-                    style: theme.textTheme.headlineMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '连接你的 Emby 服务器',
-                    style: theme.textTheme.bodyMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 28),
-                  TextField(
-                    key: const Key('login-lan-url'),
-                    controller: _lanUrl,
-                    enabled: !_submitting,
-                    keyboardType: TextInputType.url,
-                    autocorrect: false,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: '局域网地址',
-                      hintText: 'http://192.168.1.10:8096',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    key: const Key('login-wan-url'),
-                    controller: _wanUrl,
-                    enabled: !_submitting,
-                    keyboardType: TextInputType.url,
-                    autocorrect: false,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: '公网地址（可选）',
-                      hintText: 'https://emby.example.com',
-                      helperText: '留空则只使用局域网',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  TextField(
-                    key: const Key('login-username'),
-                    controller: _username,
-                    enabled: !_submitting,
-                    autocorrect: false,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: '用户名',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    key: const Key('login-password'),
-                    controller: _password,
-                    enabled: !_submitting,
-                    obscureText: true,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _submit(),
-                    decoration: const InputDecoration(
-                      labelText: '密码',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  if (error != null) ...<Widget>[
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.errorContainer,
-                        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          children: <Widget>[
+            Positioned(
+              top: 4,
+              right: 4,
+              child: IconButton(
+                key: const Key('login-settings'),
+                tooltip: '设置',
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: () => context.push(AppRoutes.settings),
+              ),
+            ),
+            Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      Text(
+                        'Media Player',
+                        style: theme.textTheme.headlineMedium,
+                        textAlign: TextAlign.center,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            error,
-                            key: const Key('login-error'),
-                            style: TextStyle(
-                              color: theme.colorScheme.onErrorContainer,
-                            ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '连接你的 Emby 服务器',
+                        style: theme.textTheme.bodyMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 28),
+                      FeedbackCaptureMask(
+                        child: TextField(
+                          key: const Key('login-lan-url'),
+                          controller: _lanUrl,
+                          enabled: !_submitting,
+                          keyboardType: TextInputType.url,
+                          autocorrect: false,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: '局域网地址',
+                            hintText: 'http://192.168.1.10:8096',
+                            border: OutlineInputBorder(),
                           ),
-                          if (_details.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Text(
-                                _details.join(' · '),
-                                style: theme.textTheme.bodySmall?.copyWith(
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      FeedbackCaptureMask(
+                        child: TextField(
+                          key: const Key('login-wan-url'),
+                          controller: _wanUrl,
+                          enabled: !_submitting,
+                          keyboardType: TextInputType.url,
+                          autocorrect: false,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: '公网地址（可选）',
+                            hintText: 'https://emby.example.com',
+                            helperText: '留空则只使用局域网',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      FeedbackCaptureMask(
+                        child: TextField(
+                          key: const Key('login-username'),
+                          controller: _username,
+                          enabled: !_submitting,
+                          autocorrect: false,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: '用户名',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const Key('login-password'),
+                        controller: _password,
+                        enabled: !_submitting,
+                        obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _submit(),
+                        decoration: const InputDecoration(
+                          labelText: '密码',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      if (error != null) ...<Widget>[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.errorContainer,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                error,
+                                key: const Key('login-error'),
+                                style: TextStyle(
                                   color: theme.colorScheme.onErrorContainer,
                                 ),
                               ),
-                            ),
-                        ],
+                              if (_details.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Text(
+                                    _details.join(' · '),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onErrorContainer,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      FilledButton(
+                        key: const Key('login-submit'),
+                        onPressed: _submitting ? null : _submit,
+                        child: _submitting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('登录'),
                       ),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    key: const Key('login-submit'),
-                    onPressed: _submitting ? null : _submit,
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('登录'),
+                      const SizedBox(height: 12),
+                      Text(
+                        '地址与凭据只保存在本机',
+                        style: theme.textTheme.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '地址与凭据只保存在本机',
-                    style: theme.textTheme.bodySmall,
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );

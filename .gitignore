@@ -12,3 +12,7 @@
 **/playback-info.txt
 **/system.txt
 .flutter-plugins-dependencies
+
+# Release signing material decoded by CI / local release builds.
+/android/app/keystore.jks
+/android/app/key.properties

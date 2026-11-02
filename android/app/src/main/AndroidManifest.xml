@@ -1,6 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Emby API and media streams are HTTPS on WAN and HTTP on the LAN. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- In-app updates open the downloaded APK; Android 8+ requires this
+         normal permission for the package-installer intent. The app is
+         distributed outside Google Play, so the Play policy restriction does
+         not apply. Users must still allow "install unknown apps" per app. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <!-- Cleartext is allowed app-wide because Network Security Config cannot
          express RFC1918 ranges. WAN endpoints must stay HTTPS; see README
          "约束". -->

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -5,7 +6,14 @@ import '../core/router/app_routes.dart';
 import '../features/library/library_page.dart';
 import '../features/login/login_page.dart';
 import '../features/player/player_page.dart';
+import '../features/settings/settings_page.dart';
 import '../features/startup/startup_page.dart';
+
+/// Root navigator of the app (inside the feedback layer). Root-level dialogs
+/// such as the update prompt use this context so they stay inside the capture
+/// boundary and below the feedback panel.
+final GlobalKey<NavigatorState> appRootNavigatorKey =
+    GlobalKey<NavigatorState>();
 
 /// Single place where features are wired into navigation.
 ///
@@ -13,6 +21,7 @@ import '../features/startup/startup_page.dart';
 /// reference them without importing the router (and creating a cycle).
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
+    navigatorKey: appRootNavigatorKey,
     initialLocation: AppRoutes.startup,
     routes: [
       GoRoute(
@@ -31,6 +40,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '${AppRoutes.player}/:itemId',
         builder: (context, state) =>
             PlayerPage(itemId: state.pathParameters['itemId'] ?? ''),
+      ),
+      GoRoute(
+        path: AppRoutes.settings,
+        builder: (context, state) => const SettingsPage(),
       ),
     ],
   );

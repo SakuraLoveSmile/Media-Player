@@ -90,6 +90,12 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                 : () => unawaited(controller.load(refresh: true)),
             icon: const Icon(Icons.refresh),
           ),
+          IconButton(
+            key: const Key('library-settings'),
+            tooltip: '设置',
+            onPressed: () => context.push(AppRoutes.settings),
+            icon: const Icon(Icons.settings_outlined),
+          ),
         ],
       ),
       body: _fatal != null

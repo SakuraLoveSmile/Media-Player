@@ -1,6 +1,6 @@
 # Media Player
 
-跨 Android / Windows / macOS 的 Emby 媒体库客户端。当前处于方案验证阶段（M0 已完成，B2 直连验证进行中）。
+跨 Android / Windows / macOS 的 Emby 媒体库客户端。M0–M2 已完成（macOS + Android 签核，Windows 为 M2-W 待验收），F4 已接入反馈组件与在线更新。
 
 - 技术栈：Flutter 3.47.7 + media_kit/libmpv
 - 目标：局域网 HTTP 直连 Emby；公网经 frp HTTPS；LAN 下视频不转码
@@ -14,6 +14,7 @@
   - F2：媒体库页在 macOS 实机加载 13 个视图与真实海报（见 `docs/f2-notes.md`）
   - B5 + F3：macOS release 与 Android（Mi 10）真机直连起播、暂停跨心跳、退出位置落盘、续播误差 <1s、退出会话归零（见 `docs/b5-notes.md`）
   - M2：macOS + Android 已签核（见 `docs/m2-signoff.md`）；Windows 拆为 M2-W，验收条件见契约 §8.1
+  - F4：反馈组件（feedback_widget 0.8.4）+ 设置页 + 在线更新（检查/下载/三平台安装）已实现并通过本地验证（见 `docs/f4-notes.md`）；发布与真机更新待体验
   - WAN、PGS、HDR：待验证
 
 ## 文档
@@ -23,6 +24,8 @@
 - [M0 签核](docs/m0-signoff.md)
 - [B2 直连 PoC](docs/b2-poc.md)
 - [开发环境与构建](docs/dev-setup.md)
+- [F4 反馈与在线更新](docs/f4-notes.md)
+- [发布与在线更新流程](docs/release.md)
 
 ## 构建
 
@@ -35,6 +38,15 @@ export LANG=en_US.UTF-8
 ```
 
 必须使用 `~/devsdk/flutter`（3.47.7）；PATH 中的 3.41.3 不可复现。详见 `docs/dev-setup.md`。
+
+## 反馈与在线更新
+
+- 反馈：亮色灵感球 + 视口截图（登录页地址/用户名自动遮罩），设置页「问题反馈」可主动呼出；
+  release 构建默认连接生产反馈服务（debug 默认关闭）。
+- 更新：release 构建启动时静默检查 GitHub Releases，设置页「检查更新」可手动触发；
+  只接受正式 Release（`vX.Y.Z`），下载后校验 SHA-256，再按平台安装。
+- 发布：打 `vX.Y.Z` 标签并推送后，`.github/workflows/release.yml` 构建三平台产物并创建
+  Release（资产名是更新契约，见 `docs/release.md`）。
 
 ## Windows 冒烟
 

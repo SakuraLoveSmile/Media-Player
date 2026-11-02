@@ -1,6 +1,6 @@
 # MediaPlayer（Emby 客户端）文档索引
 
-当前阶段：**M0 已签核；B1–B5 数据层与 F1–F3 界面完成；M2（macOS + Android）已签核；Windows 拆为 M2-W，条件已冻结、待验收；WAN、PGS/HDR 待验证。**
+当前阶段：**M0 已签核；B1–B5 数据层与 F1–F3 界面完成；M2（macOS + Android）已签核；F4 反馈组件与在线更新已实现并通过本地验证；Windows 拆为 M2-W，条件已冻结、待验收；WAN、PGS/HDR 待验证。**
 
 ## 文档
 
@@ -15,6 +15,8 @@
 - [F2 媒体库页](f2-notes.md) — 视图切换、海报网格、分页与各状态的实机截图。
 - [B5 播放编排与 F3 播放页](b5-notes.md) — PlaybackInfo/URL 回退/上报/续播/直连判定的实机矩阵与 T5-BUG-1/2。
 - [M2 签核记录](m2-signoff.md) — macOS + Android 已签；Windows 拆为 M2-W，验收条件见契约 §8.1。
+- [F4 反馈与在线更新](f4-notes.md) — feedback_widget 0.8.4 接入、设置页、GitHub Releases 在线更新与验证记录。
+- [发布与在线更新流程](release.md) — tag 发布、三平台资产、Android 固定签名与更新安装行为。
 
 ## 当前硬约束
 
@@ -25,6 +27,12 @@
 5. Windows 构建/运行已验证（CI release 构建 + Win11 x64 真机冒烟），但仅覆盖一台独显机器，不能替代核显/HDR 环境。
 6. macOS entitlements 必须含 `com.apple.security.network.client`；Android 必须允许 LAN 明文 HTTP。
 7. Android 网络播放需真机复核（模拟器仅 asset 可播）。
+8. 在线更新只读正式 GitHub Release；三平台资产名固定（`MediaPlayer-android.apk` /
+   `MediaPlayer-windows-x64.zip` / `MediaPlayer-macos.zip`），缺 SHA-256 digest 的资产拒绝安装。
+9. Android 发布必须使用固定 keystore（`ANDROID_KEYSTORE_BASE64` secret，alias
+   `androiddebugkey`）；换 key 后只能卸载重装，不能在线覆盖。
+10. `feedback_widget` 固定到 Git commit；升级时需同步 Windows CI 的 vendoring SHA
+   （`.github/workflows/app-ci.yml`、`release.yml`）。
 
 ## 进入 M1 / 完成 B2 前需要
 

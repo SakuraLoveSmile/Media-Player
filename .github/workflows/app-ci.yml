@@ -121,6 +121,23 @@ jobs:
           channel: stable
           cache: true
 
+      # dart pub reads a git dependency's pubspec.yaml through `git show` and
+      # decodes the output with the Windows ANSI codepage (CP_ACP); feedback_widget's
+      # non-ASCII description then fails YAML parsing. Vendor the pinned commit with
+      # an ASCII-only pubspec and redirect via pubspec_overrides.yaml — CI-local only;
+      # the committed pubspec.yaml/pubspec.lock stay pinned to the Git ref.
+      - name: Vendor feedback_widget (Windows pub codepage workaround)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .ci-feedback
+          git -C .ci-feedback remote add origin https://github.com/SakuraLoveSmile/Sakura-Feedback.git
+          git -C .ci-feedback fetch -q --depth 1 origin b1a92cb050602baca089ad820dbf2c03b07ceed5
+          git -C .ci-feedback checkout -q --detach FETCH_HEAD
+          tr -d '\200-\377' < .ci-feedback/flutter/feedback/pubspec.yaml > .ci-feedback/flutter/feedback/pubspec.ascii.yaml
+          mv .ci-feedback/flutter/feedback/pubspec.ascii.yaml .ci-feedback/flutter/feedback/pubspec.yaml
+          printf 'dependency_overrides:\n  feedback_widget:\n    path: .ci-feedback/flutter/feedback\n' > pubspec_overrides.yaml
+
       - name: Dependencies
         run: flutter pub get
 
