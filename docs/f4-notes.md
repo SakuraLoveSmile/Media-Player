@@ -3,7 +3,7 @@
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
 - 范围：接入 Feedback 组件（`feedback_widget` 0.8.4）、设置页、GitHub Releases 在线更新、发布工作流
 - 版本：`0.2.0+2`（`AppConfig.appVersion = 0.2.0`）
-- 结论：**实现与本地验证完成；真实发布与真机更新待授权/待体验**
+- 结论：**实现、发布与本地验证完成（`v0.2.0` 已发布）；真机更新待体验**
 
 ## 1. 已确认的决定
 
@@ -63,8 +63,8 @@
 | macOS release 构建 | 通过 | `build/macos/.../Release/Media Player.app`（96.2MB）；`Info.plist` = `0.2.0` / `2`；bundle 内含 `packages/feedback_widget/shaders/orb_lens.frag`；entitlements 含 `network.client` |
 | Android release 构建 | 通过 | `flutter build apk --release`（固定测试 keystore）：`versionCode=2` / `versionName=0.2.0` / `targetSdk=36`，含 `REQUEST_INSTALL_PACKAGES`，APK 使用临时固定 keystore 签名（CN=MediaPlayer Test）；构建后已删除临时 keystore 与 `android/app/key.properties` |
 | 打包后真实 E2E（macOS） | 通过 | 见 §3.1；截图 `screenshots/f4-update-dialog.png` |
-| 真实 GitHub 发布 | 未执行 | 发布待用户授权；客户端对 404 按「暂无发布」处理 |
-| 真机更新安装 | 未验证 | 需要先发布正式 Release 再用旧包升级；本轮只在一次性 app 副本上验证了 macOS 全链路 |
+| 真实 GitHub 发布 | 通过 | `v0.2.0` 正式 Release（非草稿/非预发布），三资产齐全：Android 99,274,510B / Windows 34,132,606B / macOS 37,002,579B；APK 签名证书与本地 debug keystore 一致（`766b6a19…`），`versionCode=2`；macOS zip 为 `0.2.0/2` |
+| 真机更新安装 | 待体验 | 本轮只在一次性 app 副本上验证了 macOS 全链路；真机需安装旧包后由 Release 升级 |
 
 ### 3.1 macOS 打包后在线更新全链路（本地 mock GitHub API）
 
@@ -87,10 +87,22 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 4. 全部 E2E 使用一次性 `/tmp` app 副本与本地 mock 服务，结束后已删除；
    未触碰真实 GitHub、未发布任何 Release、未改动本机已安装的 app。
 
+### 3.2 真实 Release 核验（v0.2.0）
+
+- `app-ci`（analyze-test / Android / macOS / Windows）在 tag 前的 `aae388c` 全绿。
+- 发布流水线 `release` 全部 5 个 job success：tag 校验、三平台构建、创建 Release。
+- `GET /repos/SakuraLoveSmile/Media-Player/releases/latest` 返回 `v0.2.0`，`draft=false`、
+  `prerelease=false`；三个资产的 `digest` 与下载复算 SHA-256 一致。
+- 下载的 CI APK：`versionCode=2`、`versionName=0.2.0`、签名证书 SHA-256 与本机
+  `~/.android/debug.keystore` 相同（可在本地 debug 安装上直接覆盖）；macOS zip 解包后
+  `Info.plist=0.2.0/2` 且包含 feedback 着色器。
+- 下载地址：<https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.2.0>。
+
 ## 4. 未闭环与后续
 
-1. **真实发布**：配置 `ANDROID_KEYSTORE_BASE64` secret → 推送 `v0.2.0` tag → 核对 Release
-   三个资产与 digest → 用旧包验证启动提示、下载、安装、重启（见 `docs/release.md`）。
+1. **真实发布**：已完成 `v0.2.0`（commit `aae388c`，含 tag 校验、三平台构建与 Release 创建）。
+   体验方式：安装 v0.2.0 包；下一次发 `v0.2.1` 时用 v0.2.0 验证应用内「启动提示 → 下载 →
+   安装 → 重启」。发布步骤见 `docs/release.md`。
 2. **真机安装**：Android 首次需要系统「安装未知应用」授权；macOS 替换安装目录需要写权限；
    Windows 更新脚本尚未真实执行。
 3. **反馈线上闭环**：真实账号登录、截图提交、管理端确认来源（需要反馈服务账号）。
