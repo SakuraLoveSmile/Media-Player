@@ -118,6 +118,7 @@ void main() {
           ),
           updateServiceProvider.overrideWithValue(service),
           updateInstallerProvider.overrideWithValue(installer),
+          updatePlatformProvider.overrideWithValue('macos'),
           feedbackServiceConfigProvider.overrideWithValue(feedback),
           if (feedbackController != null)
             feedbackControllerProvider.overrideWithValue(feedbackController),
@@ -158,6 +159,7 @@ void main() {
           appVersionProvider.overrideWith((ref) => gate.future),
           updateServiceProvider.overrideWithValue(service),
           updateInstallerProvider.overrideWithValue(installer),
+          updatePlatformProvider.overrideWithValue('macos'),
           feedbackServiceConfigProvider.overrideWithValue(null),
         ],
         child: MaterialApp(theme: _appTheme(), home: const SettingsPage()),

@@ -94,6 +94,15 @@ final Provider<UpdateService> updateServiceProvider = Provider<UpdateService>(
 final Provider<UpdateInstaller> updateInstallerProvider =
     Provider<UpdateInstaller>((Ref ref) => UpdateInstaller());
 
+/// Runtime platform passed to [UpdateService] and [pickAsset].
+///
+/// A provider (instead of a direct `Platform.operatingSystem` read) keeps the
+/// asset-selection tests deterministic on Linux CI runners: widget tests
+/// override it with the platform whose release assets they provide.
+final Provider<String> updatePlatformProvider = Provider<String>(
+  (Ref ref) => Platform.operatingSystem,
+);
+
 final NotifierProvider<UpdateController, UpdateState> updateControllerProvider =
     NotifierProvider<UpdateController, UpdateState>(UpdateController.new);
 
@@ -128,7 +137,7 @@ class UpdateController extends Notifier<UpdateState> {
     _downloadToken = null;
     state = const UpdateState(status: UpdateStatus.checking);
     try {
-      final String platform = Platform.operatingSystem;
+      final String platform = ref.read(updatePlatformProvider);
       final AppRelease? release = await ref
           .read(updateServiceProvider)
           .checkForUpdate(platform: platform);

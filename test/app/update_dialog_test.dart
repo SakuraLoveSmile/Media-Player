@@ -139,6 +139,7 @@ void main() {
         appVersionProvider.overrideWith((ref) async => _packageInfo()),
         updateServiceProvider.overrideWithValue(service),
         updateInstallerProvider.overrideWithValue(installer),
+        updatePlatformProvider.overrideWithValue('macos'),
         feedbackServiceConfigProvider.overrideWithValue(null),
       ],
     );

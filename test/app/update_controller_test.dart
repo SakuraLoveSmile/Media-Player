@@ -102,9 +102,12 @@ AppRelease _release({List<ReleaseAsset>? assets, bool prerelease = false}) {
 }
 
 void main() {
+  // The controller's platform is overridden below so the selected asset is the
+  // same on every CI runner (Linux runners have no release asset otherwise).
+  const String platform = 'macos';
   final ReleaseAsset? platformAsset = pickAsset(
     _release().assets,
-    platform: Platform.operatingSystem,
+    platform: platform,
   );
 
   late Directory tempDir;
@@ -128,6 +131,7 @@ void main() {
         ),
         updateServiceProvider.overrideWithValue(service),
         updateInstallerProvider.overrideWithValue(installer),
+        updatePlatformProvider.overrideWithValue('macos'),
       ],
     );
     addTearDown(container.dispose);
@@ -187,7 +191,7 @@ void main() {
       expect(state().status, UpdateStatus.available);
       expect(state().release?.version, '0.2.0');
       expect(state().asset?.name, platformAsset?.name);
-      expect(service.platforms.single, Platform.operatingSystem);
+      expect(service.platforms.single, platform);
       expect(state().errorMessage, isNull);
     });
 

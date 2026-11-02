@@ -146,6 +146,7 @@ Future<_FakeUpdateService> _pumpApp(
         ),
         updateServiceProvider.overrideWithValue(service),
         updateInstallerProvider.overrideWithValue(_FakeUpdateInstaller()),
+        updatePlatformProvider.overrideWithValue('macos'),
         feedbackServiceConfigProvider.overrideWithValue(
           feedbackEnabled
               ? const FeedbackServiceConfig(
