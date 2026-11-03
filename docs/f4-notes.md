@@ -2,8 +2,8 @@
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
 - 范围：接入 Feedback 组件（`feedback_widget` 0.8.4）、设置页、GitHub Releases 在线更新、发布工作流
-- 版本：`v0.2.2`（`0.2.2+4`）已发布；本轮升级 `feedback_widget` 至 0.8.6 并准备发布 `v0.2.3`（`0.2.3+5`）
-- 结论：**`v0.2.0`、`v0.2.1`、`v0.2.2` 均已发布；0.8.5 的「隐藏」语义修正已随 v0.2.2 上线，真机体验待确认**
+- 版本：`v0.2.3`（`0.2.3+5`）已发布，升级 `feedback_widget` 至 0.8.6；更新日志改为每版手写
+- 结论：**`v0.2.0`–`v0.2.3` 均已发布；0.8.6 的灵感球背景更新已随 v0.2.3 上线，真机体验待确认**
 
 ## 1. 已确认的决定
 
@@ -162,12 +162,27 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - 设置页「隐藏」说明与真实 app 截图已更新为新语义；下载地址：
   <https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.2.2>。
 
+### 3.6 真实 Release 核验（v0.2.3）
+
+- 依赖 `feedback_widget` 0.8.6（tag `v0.8.6`，commit `a345ca6`）；`app-ci` 在 tag 前提交
+  `2423dc9` 全绿，release 流水线 5 个 job 全部 success。
+- 最新 Release 为 `v0.2.3`（名称 `Media Player v0.2.3`，非草稿/非预发布），三资产齐全：
+  - `MediaPlayer-android.apk` 99,520,478B（`sha256:13e05b92…`），`versionCode=5`、
+    `versionName=0.2.3`，签名证书与本地 debug keystore 相同；
+  - `MediaPlayer-windows-x64.zip` 34,153,027B（`sha256:d8860c6b…`）；
+  - `MediaPlayer-macos.zip` 37,050,046B（`sha256:47270e01…`），解包后 `0.2.3/5`。
+- **更新日志**：Release 正文与 `release/notes/v0.2.3.md` 逐字一致（已发布后核对），
+  不再使用自动生成的提交清单；发布流水线对缺失/空文件 fail-closed。
+- 发布前用本地 mock GitHub API 在真实打包 app 上检查了弹窗排版：
+  [更新弹窗中的更新日志](screenshots/f4-update-notes.png)。
+- 下载复算 SHA-256 与 GitHub digest 一致；三个 latest 链接均返回 200；地址：
+  <https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.2.3>。
+
 ## 4. 未闭环与后续
 
-1. **真实发布**：已完成 `v0.2.0`（`aae388c`）、`v0.2.1`（`557d67b`）与 `v0.2.2`
-   （`32e94e3`）。在线更新体验：旧版用户应在启动/检查更新时看到最新 Release 并完成
-   下载与安装；设置页的「灵感球样式 / 唤醒灵感球」随 v0.2.1 起可用。发布步骤见
-   `docs/release.md`。
+1. **真实发布**：已完成 `v0.2.0`（`aae388c`）、`v0.2.1`（`557d67b`）、`v0.2.2`
+   （`32e94e3`）与 `v0.2.3`（`2423dc9`）。后续每个版本必须先在
+   `release/notes/vX.Y.Z.md` 写面向用户的更新日志；发布步骤见 `docs/release.md`。
 2. **真机安装**：Android 首次需要系统「安装未知应用」授权；macOS 替换安装目录需要写权限；
    Windows 更新脚本尚未真实执行。
 3. **反馈线上闭环**：真实账号登录、截图提交、管理端确认来源（需要反馈服务账号）。
