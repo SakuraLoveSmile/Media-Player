@@ -1,6 +1,6 @@
 # MediaPlayer（Emby 客户端）文档索引
 
-当前阶段：**M0 已签核；B1–B5 数据层与 F1–F3 界面完成；M2（macOS + Android）已签核；F4 反馈组件与在线更新已实现并发布 `v0.2.1`；Windows 拆为 M2-W，条件已冻结、待验收；WAN、PGS/HDR 待验证。**
+当前阶段：**M0 已签核；B1–B5 数据层与 F1–F3 界面完成；M2（macOS + Android）已签核；F4 反馈组件与在线更新已实现并发布 `v0.2.2`；Windows 拆为 M2-W，条件已冻结、待验收；WAN、PGS/HDR 待验证。**
 
 ## 文档
 

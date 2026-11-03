@@ -2,8 +2,8 @@
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
 - 范围：接入 Feedback 组件（`feedback_widget` 0.8.4）、设置页、GitHub Releases 在线更新、发布工作流
-- 版本：`v0.2.1`（`0.2.1+3`）已发布；本轮升级 `feedback_widget` 至 0.8.5 并准备发布 `v0.2.2`（`0.2.2+4`）
-- 结论：**`v0.2.0` 与 `v0.2.1` 均已发布；灵感球设置增补已随 `v0.2.1` 上线，真机体验待确认**
+- 版本：`v0.2.2`（`0.2.2+4`）已发布，升级 `feedback_widget` 至 0.8.5（含 v0.2.1 的灵感球设置）
+- 结论：**`v0.2.0`、`v0.2.1`、`v0.2.2` 均已发布；0.8.5 的「隐藏」语义修正已随 v0.2.2 上线，真机体验待确认**
 
 ## 1. 已确认的决定
 
@@ -143,11 +143,25 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - 下载复算 SHA-256 与 GitHub digest 一致；三个 latest 下载链接均返回 200。
 - 下载地址：<https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.2.1>。
 
+### 3.5 真实 Release 核验（v0.2.2）
+
+- 依赖 `feedback_widget` 0.8.5（tag `v0.8.5`，commit `95e4a9c`）；`app-ci` 在 tag 前提交
+  `32e94e3` 全绿，release 流水线 5 个 job 全部 success。
+- 最新 Release 为 `v0.2.2`（非草稿/非预发布），三资产齐全：
+  - `MediaPlayer-android.apk` 99,520,478B（`sha256:f4aad54e…`），`versionCode=4`、
+    `versionName=0.2.2`，签名证书与本地 debug keystore 相同；
+  - `MediaPlayer-windows-x64.zip` 34,154,904B（`sha256:2f127730…`）；
+  - `MediaPlayer-macos.zip` 37,048,264B（`sha256:0bd2fed5…`），解包后 `0.2.2/4`。
+- 下载复算 SHA-256 与 GitHub digest 一致；三个 latest 链接均返回 200。
+- 设置页「隐藏」说明与真实 app 截图已更新为新语义；下载地址：
+  <https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.2.2>。
+
 ## 4. 未闭环与后续
 
-1. **真实发布**：已完成 `v0.2.0`（`aae388c`）与 `v0.2.1`（`557d67b`）。
-   在线更新体验：v0.2.0 用户应在启动/检查更新时看到 v0.2.1，并完成下载与安装；
-   设置页新增「灵感球样式 / 唤醒灵感球」。发布步骤见 `docs/release.md`。
+1. **真实发布**：已完成 `v0.2.0`（`aae388c`）、`v0.2.1`（`557d67b`）与 `v0.2.2`
+   （`32e94e3`）。在线更新体验：旧版用户应在启动/检查更新时看到最新 Release 并完成
+   下载与安装；设置页的「灵感球样式 / 唤醒灵感球」随 v0.2.1 起可用。发布步骤见
+   `docs/release.md`。
 2. **真机安装**：Android 首次需要系统「安装未知应用」授权；macOS 替换安装目录需要写权限；
    Windows 更新脚本尚未真实执行。
 3. **反馈线上闭环**：真实账号登录、截图提交、管理端确认来源（需要反馈服务账号）。
