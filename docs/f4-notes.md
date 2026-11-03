@@ -2,8 +2,8 @@
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
 - 范围：接入 Feedback 组件（`feedback_widget` 0.8.4）、设置页、GitHub Releases 在线更新、发布工作流
-- 版本：`0.2.0+2` 已发布；本轮灵感球设置增补为 `0.2.1+3`（`AppConfig.appVersion = 0.2.1`，发布待授权）
-- 结论：**`v0.2.0` 已发布；灵感球设置增补（`0.2.1+3`）已实现并通过本地验证，待发布/体验**
+- 版本：`v0.2.1`（`0.2.1+3`）已发布，包含 `v0.2.0` 的反馈/在线更新与灵感球设置增补
+- 结论：**`v0.2.0` 与 `v0.2.1` 均已发布；灵感球设置增补已随 `v0.2.1` 上线，真机体验待确认**
 
 ## 1. 已确认的决定
 
@@ -120,7 +120,7 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
   `Info.plist=0.2.0/2` 且包含 feedback 着色器。
 - 下载地址：<https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.2.0>。
 
-### 3.3 灵感球设置的本地核验（0.2.1+3）
+### 3.3 灵感球设置的本地核验（已随 v0.2.1 发布）
 
 - `flutter analyze` 零问题；全仓 308 项测试通过；`check_layering.sh` 通过。
 - macOS release 构建通过（`0.2.1+3`，96.3MB）；在真实打包 app 中打开「设置」确认新增分组
@@ -128,11 +128,23 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
   （截图见 §2.1）。
 - 与 v0.8.4 面板内设置共用宿主值：面板内改动会回写同一存储键，下次启动恢复。
 
+### 3.4 真实 Release 核验（v0.2.1）
+
+- tag `v0.2.1`（commit `557d67b`）的 `release` 流水线 5 个 job 全部 success；`app-ci` 在
+  同一提交上 analyze-test / Android / macOS / Windows 全绿。
+- 最新 Release 为 `v0.2.1`（非草稿/非预发布），三资产齐全：
+  - `MediaPlayer-android.apk` 99,520,478B（`sha256:154c0fa4…`），`versionCode=3`、
+    `versionName=0.2.1`，签名证书与本地 debug keystore 相同；
+  - `MediaPlayer-windows-x64.zip` 34,153,677B（`sha256:3703c922…`）；
+  - `MediaPlayer-macos.zip` 37,039,531B（`sha256:2926d226…`），解包后 `0.2.1/3`，含反馈着色器。
+- 下载复算 SHA-256 与 GitHub digest 一致；三个 latest 下载链接均返回 200。
+- 下载地址：<https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.2.1>。
+
 ## 4. 未闭环与后续
 
-1. **真实发布**：已完成 `v0.2.0`（commit `aae388c`，含 tag 校验、三平台构建与 Release 创建）。
-   体验方式：安装 v0.2.0 包；下一次发 `v0.2.1` 时用 v0.2.0 验证应用内「启动提示 → 下载 →
-   安装 → 重启」。发布步骤见 `docs/release.md`。
+1. **真实发布**：已完成 `v0.2.0`（`aae388c`）与 `v0.2.1`（`557d67b`）。
+   在线更新体验：v0.2.0 用户应在启动/检查更新时看到 v0.2.1，并完成下载与安装；
+   设置页新增「灵感球样式 / 唤醒灵感球」。发布步骤见 `docs/release.md`。
 2. **真机安装**：Android 首次需要系统「安装未知应用」授权；macOS 替换安装目录需要写权限；
    Windows 更新脚本尚未真实执行。
 3. **反馈线上闭环**：真实账号登录、截图提交、管理端确认来源（需要反馈服务账号）。

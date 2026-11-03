@@ -14,7 +14,7 @@
   - F2：媒体库页在 macOS 实机加载 13 个视图与真实海报（见 `docs/f2-notes.md`）
   - B5 + F3：macOS release 与 Android（Mi 10）真机直连起播、暂停跨心跳、退出位置落盘、续播误差 <1s、退出会话归零（见 `docs/b5-notes.md`）
   - M2：macOS + Android 已签核（见 `docs/m2-signoff.md`）；Windows 拆为 M2-W，验收条件见契约 §8.1
-  - F4：反馈组件（feedback_widget 0.8.4）+ 设置页 + 在线更新（检查/下载/三平台安装）已实现并发布 `v0.2.0`（见 `docs/f4-notes.md`）；真机更新待体验
+  - F4：反馈组件（feedback_widget 0.8.4）+ 设置页 + 在线更新（检查/下载/三平台安装）已实现并发布 `v0.2.1`（见 `docs/f4-notes.md`）；真机更新体验待确认
   - WAN、PGS、HDR：待验证
 
 ## 文档
