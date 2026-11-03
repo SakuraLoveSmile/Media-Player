@@ -2,14 +2,14 @@
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
 - 范围：接入 Feedback 组件（`feedback_widget` 0.8.4）、设置页、GitHub Releases 在线更新、发布工作流
-- 版本：`v0.2.2`（`0.2.2+4`）已发布，升级 `feedback_widget` 至 0.8.5（含 v0.2.1 的灵感球设置）
+- 版本：`v0.2.2`（`0.2.2+4`）已发布；本轮升级 `feedback_widget` 至 0.8.6 并准备发布 `v0.2.3`（`0.2.3+5`）
 - 结论：**`v0.2.0`、`v0.2.1`、`v0.2.2` 均已发布；0.8.5 的「隐藏」语义修正已随 v0.2.2 上线，真机体验待确认**
 
 ## 1. 已确认的决定
 
 | 项 | 决定 | 依据 |
 |---|---|---|
-| 反馈组件版本 | `feedback_widget` 0.8.5，Git tag `v0.8.5`（commit `95e4a9c818d4bc248433b5f2b5f0eabb7581298a`，`flutter/feedback` 子目录；0.8.5 修正「隐藏」样式语义，宿主托管参数与 0.8.4 相同） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
+| 反馈组件版本 | `feedback_widget` 0.8.6，Git tag `v0.8.6`（commit `a345ca67de03153ebb8a4594b33b22475d0dff61`，`flutter/feedback` 子目录；0.8.6 修复灵感球背景残留，宿主 API 与 0.8.4/0.8.5 相同） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
 | 反馈服务 | 生产地址 `https://feedback.xn--fhqths51enha.cn`，`appId = dev.mediaplayer.media_player`，`appName = Media Player` | 与 Android applicationId 一致；服务端首次提交自动发现软件 |
 | 反馈默认开关 | release/profile 默认开启；debug 与 `flutter test` 默认关闭；可用 `FEEDBACK_ENABLED` / `FEEDBACK_API_BASE` / `FEEDBACK_APP_ID` / `FEEDBACK_APP_NAME` 覆盖 | 开发与既有测试不受影响；发布构建显式传 `--dart-define` |
 | 反馈入口 | 亮色主题、右侧灵感球（orb）+ 视口截图；播放页隐藏悬浮球；登录页服务器地址/用户名包 `FeedbackCaptureMask` | 与 app 亮色主题一致；避免遮挡播放控件；截图不泄露地址/账号 |
@@ -36,6 +36,7 @@
 | 媒体库页设置入口 | `lib/features/library/library_page.dart` |
 | Android 安装权限、固定签名配置 | `android/app/src/main/AndroidManifest.xml`、`android/app/build.gradle.kts` |
 | 发布流水线 | `.github/workflows/release.yml`、`docs/release.md` |
+| 用户可读更新日志 | `release/notes/vX.Y.Z.md`（GitHub Release 正文 + 应用内更新弹窗），流水线缺文件即失败 |
 
 关键行为：
 
@@ -63,7 +64,10 @@
   `wakeGestures/onWakeGesturesChanged`。宿主提供值 + 回调后，组件不再自行持久化；面板内
   「设置 → 灵感球 / 唤醒方式」与设置页读写同一份宿主值，不会出现两套偏好。
 - v0.8.5 修正「隐藏」语义（只隐藏待机收起入口，不再取消唤醒手势/完整球），偏好键与
-  编解码保持兼容；本轮升级后同步更新了设置项说明与浮层测试。
+  编解码保持兼容。
+- v0.8.6 修复灵感球背景残留：完整球/贴边球/小把手可见期间持续更新背景，切页或内容变化
+  后不再停在旧画面；采样串行、成功后间隔 250ms，面板打开/隐藏/后台/卸载时停止，失败退回
+  透明轮廓。组件无新增公共接口或配置，数据库 schema 仍为 14。
 - 持久化复用 App 已有的 `KeyValueStore`（`AppServices.store`，契约 §7；macOS ad-hoc 为
   0600 文件、其余平台走平台安全存储），键为 `feedback.orb_idle_style.v1` /
   `feedback.wake_gestures.v1`。未知/损坏值回退默认；写入失败保留旧值，设置页提示
@@ -72,6 +76,8 @@
 - 并发写入按最新状态合并（同时修改样式与手势不会互相覆盖），由单元测试覆盖。
 - 真实打包 app 的界面截图：[设置页新增分组](screenshots/f4-orb-settings.png)、
   [灵感球样式弹窗](screenshots/f4-orb-style-dialog.png)。
+- 更新日志改为每个版本手写 `release/notes/vX.Y.Z.md`（GitHub Release 正文 + 应用内更新弹窗）；
+  发布前用本地 mock 在真实包上核对排版：[更新弹窗中的更新日志](screenshots/f4-update-notes.png)。
 
 ## 3. 验证记录
 

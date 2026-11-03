@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.2.2+4
+version: 0.2.3+5
 
 environment:
   sdk: ^3.13.5
@@ -46,7 +46,7 @@ dependencies:
   feedback_widget:
     git:
       url: https://github.com/SakuraLoveSmile/Sakura-Feedback.git
-      ref: 95e4a9c818d4bc248433b5f2b5f0eabb7581298a
+      ref: a345ca67de03153ebb8a4594b33b22475d0dff61
       path: flutter/feedback
   package_info_plus: ^10.2.2
   crypto: ^3.0.8

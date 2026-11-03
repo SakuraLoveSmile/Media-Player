@@ -53,7 +53,8 @@ base64 -i ~/.android/debug.keystore | gh secret set ANDROID_KEYSTORE_BASE64 \
 
 ## 4. 发布步骤
 
-1. 更新 `pubspec.yaml` 版本（例如 `0.2.1+3`）、`AppConfig.appVersion`、README/文档。
+1. 更新 `pubspec.yaml` 版本（例如 `0.2.3+5`）、`AppConfig.appVersion`、README/文档，并新写
+   `release/notes/vX.Y.Z.md`（面向用户的更新日志，见 §5；缺少或为空时发布会在构建前失败）。
 2. 本地质量门（见 `docs/dev-setup.md`）：
 
    ```bash
@@ -73,16 +74,32 @@ base64 -i ~/.android/debug.keystore | gh secret set ANDROID_KEYSTORE_BASE64 \
    ```
 
 5. `.github/workflows/release.yml` 自动执行：
-   - `validate`：tag 必须等于 `v<pubspec version>`；
+   - `validate`：tag 必须等于 `v<pubspec version>`，且 `release/notes/<tag>.md` 存在且非空；
    - `build-android` / `build-windows` / `build-macos`：对齐生产反馈服务参数构建；
-   - `publish`：校验三个资产齐全后 `gh release create --verify-tag --generate-notes`。
+   - `publish`：校验三个资产与更新日志后，用 `gh release create --notes-file` 创建 Release。
      已存在同名 Release 时直接失败，**绝不覆盖**已发布对象。
 6. 在 Release 页面核对三个资产、`digest` 与 Release 说明；客户端启动/设置页
    「检查更新」应能看到新版本并完成下载安装。
 
 也可以手动在 Actions 里 `workflow_dispatch` 并填 `tag_name`（标签需已存在且指向目标提交）。
 
-## 5. 各平台安装行为
+## 5. 更新日志（Release Notes）
+
+**每个正式 tag 必须带一份面向用户的更新日志：`release/notes/vX.Y.Z.md`。**
+
+- 它是 GitHub Release 的正文，也是应用内更新弹窗显示的「更新说明」，直接给用户看；
+  **不要**用 `--generate-notes` 的提交标题，也不要写内部重构、CI、依赖版本等用户不关心的内容。
+- 写法要求：
+  - 第一行先用一句话说明本次更新带来的变化；
+  - 用普通中文短句和 `- ` 项目符号（应用内弹窗按纯文本展示，`#` 标题符号会原样露出）；
+  - 写「用户能感知到什么」：新功能、问题修复、使用提示、兼容/升级注意事项；
+  - 不超过一屏可读完的篇幅（约 10–15 行），详细背景留在 `docs/`。
+- 发布流水线会校验文件存在且非空；缺失时在构建前 fail-closed。
+- 参考样例：[`release/notes/v0.2.3.md`](../release/notes/v0.2.3.md)。
+- 发布前用本地 mock GitHub API 在真实打包 app 上检查弹窗排版（`--dart-define=UPDATE_API_BASE=...`）：
+  [更新弹窗中的更新日志](screenshots/f4-update-notes.png)。
+
+## 6. 各平台安装行为
 
 | 平台 | 行为 |
 |---|---|
@@ -92,7 +109,7 @@ base64 -i ~/.android/debug.keystore | gh secret set ANDROID_KEYSTORE_BASE64 \
 
 安装目录不可写时客户端会提示改用下载页手动安装，不会尝试提权。
 
-## 6. 本地验证（不发布也能跑）
+## 7. 本地验证（不发布也能跑）
 
 - `flutter test test/data/update`：用 `127.0.0.1` 上的真实 HTTP 服务覆盖
   「发现更新 / 已最新 / 404 / 限流 / 下载校验 / 校验失败 / 取消」与 macOS 安装脚本语义。

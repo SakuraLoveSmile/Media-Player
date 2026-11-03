@@ -1,10 +1,15 @@
 name: release
 
-# Tag-driven release pipeline: validate the tag against pubspec.yaml, build the
-# three client packages, then create the GitHub Release the in-app updater reads
-# (GitHub Releases API, repo SakuraLoveSmile/Media-Player). Asset file names are
-# part of the updater contract and must stay exactly:
+# Tag-driven release pipeline: validate the tag against pubspec.yaml and the
+# hand-written user-facing notes, build the three client packages, then create
+# the GitHub Release the in-app updater reads (GitHub Releases API, repo
+# SakuraLoveSmile/Media-Player). Asset file names are part of the updater
+# contract and must stay exactly:
 #   MediaPlayer-android.apk / MediaPlayer-windows-x64.zip / MediaPlayer-macos.zip
+#
+# Every stable tag must ship release/notes/<tag>.md: the file is used verbatim
+# as the GitHub Release body, which the in-app update dialog shows to users.
+# Do not use auto-generated commit lists; write user-facing Chinese copy.
 on:
   push:
     tags:
@@ -27,6 +32,7 @@ jobs:
     outputs:
       release_tag: ${{ steps.validate.outputs.release_tag }}
       version: ${{ steps.validate.outputs.version }}
+      notes_file: ${{ steps.validate.outputs.notes_file }}
     steps:
       - name: Checkout release source
         uses: actions/checkout@v4
@@ -70,8 +76,15 @@ jobs:
             exit 1
           fi
           echo "Release tag $TAG matches pubspec version $VERSION."
+          NOTES_FILE="release/notes/$TAG.md"
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "::error::Missing user-facing release notes '$NOTES_FILE'. Write the update notes (plain Chinese text/bullets) before tagging; the in-app update dialog shows this file."
+            exit 1
+          fi
+          echo "Release notes: $NOTES_FILE ($(wc -c < "$NOTES_FILE") bytes)"
           echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "notes_file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
 
   build-android:
     name: Build Android APK
@@ -163,7 +176,7 @@ jobs:
           set -euo pipefail
           git init -q .ci-feedback
           git -C .ci-feedback remote add origin https://github.com/SakuraLoveSmile/Sakura-Feedback.git
-          git -C .ci-feedback fetch -q --depth 1 origin 95e4a9c818d4bc248433b5f2b5f0eabb7581298a
+          git -C .ci-feedback fetch -q --depth 1 origin a345ca67de03153ebb8a4594b33b22475d0dff61
           git -C .ci-feedback checkout -q --detach FETCH_HEAD
           tr -d '\200-\377' < .ci-feedback/flutter/feedback/pubspec.yaml > .ci-feedback/flutter/feedback/pubspec.ascii.yaml
           mv .ci-feedback/flutter/feedback/pubspec.ascii.yaml .ci-feedback/flutter/feedback/pubspec.yaml
@@ -231,6 +244,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout tagged source for release notes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.release_tag }}
+          persist-credentials: false
+
       - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
@@ -258,7 +277,11 @@ jobs:
             echo "::error::Release '$TAG' already exists; refusing to overwrite it."
             exit 1
           fi
-          gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag \
+          NOTES_FILE="release/notes/$TAG.md"
+          test -s "$NOTES_FILE" || { echo "::error::Missing release notes: $NOTES_FILE"; exit 1; }
+          # The file is the user-facing changelog shown on GitHub and in the
+          # in-app update dialog; never replace it with commit titles.
+          gh release create "$TAG" --title "Media Player $TAG" --notes-file "$NOTES_FILE" --verify-tag \
             release-assets/MediaPlayer-android.apk \
             release-assets/MediaPlayer-windows-x64.zip \
             release-assets/MediaPlayer-macos.zip

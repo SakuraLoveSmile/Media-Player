@@ -48,7 +48,8 @@ export LANG=en_US.UTF-8
 - 更新：release 构建启动时静默检查 GitHub Releases，设置页「检查更新」可手动触发；
   只接受正式 Release（`vX.Y.Z`），下载后校验 SHA-256，再按平台安装。
 - 发布：打 `vX.Y.Z` 标签并推送后，`.github/workflows/release.yml` 构建三平台产物并创建
-  Release（资产名是更新契约，见 `docs/release.md`）。
+  Release（资产名是更新契约）；每个版本在 `release/notes/vX.Y.Z.md` 手写面向用户的更新说明，
+  它会同时显示在 GitHub Release 和应用内更新弹窗（见 `docs/release.md`）。
 
 ## Windows 冒烟
 
