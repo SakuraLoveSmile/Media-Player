@@ -205,7 +205,7 @@ void main() {
       );
     });
 
-    testWidgets('host-managed orb settings reach the component and hide the orb',
+    testWidgets('host-managed orb settings reach the component; hidden hides only idle',
         (
       WidgetTester tester,
     ) async {
@@ -243,9 +243,15 @@ void main() {
       expect(widget.wakeGestures, <FeedbackWakeGesture>{
         FeedbackWakeGesture.twoFingerHold,
       });
-      // The hidden idle style keeps the controller reachable but removes the
-      // floating entry.
+      // v0.8.5: the hidden style only hides the idle/collapsed entry. The full
+      // orb is shown first; after the idle timer the launcher slot disappears
+      // (the controller can still open the panel).
+      expect(find.byKey(const Key('feedback-orb')), findsOneWidget);
+      expect(find.byKey(const Key('feedback-launcher-slot')), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(milliseconds: 420));
       expect(find.byKey(const Key('feedback-orb')), findsNothing);
+      expect(find.byKey(const Key('feedback-launcher-slot')), findsNothing);
 
       widget.onOrbIdleStyleChanged!(FeedbackOrbIdleStyle.edge);
       widget.onWakeGesturesChanged!(<FeedbackWakeGesture>{

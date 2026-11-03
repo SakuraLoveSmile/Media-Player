@@ -291,7 +291,7 @@ String _idleStyleDescription(FeedbackOrbIdleStyle style) {
   return switch (style) {
     FeedbackOrbIdleStyle.handle => '闲置后收成右侧小把手',
     FeedbackOrbIdleStyle.edge => '闲置后贴边显示半个球',
-    FeedbackOrbIdleStyle.hidden => '不显示入口，仍可从「问题反馈」打开',
+    FeedbackOrbIdleStyle.hidden => '闲置时隐藏入口；完整球与唤醒手势仍可用',
   };
 }
 

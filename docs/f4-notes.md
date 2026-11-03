@@ -2,14 +2,14 @@
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
 - 范围：接入 Feedback 组件（`feedback_widget` 0.8.4）、设置页、GitHub Releases 在线更新、发布工作流
-- 版本：`v0.2.1`（`0.2.1+3`）已发布，包含 `v0.2.0` 的反馈/在线更新与灵感球设置增补
+- 版本：`v0.2.1`（`0.2.1+3`）已发布；本轮升级 `feedback_widget` 至 0.8.5 并准备发布 `v0.2.2`（`0.2.2+4`）
 - 结论：**`v0.2.0` 与 `v0.2.1` 均已发布；灵感球设置增补已随 `v0.2.1` 上线，真机体验待确认**
 
 ## 1. 已确认的决定
 
 | 项 | 决定 | 依据 |
 |---|---|---|
-| 反馈组件版本 | `feedback_widget` 0.8.4，Git tag `v0.8.4`（commit `b1a92cb050602baca089ad820dbf2c03b07ceed5`，`flutter/feedback` 子目录；0.8.4 新增的宿主托管灵感球/唤醒手势参数为可选增量，本宿主未使用，行为与 0.8.3 相同） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
+| 反馈组件版本 | `feedback_widget` 0.8.5，Git tag `v0.8.5`（commit `95e4a9c818d4bc248433b5f2b5f0eabb7581298a`，`flutter/feedback` 子目录；0.8.5 修正「隐藏」样式语义，宿主托管参数与 0.8.4 相同） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
 | 反馈服务 | 生产地址 `https://feedback.xn--fhqths51enha.cn`，`appId = dev.mediaplayer.media_player`，`appName = Media Player` | 与 Android applicationId 一致；服务端首次提交自动发现软件 |
 | 反馈默认开关 | release/profile 默认开启；debug 与 `flutter test` 默认关闭；可用 `FEEDBACK_ENABLED` / `FEEDBACK_API_BASE` / `FEEDBACK_APP_ID` / `FEEDBACK_APP_NAME` 覆盖 | 开发与既有测试不受影响；发布构建显式传 `--dart-define` |
 | 反馈入口 | 亮色主题、右侧灵感球（orb）+ 视口截图；播放页隐藏悬浮球；登录页服务器地址/用户名包 `FeedbackCaptureMask` | 与 app 亮色主题一致；避免遮挡播放控件；截图不泄露地址/账号 |
@@ -54,13 +54,16 @@
 ### 2.1 灵感球设置的宿主托管（v0.8.4 增补）
 
 - 设置页「反馈」分组新增两项：
-  - **灵感球样式**：小把手（默认）/ 球体贴边 / 隐藏。隐藏后不显示悬浮入口，但仍可点
-    「问题反馈」打开面板。
+  - **灵感球样式**：小把手（默认）/ 球体贴边 / 隐藏。0.8.5 起「隐藏」只作用于待机
+    （收起）状态：完整球先显示，闲置 5 秒后不显示收起入口；已开启的唤醒手势仍可唤醒，
+    也可从「问题反馈」打开面板改回。
   - **唤醒灵感球**：双指长按 / 三指上滑 / 双指双击，可多选，默认关闭；只在 App 内生效，
     松手后再拖球截图。
 - 组件 v0.8.4 新增 `FeedbackWidget.orbIdleStyle/onOrbIdleStyleChanged` 与
   `wakeGestures/onWakeGesturesChanged`。宿主提供值 + 回调后，组件不再自行持久化；面板内
   「设置 → 灵感球 / 唤醒方式」与设置页读写同一份宿主值，不会出现两套偏好。
+- v0.8.5 修正「隐藏」语义（只隐藏待机收起入口，不再取消唤醒手势/完整球），偏好键与
+  编解码保持兼容；本轮升级后同步更新了设置项说明与浮层测试。
 - 持久化复用 App 已有的 `KeyValueStore`（`AppServices.store`，契约 §7；macOS ad-hoc 为
   0600 文件、其余平台走平台安全存储），键为 `feedback.orb_idle_style.v1` /
   `feedback.wake_gestures.v1`。未知/损坏值回退默认；写入失败保留旧值，设置页提示
