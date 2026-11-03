@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart' show CancelToken, ProgressCallback;
@@ -5,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/app/app.dart';
+import 'package:feedback_widget/feedback_widget.dart';
 import 'package:media_player/app/feedback_config.dart';
+import 'package:media_player/app/feedback_orb_settings.dart';
 import 'package:media_player/app/providers.dart';
 import 'package:media_player/app/services.dart';
 import 'package:media_player/app/update_providers.dart';
@@ -13,6 +16,7 @@ import 'package:media_player/core/network/endpoint_kind.dart';
 import 'package:media_player/data/auth/auth_service.dart';
 import 'package:media_player/data/models/auth_session.dart';
 import 'package:media_player/data/models/server_profile.dart';
+import 'package:media_player/data/storage/key_value_store.dart';
 import 'package:media_player/data/update/update_installer.dart';
 import 'package:media_player/data/update/update_models.dart';
 import 'package:media_player/data/update/update_service.dart';
@@ -127,6 +131,7 @@ Future<_FakeUpdateService> _pumpApp(
   WidgetTester tester, {
   bool feedbackEnabled = false,
   AppRelease? release,
+  KeyValueStore? orbStore,
 }) async {
   final _FakeUpdateService service = _FakeUpdateService(release: release);
   await tester.pumpWidget(
@@ -147,6 +152,9 @@ Future<_FakeUpdateService> _pumpApp(
         updateServiceProvider.overrideWithValue(service),
         updateInstallerProvider.overrideWithValue(_FakeUpdateInstaller()),
         updatePlatformProvider.overrideWithValue('macos'),
+        feedbackOrbStoreProvider.overrideWith(
+          (ref) async => orbStore ?? InMemoryKeyValueStore(),
+        ),
         feedbackServiceConfigProvider.overrideWithValue(
           feedbackEnabled
               ? const FeedbackServiceConfig(
@@ -219,5 +227,41 @@ void main() {
 
     await _openSettings(tester);
     expect(find.text('问题反馈'), findsOneWidget);
+  });
+  testWidgets('in-panel orb settings round-trip through the host store', (
+    WidgetTester tester,
+  ) async {
+    final InMemoryKeyValueStore store = InMemoryKeyValueStore();
+    await _pumpApp(tester, feedbackEnabled: true, orbStore: store);
+
+    final FeedbackWidget initial = tester.widget<FeedbackWidget>(
+      find.byType(FeedbackWidget),
+    );
+    expect(initial.orbIdleStyle, FeedbackOrbIdleStyle.handle);
+    expect(initial.wakeGestures, isEmpty);
+
+    // The panel calls the host callbacks; the host must persist and feed the
+    // new value back into the layer.
+    initial.onOrbIdleStyleChanged!(FeedbackOrbIdleStyle.hidden);
+    initial.onWakeGesturesChanged!(<FeedbackWakeGesture>{
+      FeedbackWakeGesture.twoFingerHold,
+    });
+    await tester.pumpAndSettle();
+
+    expect(
+      await store.read(feedbackOrbIdleStorageKey),
+      'hidden',
+    );
+    expect(
+      jsonDecode((await store.read(feedbackWakeGesturesStorageKey))!),
+      <String>['two-finger-hold'],
+    );
+    final FeedbackWidget rebuilt = tester.widget<FeedbackWidget>(
+      find.byType(FeedbackWidget),
+    );
+    expect(rebuilt.orbIdleStyle, FeedbackOrbIdleStyle.hidden);
+    expect(rebuilt.wakeGestures, <FeedbackWakeGesture>{
+      FeedbackWakeGesture.twoFingerHold,
+    });
   });
 }

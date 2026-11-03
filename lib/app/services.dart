@@ -5,6 +5,7 @@ import '../data/library/library_service.dart';
 import '../data/playback/playback_engine.dart';
 import '../data/playback/playback_service.dart';
 import '../data/playback/session_reporter.dart';
+import '../data/storage/key_value_store.dart';
 
 /// Everything the app needs once storage, HTTP and auth are wired.
 class AppServices {
@@ -17,6 +18,7 @@ class AppServices {
     this.client,
     this.resolver,
     this.deviceId = '',
+    this.store,
   });
 
   final AuthService auth;
@@ -34,4 +36,8 @@ class AppServices {
   final EmbyHttpClient? client;
   final EndpointResolver? resolver;
   final String deviceId;
+
+  /// The app-wide key/value store (contract §7). Non-sensitive host
+  /// preferences such as the feedback orb style live here.
+  final KeyValueStore? store;
 }

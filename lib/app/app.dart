@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:feedback_widget/feedback_widget.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
@@ -9,6 +11,7 @@ import '../core/config/app_config.dart';
 import '../features/settings/update_dialog.dart';
 import 'feedback_config.dart';
 import 'feedback_layer.dart';
+import 'feedback_orb_settings.dart';
 import 'router.dart';
 import 'update_providers.dart';
 
@@ -115,6 +118,12 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
 
     final FeedbackServiceConfig? feedbackService =
         ref.watch(feedbackServiceConfigProvider);
+    // Host-managed orb preferences: watched only when the layer is mounted so
+    // debug builds and tests never touch the bootstrap/store providers.
+    final FeedbackOrbSettings orbSettings = feedbackService == null
+        ? FeedbackOrbSettings.defaults
+        : ref.watch(feedbackOrbSettingsProvider).value ??
+            FeedbackOrbSettings.defaults;
     // Only resolve the package version when the feedback layer actually needs
     // it; tests in debug mode keep the provider untouched.
     final String? feedbackAppVersion = feedbackService == null
@@ -147,12 +156,43 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
                 appVersion: feedbackAppVersion,
                 showLauncher: pageLabel != 'player',
               ),
+              orbIdleStyle: orbSettings.idleStyle,
+              onOrbIdleStyleChanged: (FeedbackOrbIdleStyle style) {
+                unawaited(
+                  _persistOrbSettings(
+                    ref
+                        .read(feedbackOrbSettingsProvider.notifier)
+                        .setIdleStyle(style),
+                  ),
+                );
+              },
+              wakeGestures: orbSettings.wakeGestures,
+              onWakeGesturesChanged: (Set<FeedbackWakeGesture> gestures) {
+                unawaited(
+                  _persistOrbSettings(
+                    ref
+                        .read(feedbackOrbSettingsProvider.notifier)
+                        .setWakeGestures(gestures),
+                  ),
+                );
+              },
               child: routerChild,
             );
           },
         );
       },
     );
+  }
+
+  /// Persists a change coming from the in-panel feedback settings. The panel
+  /// has no error surface, so a failure is only logged; the settings page
+  /// performs the same writes with visible error feedback.
+  Future<void> _persistOrbSettings(Future<void> save) async {
+    try {
+      await save;
+    } catch (error) {
+      debugPrint('[feedback] 保存灵感球设置失败：$error');
+    }
   }
 
   static String? _formatVersion(PackageInfo? info) =>

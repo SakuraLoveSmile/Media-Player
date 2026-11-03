@@ -2,8 +2,8 @@
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
 - 范围：接入 Feedback 组件（`feedback_widget` 0.8.4）、设置页、GitHub Releases 在线更新、发布工作流
-- 版本：`0.2.0+2`（`AppConfig.appVersion = 0.2.0`）
-- 结论：**实现、发布与本地验证完成（`v0.2.0` 已发布）；真机更新待体验**
+- 版本：`0.2.0+2` 已发布；本轮灵感球设置增补为 `0.2.1+3`（`AppConfig.appVersion = 0.2.1`，发布待授权）
+- 结论：**`v0.2.0` 已发布；灵感球设置增补（`0.2.1+3`）已实现并通过本地验证，待发布/体验**
 
 ## 1. 已确认的决定
 
@@ -24,6 +24,7 @@
 |---|---|
 | 反馈编译期配置 / provider / 页面标签白名单 | `lib/app/feedback_config.dart` |
 | 反馈浮层（外层 Navigator + 控制器生命周期 + 返回键） | `lib/app/feedback_layer.dart` |
+| 灵感球设置的宿主存储与状态（v0.8.4 增补） | `lib/app/feedback_orb_settings.dart`、`lib/app/services.dart`（复用 `KeyValueStore`） |
 | 根接线（浮层挂载、页面标签同步、启动静默检查、弹窗触发） | `lib/app/app.dart`、`lib/app/router.dart` |
 | 设置页（关于 / 检查更新 / 问题反馈） | `lib/features/settings/settings_page.dart` |
 | 更新弹窗（说明、进度、安装/重试/取消） | `lib/features/settings/update_dialog.dart` |
@@ -49,17 +50,38 @@
 - 本地联调可用 `--dart-define=UPDATE_API_BASE=http://127.0.0.1:<port>` 指向 mock GitHub API；
   生产构建不传该值。
 
+
+### 2.1 灵感球设置的宿主托管（v0.8.4 增补）
+
+- 设置页「反馈」分组新增两项：
+  - **灵感球样式**：小把手（默认）/ 球体贴边 / 隐藏。隐藏后不显示悬浮入口，但仍可点
+    「问题反馈」打开面板。
+  - **唤醒灵感球**：双指长按 / 三指上滑 / 双指双击，可多选，默认关闭；只在 App 内生效，
+    松手后再拖球截图。
+- 组件 v0.8.4 新增 `FeedbackWidget.orbIdleStyle/onOrbIdleStyleChanged` 与
+  `wakeGestures/onWakeGesturesChanged`。宿主提供值 + 回调后，组件不再自行持久化；面板内
+  「设置 → 灵感球 / 唤醒方式」与设置页读写同一份宿主值，不会出现两套偏好。
+- 持久化复用 App 已有的 `KeyValueStore`（`AppServices.store`，契约 §7；macOS ad-hoc 为
+  0600 文件、其余平台走平台安全存储），键为 `feedback.orb_idle_style.v1` /
+  `feedback.wake_gestures.v1`。未知/损坏值回退默认；写入失败保留旧值，设置页提示
+  「保存失败，请稍后重试」，面板内改动失败只记录日志。
+- 存储失败时提供读取兜底（默认值），设置页显示「读取失败，点击重试」；加载中显示「读取中…」。
+- 并发写入按最新状态合并（同时修改样式与手势不会互相覆盖），由单元测试覆盖。
+- 真实打包 app 的界面截图：[设置页新增分组](screenshots/f4-orb-settings.png)、
+  [灵感球样式弹窗](screenshots/f4-orb-style-dialog.png)。
+
 ## 3. 验证记录
 
 | 项目 | 结果 | 证据 |
 |---|---|---|
 | `flutter analyze`（全仓） | 通过，零问题 | 见本轮执行记录 |
-| `flutter test`（全仓） | 通过，295 项 | 含原 190 项 + 新增反馈/更新 105 项 |
+| `flutter test`（全仓） | 通过，308 项 | 含原 190 项 + 反馈/更新 105 项 + 灵感球设置 13 项 |
 | `tool/check_layering.sh` | 通过 | — |
 | 反馈组件行为 | 22 项测试（配置 15 + 浮层 7） | 挂载、orb 语义、导航不重建、config 更新、控制器 open/close、返回键三分支 |
 | 更新内核 | 65 项测试 | 本地 127.0.0.1 HTTP：有更新/已最新/404/限流/下载进度/SHA-256 成功与失败/取消；macOS 安装脚本用真实 bash+ditto+open stub 执行验证替换与清理 |
 | 设置页/弹窗 | 15 项测试 | 版本显示、无更新/失败 SnackBar、检查中禁用、反馈入口显示/隐藏、各状态按钮与进度 |
-| 应用接线 | 3 项测试 | 登录页设置入口、手动检查→弹窗、反馈浮层挂载与反馈入口 |
+| 应用接线 | 4 项测试 | 登录页设置入口、手动检查→弹窗、反馈浮层挂载与反馈入口、面板回调→宿主存储回传 |
+| 灵感球设置 | 13 项测试 | 默认值/加载/损坏回退/持久化/并发合并/写失败保留旧值；设置页样式与手势选择、隐藏样式、失败 SnackBar；浮层透传与隐藏入口 |
 | macOS release 构建 | 通过 | `build/macos/.../Release/Media Player.app`（96.2MB）；`Info.plist` = `0.2.0` / `2`；bundle 内含 `packages/feedback_widget/shaders/orb_lens.frag`；entitlements 含 `network.client` |
 | Android release 构建 | 通过 | `flutter build apk --release`（固定测试 keystore）：`versionCode=2` / `versionName=0.2.0` / `targetSdk=36`，含 `REQUEST_INSTALL_PACKAGES`，APK 使用临时固定 keystore 签名（CN=MediaPlayer Test）；构建后已删除临时 keystore 与 `android/app/key.properties` |
 | 打包后真实 E2E（macOS） | 通过 | 见 §3.1；截图 `screenshots/f4-update-dialog.png` |
@@ -97,6 +119,14 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
   `~/.android/debug.keystore` 相同（可在本地 debug 安装上直接覆盖）；macOS zip 解包后
   `Info.plist=0.2.0/2` 且包含 feedback 着色器。
 - 下载地址：<https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.2.0>。
+
+### 3.3 灵感球设置的本地核验（0.2.1+3）
+
+- `flutter analyze` 零问题；全仓 308 项测试通过；`check_layering.sh` 通过。
+- macOS release 构建通过（`0.2.1+3`，96.3MB）；在真实打包 app 中打开「设置」确认新增分组
+  显示「当前：小把手 / 当前：已关闭」，并打开样式弹窗核对了三个选项的文案与选中状态
+  （截图见 §2.1）。
+- 与 v0.8.4 面板内设置共用宿主值：面板内改动会回写同一存储键，下次启动恢复。
 
 ## 4. 未闭环与后续
 

@@ -1,4 +1,5 @@
 import 'package:feedback_widget/feedback_widget.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
 /// Long-lived feedback layer, mounted in `MaterialApp.router`'s `builder` above
@@ -26,6 +27,10 @@ class FeedbackOverlay extends StatelessWidget {
     required this.navigatorKey,
     required this.config,
     required this.child,
+    this.orbIdleStyle,
+    this.onOrbIdleStyleChanged,
+    this.wakeGestures,
+    this.onWakeGesturesChanged,
   });
 
   /// Root-owned controller (stable identity across rebuilds).
@@ -41,12 +46,29 @@ class FeedbackOverlay extends StatelessWidget {
   /// The router subtree passed to `MaterialApp.router`'s builder.
   final Widget child;
 
+  /// Host-managed orb idle style (feedback_widget >= 0.8.4). When non-null the
+  /// component renders this value instead of persisting its own preference.
+  final FeedbackOrbIdleStyle? orbIdleStyle;
+
+  /// Persistence callback for [orbIdleStyle]; required for the in-panel setting
+  /// to stay visible and to round-trip user changes.
+  final ValueChanged<FeedbackOrbIdleStyle>? onOrbIdleStyleChanged;
+
+  /// Host-managed wake gestures. Same contracts as [orbIdleStyle].
+  final Set<FeedbackWakeGesture>? wakeGestures;
+
+  final ValueChanged<Set<FeedbackWakeGesture>>? onWakeGesturesChanged;
+
   @override
   Widget build(BuildContext context) {
     return _FeedbackScope(
       controller: controller,
       config: config,
       routerChild: child,
+      orbIdleStyle: orbIdleStyle,
+      onOrbIdleStyleChanged: onOrbIdleStyleChanged,
+      wakeGestures: wakeGestures,
+      onWakeGesturesChanged: onWakeGesturesChanged,
       child: Navigator(
         key: navigatorKey,
         onGenerateRoute: (RouteSettings settings) => PageRouteBuilder<void>(
@@ -77,6 +99,10 @@ class _FeedbackLayerBody extends StatelessWidget {
     return FeedbackWidget(
       config: scope.config,
       controller: scope.controller,
+      orbIdleStyle: scope.orbIdleStyle,
+      onOrbIdleStyleChanged: scope.onOrbIdleStyleChanged,
+      wakeGestures: scope.wakeGestures,
+      onWakeGesturesChanged: scope.onWakeGesturesChanged,
       child: scope.routerChild,
     );
   }
@@ -112,11 +138,19 @@ class _FeedbackScope extends InheritedWidget {
     required this.config,
     required this.routerChild,
     required super.child,
+    this.orbIdleStyle,
+    this.onOrbIdleStyleChanged,
+    this.wakeGestures,
+    this.onWakeGesturesChanged,
   });
 
   final FeedbackController controller;
   final FeedbackConfig config;
   final Widget routerChild;
+  final FeedbackOrbIdleStyle? orbIdleStyle;
+  final ValueChanged<FeedbackOrbIdleStyle>? onOrbIdleStyleChanged;
+  final Set<FeedbackWakeGesture>? wakeGestures;
+  final ValueChanged<Set<FeedbackWakeGesture>>? onWakeGesturesChanged;
 
   static _FeedbackScope of(BuildContext context) {
     final _FeedbackScope? scope = context
@@ -129,5 +163,9 @@ class _FeedbackScope extends InheritedWidget {
   bool updateShouldNotify(_FeedbackScope oldWidget) =>
       config != oldWidget.config ||
       controller != oldWidget.controller ||
-      routerChild != oldWidget.routerChild;
+      routerChild != oldWidget.routerChild ||
+      orbIdleStyle != oldWidget.orbIdleStyle ||
+      onOrbIdleStyleChanged != oldWidget.onOrbIdleStyleChanged ||
+      !setEquals(wakeGestures, oldWidget.wakeGestures) ||
+      onWakeGesturesChanged != oldWidget.onWakeGesturesChanged;
 }

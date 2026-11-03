@@ -18,6 +18,10 @@ Widget _host({
   required GlobalKey<NavigatorState> feedbackNavigatorKey,
   required GlobalKey<NavigatorState> routerKey,
   String pageLabel = 'startup',
+  FeedbackOrbIdleStyle? orbIdleStyle,
+  ValueChanged<FeedbackOrbIdleStyle>? onOrbIdleStyleChanged,
+  Set<FeedbackWakeGesture>? wakeGestures,
+  ValueChanged<Set<FeedbackWakeGesture>>? onWakeGesturesChanged,
 }) {
   return MaterialApp(
     home: FeedbackOverlay(
@@ -27,6 +31,10 @@ Widget _host({
         service: _testService(),
         pageLabel: pageLabel,
       ),
+      orbIdleStyle: orbIdleStyle,
+      onOrbIdleStyleChanged: onOrbIdleStyleChanged,
+      wakeGestures: wakeGestures,
+      onWakeGesturesChanged: onWakeGesturesChanged,
       child: Navigator(
         key: routerKey,
         onGenerateRoute: (RouteSettings settings) => MaterialPageRoute<void>(
@@ -195,6 +203,58 @@ void main() {
             .pageLabel,
         'library',
       );
+    });
+
+    testWidgets('host-managed orb settings reach the component and hide the orb',
+        (
+      WidgetTester tester,
+    ) async {
+      final FeedbackController controller = FeedbackController();
+      addTearDown(controller.dispose);
+      final GlobalKey<NavigatorState> feedbackNavigatorKey =
+          GlobalKey<NavigatorState>();
+      final GlobalKey<NavigatorState> routerKey = GlobalKey<NavigatorState>();
+      FeedbackOrbIdleStyle? changedStyle;
+      Set<FeedbackWakeGesture>? changedGestures;
+
+      await tester.pumpWidget(
+        _host(
+          controller: controller,
+          feedbackNavigatorKey: feedbackNavigatorKey,
+          routerKey: routerKey,
+          orbIdleStyle: FeedbackOrbIdleStyle.hidden,
+          onOrbIdleStyleChanged: (FeedbackOrbIdleStyle style) {
+            changedStyle = style;
+          },
+          wakeGestures: const <FeedbackWakeGesture>{
+            FeedbackWakeGesture.twoFingerHold,
+          },
+          onWakeGesturesChanged: (Set<FeedbackWakeGesture> gestures) {
+            changedGestures = gestures;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final FeedbackWidget widget = tester.widget<FeedbackWidget>(
+        find.byType(FeedbackWidget),
+      );
+      expect(widget.orbIdleStyle, FeedbackOrbIdleStyle.hidden);
+      expect(widget.wakeGestures, <FeedbackWakeGesture>{
+        FeedbackWakeGesture.twoFingerHold,
+      });
+      // The hidden idle style keeps the controller reachable but removes the
+      // floating entry.
+      expect(find.byKey(const Key('feedback-orb')), findsNothing);
+
+      widget.onOrbIdleStyleChanged!(FeedbackOrbIdleStyle.edge);
+      widget.onWakeGesturesChanged!(<FeedbackWakeGesture>{
+        FeedbackWakeGesture.twoFingerDoubleTap,
+      });
+      expect(changedStyle, FeedbackOrbIdleStyle.edge);
+      expect(changedGestures, <FeedbackWakeGesture>{
+        FeedbackWakeGesture.twoFingerDoubleTap,
+      });
     });
   });
 

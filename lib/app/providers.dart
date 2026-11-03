@@ -58,5 +58,6 @@ final bootstrapProvider = FutureProvider<AppServices>((ref) async {
     client: client,
     resolver: resolver,
     deviceId: deviceId,
+    store: store,
   );
 });

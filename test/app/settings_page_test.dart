@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -7,10 +8,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/app/feedback_config.dart';
+import 'package:media_player/app/feedback_orb_settings.dart';
 import 'package:media_player/app/update_providers.dart';
 import 'package:media_player/core/config/app_config.dart';
 import 'package:media_player/data/update/update_installer.dart';
 import 'package:media_player/data/update/update_models.dart';
+import 'package:media_player/data/storage/key_value_store.dart';
 import 'package:media_player/data/update/update_service.dart';
 import 'package:media_player/features/settings/settings_page.dart';
 import 'package:media_player/features/settings/update_dialog.dart';
@@ -109,6 +112,7 @@ void main() {
     FeedbackServiceConfig? feedback,
     FeedbackController? feedbackController,
     Future<PackageInfo>? version,
+    KeyValueStore? store,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -119,6 +123,9 @@ void main() {
           updateServiceProvider.overrideWithValue(service),
           updateInstallerProvider.overrideWithValue(installer),
           updatePlatformProvider.overrideWithValue('macos'),
+          feedbackOrbStoreProvider.overrideWith(
+            (ref) async => store ?? InMemoryKeyValueStore(),
+          ),
           feedbackServiceConfigProvider.overrideWithValue(feedback),
           if (feedbackController != null)
             feedbackControllerProvider.overrideWithValue(feedbackController),
@@ -160,6 +167,9 @@ void main() {
           updateServiceProvider.overrideWithValue(service),
           updateInstallerProvider.overrideWithValue(installer),
           updatePlatformProvider.overrideWithValue('macos'),
+          feedbackOrbStoreProvider.overrideWith(
+            (ref) async => InMemoryKeyValueStore(),
+          ),
           feedbackServiceConfigProvider.overrideWithValue(null),
         ],
         child: MaterialApp(theme: _appTheme(), home: const SettingsPage()),
@@ -272,4 +282,104 @@ void main() {
 
     expect(controller.isOpen, isTrue);
   });
+  testWidgets('orb settings only appear when feedback is configured', (
+    tester,
+  ) async {
+    await pumpSettings(tester, feedback: null);
+    expect(find.text('灵感球样式'), findsNothing);
+    expect(find.text('唤醒灵感球'), findsNothing);
+
+    await pumpSettings(
+      tester,
+      feedback: const FeedbackServiceConfig(
+        apiBase: 'https://feedback.test',
+        appId: 'dev.mediaplayer.media_player',
+      ),
+    );
+    expect(find.text('灵感球样式'), findsOneWidget);
+    expect(find.text('唤醒灵感球'), findsOneWidget);
+    expect(find.text('当前：小把手'), findsOneWidget);
+    expect(find.text('当前：已关闭'), findsOneWidget);
+  });
+
+  testWidgets('selecting a hidden orb style persists it', (tester) async {
+    final store = InMemoryKeyValueStore();
+    await pumpSettings(
+      tester,
+      feedback: const FeedbackServiceConfig(
+        apiBase: 'https://feedback.test',
+        appId: 'dev.mediaplayer.media_player',
+      ),
+      store: store,
+    );
+
+    await tester.tap(find.text('灵感球样式'));
+    await tester.pumpAndSettle();
+    expect(find.text('隐藏'), findsOneWidget);
+
+    await tester.tap(find.text('隐藏'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前：隐藏'), findsOneWidget);
+    expect(await store.read(feedbackOrbIdleStorageKey), 'hidden');
+  });
+
+  testWidgets('selecting a wake gesture persists its stable id', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    await pumpSettings(
+      tester,
+      feedback: const FeedbackServiceConfig(
+        apiBase: 'https://feedback.test',
+        appId: 'dev.mediaplayer.media_player',
+      ),
+      store: store,
+    );
+
+    await tester.tap(find.text('唤醒灵感球'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('双指长按'));
+    await tester.pump();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前：双指长按'), findsOneWidget);
+    final raw = await store.read(feedbackWakeGesturesStorageKey);
+    expect(jsonDecode(raw!), contains('two-finger-hold'));
+  });
+
+  testWidgets('a failed orb preference write keeps the old value and warns', (
+    tester,
+  ) async {
+    await pumpSettings(
+      tester,
+      feedback: const FeedbackServiceConfig(
+        apiBase: 'https://feedback.test',
+        appId: 'dev.mediaplayer.media_player',
+      ),
+      store: _ThrowingStore(),
+    );
+
+    await tester.tap(find.text('灵感球样式'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('隐藏'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前：小把手'), findsOneWidget);
+    expect(find.text('保存失败，请稍后重试'), findsOneWidget);
+  });
+}
+
+class _ThrowingStore implements KeyValueStore {
+  @override
+  Future<String?> read(String key) async => null;
+
+  @override
+  Future<void> write(String key, String value) async {
+    throw StateError('disk full');
+  }
+
+  @override
+  Future<void> delete(String key) async {}
 }
