@@ -7,9 +7,15 @@ import 'package:go_router/go_router.dart';
 import '../../app/providers.dart';
 import '../../core/router/app_routes.dart';
 import '../../data/models/media_item.dart';
+import '../../ui/glass/glass_controls.dart';
+import '../../ui/glass/glass_shell.dart';
+import '../../ui/glass/glass_surface.dart';
+import '../../ui/glass/glass_theme.dart';
+import '../../ui/glass/glass_tokens.dart';
 import 'library_controller.dart';
 
-/// Library browsing: view switcher, poster grid, infinite scroll (contract §2).
+/// Library browsing: view switcher, poster grid, infinite scroll (contract §2),
+/// restyled with a collapsing large title and continuous-corner posters.
 class LibraryPage extends ConsumerStatefulWidget {
   const LibraryPage({super.key});
 
@@ -79,38 +85,38 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     final controller = _controller;
     final state = controller?.state;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('媒体库'),
-        actions: <Widget>[
-          IconButton(
-            tooltip: '刷新',
-            onPressed: controller == null
-                ? null
-                : () => unawaited(controller.load(refresh: true)),
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            key: const Key('library-settings'),
-            tooltip: '设置',
-            onPressed: () => context.push(AppRoutes.settings),
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
+    return GlassPage(
+      title: '媒体库',
+      scrollController: _scroll,
+      actions: <Widget>[
+        GlassIconButton(
+          tooltip: '刷新',
+          icon: const Icon(Icons.refresh),
+          onPressed: controller == null
+              ? null
+              : () => unawaited(controller.load(refresh: true)),
+        ),
+        GlassIconButton(
+          key: const Key('library-settings'),
+          tooltip: '设置',
+          icon: const Icon(Icons.settings_outlined),
+          onPressed: () => context.push(AppRoutes.settings),
+        ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.only(
+          top: GlassHeaderMetrics.expandedHeight,
+        ),
+        child: _fatal != null
+            ? _ErrorView(message: _fatal!, onRetry: _bootstrap)
+            : controller == null || state == null
+                ? const Center(child: CircularProgressIndicator())
+                : _content(controller, state),
       ),
-      body: _fatal != null
-          ? _ErrorView(message: _fatal!, onRetry: _bootstrap)
-          : controller == null || state == null
-              ? const Center(child: CircularProgressIndicator())
-              : _content(context, controller, state),
     );
   }
 
-  Widget _content(
-    BuildContext context,
-    LibraryController controller,
-    LibraryState state,
-  ) {
+  Widget _content(LibraryController controller, LibraryState state) {
     // A failed first load has no views either; show the real reason first.
     if (state.error != null && state.items.isEmpty) {
       return _ErrorView(
@@ -127,24 +133,32 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       children: <Widget>[
         if (state.views.length > 1)
           SizedBox(
-            height: 56,
+            height: 52,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(
+                horizontal: GlassSpacing.lg,
+                vertical: GlassSpacing.sm,
+              ),
               itemCount: state.views.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
+              separatorBuilder: (_, _) => const SizedBox(width: GlassSpacing.sm),
+              itemBuilder: (BuildContext context, int index) {
                 final view = state.views[index];
-                return ChoiceChip(
-                  label: Text(view.name),
-                  selected: view.id == state.selectedView?.id,
-                  onSelected: (_) => unawaited(controller.selectView(view)),
+                return Center(
+                  child: ChoiceChip(
+                    label: Text(view.name),
+                    selected: view.id == state.selectedView?.id,
+                    onSelected: (_) => unawaited(controller.selectView(view)),
+                  ),
                 );
               },
             ),
           ),
         if (state.loading || state.loadingMore)
-          const LinearProgressIndicator(minHeight: 2),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: GlassSpacing.lg),
+            child: LinearProgressIndicator(minHeight: 3),
+          ),
         Expanded(
           child: state.items.isEmpty
               ? (state.loaded
@@ -152,16 +166,21 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                   : const Center(child: CircularProgressIndicator()))
               : GridView.builder(
                   controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(
+                    GlassSpacing.lg,
+                    GlassSpacing.md,
+                    GlassSpacing.lg,
+                    GlassSpacing.xxl,
+                  ),
                   gridDelegate:
                       const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 160,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 12,
+                    maxCrossAxisExtent: 168,
+                    mainAxisSpacing: GlassSpacing.xl,
+                    crossAxisSpacing: GlassSpacing.md,
                     childAspectRatio: 0.56,
                   ),
                   itemCount: state.items.length,
-                  itemBuilder: (context, index) {
+                  itemBuilder: (BuildContext context, int index) {
                     final item = state.items[index];
                     return _PosterCard(
                       item: item,
@@ -180,7 +199,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
   }
 }
 
-class _PosterCard extends StatelessWidget {
+class _PosterCard extends StatefulWidget {
   const _PosterCard({
     required this.item,
     required this.imageUrl,
@@ -192,69 +211,117 @@ class _PosterCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  State<_PosterCard> createState() => _PosterCardState();
+}
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  ColoredBox(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    child: imageUrl == null
-                        ? const Icon(Icons.movie_outlined, size: 32)
-                        : Image.network(
-                            imageUrl.toString(),
-                            fit: BoxFit.cover,
-                            gaplessPlayback: true,
-                            errorBuilder: (_, _, _) =>
-                                const Icon(Icons.broken_image_outlined),
-                          ),
+class _PosterCardState extends State<_PosterCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final GlassPalette palette = context.glass;
+    final ShapeBorder posterShape = RoundedSuperellipseBorder(
+      borderRadius: BorderRadius.circular(GlassRadii.card),
+    );
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.item.id.isEmpty ? null : widget.onTap,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.96 : 1,
+        duration: GlassMotion.fast,
+        curve: GlassMotion.press,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(
+              child: CustomPaint(
+                foregroundPainter: _PosterRimPainter(palette: palette),
+                child: ClipPath(
+                  clipper: ShapeBorderClipper(
+                    shape: posterShape,
+                    textDirection: TextDirection.ltr,
                   ),
-                  if (item.userData.played)
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '已看',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSecondaryContainer,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      ColoredBox(
+                        color: palette.fill,
+                        child: widget.imageUrl == null
+                            ? Icon(
+                                Icons.movie_outlined,
+                                size: 30,
+                                color: palette.tertiaryLabel,
+                              )
+                            : Image.network(
+                                widget.imageUrl.toString(),
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                                errorBuilder: (_, _, _) => Icon(
+                                  Icons.broken_image_outlined,
+                                  color: palette.tertiaryLabel,
+                                ),
+                              ),
+                      ),
+                      if (widget.item.userData.played)
+                        Positioned(
+                          top: GlassSpacing.sm,
+                          right: GlassSpacing.sm,
+                          child: GlassTag(
+                            label: '已看',
+                            dense: true,
+                            color: palette.tint,
                           ),
                         ),
-                      ),
-                    ),
-                ],
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            item.name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall,
-          ),
-        ],
+            const SizedBox(height: GlassSpacing.sm),
+            Text(
+              widget.item.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: GlassType.caption1.copyWith(
+                color: palette.label,
+                fontWeight: FontWeight.w500,
+                height: 1.25,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+/// Hairline rim that keeps posters readable on the glass background.
+class _PosterRimPainter extends CustomPainter {
+  const _PosterRimPainter({required this.palette});
+
+  final GlassPalette palette;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Path path = RoundedSuperellipseBorder(
+      borderRadius: BorderRadius.circular(GlassRadii.card),
+    ).getOuterPath(Offset.zero & size);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8
+        ..color = palette.label.withValues(alpha: 0.08),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_PosterRimPainter oldDelegate) =>
+      oldDelegate.palette != palette;
 }
 
 class _MessageView extends StatelessWidget {
@@ -264,10 +331,19 @@ class _MessageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final GlassPalette palette = context.glass;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Text(message, textAlign: TextAlign.center),
+        padding: const EdgeInsets.all(GlassSpacing.xxxl),
+        child: GlassSurface(
+          radius: GlassRadii.cardLarge,
+          padding: const EdgeInsets.all(GlassSpacing.xxl),
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: GlassType.body.copyWith(color: palette.secondaryLabel),
+          ),
+        ),
       ),
     );
   }
@@ -281,16 +357,35 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final GlassPalette palette = context.glass;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: onRetry, child: const Text('重试')),
-          ],
+        padding: const EdgeInsets.all(GlassSpacing.xxxl),
+        child: GlassSurface(
+          radius: GlassRadii.cardLarge,
+          padding: const EdgeInsets.all(GlassSpacing.xxl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                Icons.wifi_off_rounded,
+                color: palette.secondaryLabel,
+                size: 30,
+              ),
+              const SizedBox(height: GlassSpacing.md),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: GlassType.body.copyWith(color: palette.label),
+              ),
+              const SizedBox(height: GlassSpacing.xl),
+              GlassButton(
+                label: '重试',
+                variant: GlassButtonVariant.tinted,
+                onPressed: onRetry,
+              ),
+            ],
+          ),
         ),
       ),
     );

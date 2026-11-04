@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/config/app_config.dart';
+import '../ui/glass/glass_theme.dart';
 import '../features/settings/update_dialog.dart';
 import 'feedback_config.dart';
 import 'feedback_layer.dart';
@@ -133,10 +134,11 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
     return MaterialApp.router(
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF3F51B5),
-      ),
+      // Liquid Glass appearance: iOS system palette, SF text metrics and
+      // continuous corners in both light and dark mode.
+      theme: buildGlassTheme(Brightness.light),
+      darkTheme: buildGlassTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
       routerConfig: ref.watch(appRouterProvider),
       // Mount the long-lived feedback layer above the router subtree so the orb
       // is present on every page and the draft survives navigation. The orb is
