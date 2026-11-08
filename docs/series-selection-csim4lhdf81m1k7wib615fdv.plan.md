@@ -456,3 +456,76 @@ LANG=en_US.UTF-8 ~/devsdk/flutter/bin/flutter build macos --debug --no-pub
 - macOS：原生选季、选集、播放、返回与窗口视觉本轮未验证。
 - 真实样本：多季切换、特别篇编号 0、超过 60 集的真实服务端通过仍只有模拟测试证据。
 - Windows：未构建、未实测，历史签核不扩展到本功能。
+
+## Android 真实播放补证与封版记录（2026-11-08，执行 8d4fb649）
+
+- 本次执行标识：`csim4lhdf81m1k7wib615fdv/8d4fb649-c83e-4f40-a203-24920b1db7d9`。冻结正文、验收目标与历史记录保持原样，本节只追加本轮实际执行与实测证据。
+- 计划哈希：本节追加前整文件 SHA-256 为 `c863282f288a27e1d64d7327a8fb22be33c5ee93fe19c3e512eb52e0cdd367d9`；冻结正文（第 1–110 行，含 `verify` 块）SHA-256 在本次执行前后均为 `a5b450655b4820d263b52dec7c3c51a8af9d4c6377f0827eaefb6b2b2408d562`，确认冻结正文与既有历史记录未被改写或删除。
+- 状态：**待体验**。五条冻结自动检查全部真实退出 0；Android 主路径（选季选集、单集播放、暂停/继续/拖动、服务端位置续播、两种返回、跨集独立、电影原入口）本轮实测；声音经用户当场听音确认；服务端在同一活动中关联到唯一活动播放且无 `TranscodingInfo`，退出后该活动播放清零。按冻结标准不记为“已验收”。
+- 工作区：沿用原执行路径，分支 `kaneo/csim4lhdf81m1k7wib615fdv`，HEAD `d2be80ad3659635bc39ddac7717a3821b857b09b`。开始时工作区仅 `?? .pi/`；两份既有 `.pi/goal/` 证据文件 SHA-256 复核仍为 `2f11fb2f7d69b27a57abcecb67d290a83266cfa373fd84aedb1f8e6fc37bbab3` 与 `71eedf3542e0cc69ccbf6b589e6e76452afc30c211064c54cf8cb71b1dd1bd6c`。未创建或切换工作树/分支，未 commit、push、merge、tag 或发布。
+- 环境修复（不涉及源码）：本轮开始时 `build/` 不存在，且 `.flutter-plugins-dependencies` 指向已删除的旧执行 pub 缓存、`.dart_tool/` 缺失，导致 `flutter build apk` 先报 `Plugin directory does not exist`，随后 `Target build_hooks failed`／`compileFlutterBuildDebug` 非零退出。只做两处可再生成文件的环境修复：在 `.pi/kanpilot/codex/f9e2e018-…/` 下建立指向既有 `~/.pub-cache` 的链接（该路径与被修复文件均在 `.gitignore` 内），并从同机既有主工作树复制 `.dart_tool/package_config.json`；复制前逐包核对 118 个依赖与本分支 `pubspec.lock` 的版本及缓存目录完全一致（0 处不符）。未执行 `pub get/upgrade`，未安装或升级 SDK/JDK，未修改 `pubspec`、锁文件、平台工程或签名配置；该过程前后 `git status --porcelain` 均为 `?? .pi/`。
+- 代码复核：独立只读复核（`code-reviewer`，未修改任何文件）核对 `series_controller.dart` 的 `_byIndex` 排序与稳定补齐、`_episodeRequest` 请求序号与 401 全量作废、`player_page.dart` 先 `stop()` 再 `pop`、每集新建 engine/reporter、媒体库按 `item.type` 分流，结论为“未发现可明确复现的实质缺陷”（0 个）。另列两项非阻断项：`_leave` 在“网络通但服务器不响应”时无超时等待 Stopped；电影返回后媒体库重建缺少自动断言覆盖。两项均属既有行为或测试覆盖建议，本轮未改源码或测试。
+
+### 本轮自动检查（本记录编辑前，五次独立终端调用）
+
+| 冻结命令原文 | 实际退出码 | 结果 |
+| --- | --- | --- |
+| `./tool/check_layering.sh` | 0 | `layering ok`，无违规行 |
+| `~/devsdk/flutter/bin/flutter analyze --no-pub` | 0 | `No issues found!`（`Analyzing branch...` 5.2s） |
+| `~/devsdk/flutter/bin/flutter test --no-pub` | 0 | `+364: All tests passed!`，无失败，日志无跳过计数 |
+| `LANG=en_US.UTF-8 ~/devsdk/flutter/bin/flutter build macos --debug --no-pub` | 0 | 生成本工作树 `build/macos/Build/Products/Debug/Media Player.app` |
+| `~/devsdk/flutter/bin/flutter build apk --debug --no-pub` | 0 | 生成本工作树 `build/app/outputs/flutter-apk/app-debug.apk` |
+
+- 环境：macOS 27.0.1 arm64，Flutter 3.47.7 stable / Dart 3.13.5，Xcode 27.0（27A5237l），沿用既有 JDK 与 Android 工具链。未安装或升级 SDK，未执行 `pub get/upgrade`，未修改依赖、平台工程、签名或质量门。macOS 构建仍有 media_kit 未采用 SPM 的 Swift 告警，Android 仍有既有 SDK XML 告警，两条命令实际均退出 0，未为消除告警改配置。
+- 本节为本轮最后一次人工文件编辑；随后按冻结原文逐条、独立重跑五条，最终退出码为封版来源，之后不再修改源码、测试、文档或记录。
+
+### 产物与指纹（本轮首次构建后实测）
+
+- Android：`build/app/outputs/flutter-apk/app-debug.apk`，219142728 字节，SHA-256 `2590904b54d345c9fc469b5c54e0c6fadf2c5c7f4b15caf58f412afc32e9980f`；设备 `pm path` 指向的 `base.apk` 实测 SHA-256 与之逐字一致。
+- macOS：`build/macos/Build/Products/Debug/Media Player.app`，bundle ID `dev.mediaplayer.mediaPlayer`，主可执行文件 `Contents/MacOS/Media Player` SHA-256 `1ff620645cc613993d8a001f4e1944d6c7f6643fcbcc141914d16a4c514d782d`；按用户本轮决定未启动该应用。
+- 两处产物均在 `.gitignore` 的 `**/build/` 内，不改变 `git status --porcelain`。产物存在、构建退出 0、测试通过或界面标签均不作为真实播放、无视频转码或会话已停止的证据。
+
+### Android 真机原生实测（Mi 10 / Android 16 / SDK 36，序列号 `8085d06e`，系统用户 0，1080×2340 竖屏）
+
+- 启动对象：包名 `dev.mediaplayer.media_player`，`versionName=0.2.3`、`versionCode=5`、Debug；前台 `topResumedActivity=dev.mediaplayer.media_player/.MainActivity`，进程 `u0_a347 10284`。实测 APK 与设备 `base.apk` SHA-256 同为 `2590904b…e9980f`；未卸载、未清数据、未读取应用私有 token/密码，沿用用户已确认的专用测试设备与已登录的授权 Emby 测试账号。
+- T5-1（选季选集）：媒体库“国产剧”→“雍正王朝”，选集页读到剧名、三行简介、季 chip 与单列分集；该样本服务端只返回**一个季**（chip“雍正王朝”），滚动后第 44 集“雍正皇帝去世”末项可见可及（`[44,2076][1036,2274]`）。因此**多季切换、特别篇编号 0、超过 60 集本轮未取得真实通过**，仍只有既有模拟测试证据。
+- T5-2（画面/暂停/继续/拖动）：第 43 集“雍正亲自审问弘时”真实画面，读到 `直连播放`、`已从 35:28 继续播放`；21:09:26 时间码 `37:49`，21:09:33 为 `37:57`（7 秒推进 8 秒），相邻两帧像素差异 24.16%。暂停后 21:09:56 与 21:10:02 均为 `38:17`，暂停两帧像素差异 0.21%。拖动进度条由 86%（`38:17`）到 51%（`22:51`）；继续后 21:10:55 为 `22:53`、21:11:02 为 `23:00`（像素差异 23.23%）。画面另见烧录字幕“为了祖宗江山社稷”“我还能走到哪儿去”“不是奴才斗胆敢说祖宗不是”。
+- T5-3（续播与跨集）：应用内返回后回到原季、原滚动区域，第 43 集刷新为“时长 44:37 · 已观看 36:13”；重开该集读到 `已从 36:13 继续播放`、时间码 `36:16 / 44:37`。随后用 Android 系统返回（`input keyevent 4`）退出，仍回原季与原列表位置，状态刷新为“已观看 36:17”。另选第 44 集，标题“雍正皇帝去世”，从 `00:02 / 44:56` 起播并推进到 `00:07`，未沿用第 43 集的 36 分钟位置（两帧像素差异 25.25%）。
+- T5-4（返回媒体库与电影）：选集页返回后仍选中“国产剧”，《雍正王朝》海报 bounds 与进入前一致（`[386,2217][694,2340]`）。切“动画电影”点击《超级马力欧兄弟大电影》沿电影原入口直接进入播放器，读到 `已从 54:50 继续播放`，`54:50`→`54:54`（21:26:07→21:26:13，像素差异 19.39%），退出前 21:29:17 为 `57:58 / 01:32:24`；应用内返回后回到原“动画电影”库与海报位置。
+- 退出停止（两条路径各一次）：应用内返回与系统返回均在退出前后读 `dumpsys audio` 的 `state:started` 计数，播放中 1、退出后 0；电影退出同样 1→0。该读数仅为辅助证据，不替代听音或服务端结论。
+
+### 声音（用户当场听音，用户参与项）
+
+- 样本 A：Mi 10 上正在播放《雍正王朝》第 43 集“雍正亲自审问弘时”（播放中时间码 `37:49`–`38:17` 区间，应用内音量 100%，系统媒体音量 79/150），用户当日在约 21:24 前当场回复**听到正常声音**。
+- 样本 B：同机正在播放电影《超级马力欧兄弟大电影》（自 `54:50` 续播，约 21:26–21:29 区间），用户当场回复**听到正常声音**。
+- 辅助：`dumpsys audio` 存在 `OpenSL ES AudioPlayer ... usage=USAGE_MEDIA state:started`（44100Hz）与音量读数，仅作旁证，未替代听音结论。
+
+### 服务端（只读会话观察，用户参与项）
+
+- 同一活动内以 `DeviceId + NowPlayingItem.Id` 关联：只读 `GET /Sessions` 返回活动播放唯一 1 条，`NowPlayingItem.Id=1646`、`Type=Episode`、`Name=雍正亲自审问弘时`；`PlayState.PlayMethod=DirectPlay` 仅作辅证；**无 `TranscodingInfo` 字段**（`hasTranscodingInfo:false`，`transcodingInfoKeys:null`），据此按契约记为视频未转码。同一条目 `PositionTicks` 两次读取由 `21813196065` 增至 `21833199828`（约 36:21→36:23），证明该活动确在播放。
+- 退出后两次查询（21:37:15、21:37:21）`active_count=0`，匹配活动播放已清零；`total_sessions` 仍为 8，登录设备会话继续存在，按契约不影响判定。
+- 观察仅使用用户提供的只读 API Key 文件（进程内读取，未打印、未写入仓库）。服务端基地址、Key 与会话标识未写入本记录或证据文件，记录中只保留脱敏字段与 SHA-256 截断标识；证据目录已用 Key 明文与地址做全文扫描，0 命中。
+
+### 证据位置与指纹
+
+- 目录：`.pi/kanpilot/codex/8d4fb649-c83e-4f40-a203-24920b1db7d9/native-acceptance/`（本任务缓存），含 25 张本轮截图、`ocr-log.txt`（逐图 OCR 文本）、`ui-*.xml`（UIAutomator 语义节点）、`server-observation.jsonl`、`server-observation-after-exit.json`（脱敏服务端字段）与 `device-info.txt`。
+- 关键指纹：`09-ep43-paused-p1.png` `42d482de7c4c29ab55ba654934ed3a262197653714e4fd28f3ca2aac48f5513e`；`11-ep43-after-seek.png` `e36f73debfcbb9ba1aebde8ec1d1528cfd7e2045d19a2d7f01d9769b79c209bd`；`15-series-after-inapp-back.png` `e9df19fa76dd3d5414c1bc166d429564b7aa1bef4fc6bc3dabe87e58f9525ecb`；`17-series-after-system-back.png` `e6d69c5fcf0f11bb456ec37eb48547fe276af1429de115e28641a9c8687a907d`；`18-ep44-playing.png` `ec7ff993ad07bf4759f47ad6617f805f3117a733e5990e3265d4de2459ace98e`；`20-library-return.png` `21aec92e3db5d394afe5c5beb3efaccaec01a80378ad124daa95bec07e5384ac`；`21-movie-playing-t1.png` `43a00463a5b6cf43f8e78fa6d31db8d81b9647870a1860b6120416000985e4f8`；`server-observation.jsonl` `0b5f3cd3264dfe3d55f00aa21723fec78f2dcbb90e8e735234652553efc63f4f`；`server-observation-after-exit.json` `5fdb6e731d108b56297496ffa60097a59ee519862a5cd7f786bfa323783b8ce3`；`ocr-log.txt` `2d0b71dd7fb6c29ea72ead8d07c69458c067698c405b914bc407dc7cc2241c59`。
+
+### 结果分类（历史／模拟／本轮实测／未运行项）
+
+- **本轮实测（Mi 10 / Android 16）**：五条冻结命令退出 0；选季选集与末集可达（单季 44 集）；单集画面、暂停、继续、拖动；服务端位置续播；应用内返回与系统返回两条退出路径；跨集独立；电影原入口播放与返回；两次当场听音确认；服务端无 `TranscodingInfo` 与退出后活动播放清零。
+- **历史结果（不冒充本轮）**：前几节记录的 364 项测试、两端构建与 2026-11-07 的 Android、macOS 实测证据保留原适用范围；本轮为重新独立执行，未沿用其退出码或结论。
+- **模拟结果**：多季切换、特别篇编号 0、超过 60 集仍只有 `test/features/series/series_controller_test.dart` 等 fake 用例证据，不作为真实服务端通过。
+- **未运行项（本轮未验证）**：macOS 原生选季/选集/播放/返回与桌面窗口视觉（含长标题、错误态矩阵）；多季/特别篇 0/超 60 集的真实样本；Windows 构建与实测。以上均不写入通过结论。
+- 文档：`docs/README.md` 更新入口说明的验证状态与阶段描述，逐字保留“入口与调用关系：媒体库 → `/series/:seriesId` → 季集查询 → `/player/:episodeId` → 返回原季。”，未写入未验证的通过声明。
+
+### 封版补记：最终构建产物与主路径复核（执行 8d4fb649）
+
+- 产物变化：本轮第一次 `flutter build apk --debug --no-pub` 产出 `2590904b…e9980f`（219142728 字节），而记录前最后一轮五条命令重建后变为 `a724cf61dcf497dbb26c87cff0b4cdaa590fb3e38993fc719a3007c84a47eb52`（219249363 字节），即全新编译与后续增量编译的 Debug APK 二进制不同。按冻结验收第 6 项，实测产物必须等于最后一次构建产物，因此在最终产物上重新安装并复核主路径。
+- 可复现性探针：随后连续两次执行 `~/devsdk/flutter/bin/flutter build apk --debug --no-pub`，退出码均为 0，产物 SHA-256 与字节数稳定为 `a724cf61…47eb52` / 219249363，说明增量构建自第二次起可复现。
+- 安装核对：`adb install -r -t` 退出 0（`Success`）；设备 `pm path` 指向的 `base.apk` SHA-256 为 `a724cf61…47eb52`，与本轮最终产物逐字一致；`versionName=0.2.3`、`versionCode=5`；`am force-stop` 后 `am start -W` 冷启动 `Status: ok`，前台 `topResumedActivity=dev.mediaplayer.media_player/.MainActivity`，进程 `u0_a347 5475`。未卸载、未清数据、未读取应用私有 token。
+- 最终产物上的主路径复核（21:45–21:48）：媒体库切“国产剧”→《雍正王朝》选集页仍为单季 44 集、第 44 集末项可达；第 43 集读到 `已从 36:30 继续播放`，21:45:39 `36:32` → 21:45:45 `36:38`（像素差异 3.97%）；暂停后 21:45:48 与 21:45:54 均为 `36:40`（两帧文件 SHA-256 相同，像素差异 0.0000）；拖动至 `22:24`，继续后 `22:28`。应用内返回后回原季原位置、第 43 集刷新为“已观看 22:29”，`state:started` 1→0；重开读到 `已从 22:29 继续播放`、`22:33`，Android 系统返回后仍回原季、刷新为“已观看 22:35”，`state:started` 1→0；第 44 集从 `00:05 / 44:56` 独立起播；返回媒体库仍选“国产剧”且《雍正王朝》位置一致；电影《超级马力欧兄弟大电影》原入口读到 `已从 57:59 继续播放`、`58:03 / 01:32:24`，返回后回到原“动画电影”库。
+- 与最终产物对应的服务端观察（21:48）：活动播放仍唯一 1 条，`DeviceId` SHA-256 截断仍为 `beb6faf632f6`、`NowPlayingItem.Id=1646`、**无 `TranscodingInfo`**（`hasTranscodingInfo:false`），`PositionTicks` 由 `13610817805` 增至 `13630821469`；退出后 `active_count=0`、`total_sessions=8`。
+- macOS 产物：Debug 主可执行文件在多次构建间指纹不同（`1ff62064…4d782d`、`99e0ff4c…fbe12f`），Debug 构建不保证二进制可复现；按用户决定未启动该应用，最后一次构建的实测值在交付答复中给出。
+- 证据新增：`26`–`39` 号截图（最终产物复核，共 39 张）；更新后的 `server-observation.jsonl` SHA-256 `323350945fbe0ecb95b0d5d8c4fca4982ac4c3bab3fffc56da897fa3241250c1`、`server-observation-after-exit.json` `089117e9321618e1308643ac0ecb90fb9a43840de70442fa9f3bf09f7bf7404d`、`ocr-log.txt` `5766072be70d67abcfd6dfb7e6190acf8c02a3a1bbb15e6ee09164cb5abc13ff`；前文较早给出的同名文件指纹对应其当时状态，以本节为准。
+- 本节为最终一次人工文件编辑；随后按冻结原文逐条独立重跑五条命令，并要求最终 APK 仍为 `a724cf61…47eb52` 以保持“实测产物 = 最后一次构建产物”，之后不再修改任何源码、测试、文档或记录。
