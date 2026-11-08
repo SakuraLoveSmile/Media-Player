@@ -529,3 +529,87 @@ LANG=en_US.UTF-8 ~/devsdk/flutter/bin/flutter build macos --debug --no-pub
 - macOS 产物：Debug 主可执行文件在多次构建间指纹不同（`1ff62064…4d782d`、`99e0ff4c…fbe12f`），Debug 构建不保证二进制可复现；按用户决定未启动该应用，最后一次构建的实测值在交付答复中给出。
 - 证据新增：`26`–`39` 号截图（最终产物复核，共 39 张）；更新后的 `server-observation.jsonl` SHA-256 `323350945fbe0ecb95b0d5d8c4fca4982ac4c3bab3fffc56da897fa3241250c1`、`server-observation-after-exit.json` `089117e9321618e1308643ac0ecb90fb9a43840de70442fa9f3bf09f7bf7404d`、`ocr-log.txt` `5766072be70d67abcfd6dfb7e6190acf8c02a3a1bbb15e6ee09164cb5abc13ff`；前文较早给出的同名文件指纹对应其当时状态，以本节为准。
 - 本节为最终一次人工文件编辑；随后按冻结原文逐条独立重跑五条命令，并要求最终 APK 仍为 `a724cf61…47eb52` 以保持“实测产物 = 最后一次构建产物”，之后不再修改任何源码、测试、文档或记录。
+
+## 必要验收补证与状态校准（2026-11-08 22:26–23:1x，沿用执行 8d4fb649 的工作树）
+
+- 本次补证标识：任务 `csim4lhdf81m1k7wib615fdv` 在 `8d4fb649-c83e-4f40-a203-24920b1db7d9` 之后的补证轮次，任务书为 `.pi/goal/补齐剧集选季选集验收证据-macos-按用户决定移出-20261108-2235.md`。第 1–110 行冻结正文与本节之前的全部历史记录逐字保留，本节只在文末追加。
+- 计划哈希：本节追加前整文件 SHA-256 为 `b87f8c38a30cab3b554d84906eb0629c327b267ed92ea123379fd5712844390a`；冻结正文（第 1–110 行）SHA-256 在本轮开始与追加后复核均为 `a5b450655b4820d263b52dec7c3c51a8af9d4c6377f0827eaefb6b2b2408d562`。
+- 状态校准：此前第 464 行记录的“待体验”早于必要验收齐备（当时 macOS 原生路径、长文本视觉、错误态与重试、服务端闭环都还没有本轮范围内的证据），本轮开头按“实现中”校准；本节按本轮实际证据把最终状态定稿为 **待体验**（本轮范围内必要项齐备），不自行宣布 pass，终态由核心 Review 判定。历史原文不改写。
+- 工作区：执行目录 `…/managed-worktrees/csim4lhdf81m1k7wib615fdv/branch`，分支 `kaneo/csim4lhdf81m1k7wib615fdv`，HEAD `d3d7eb7e074bd2a43e9010bc51440fbf46b17eef`，与 `manifest.review_remediation.delivery.head_sha`、`execution_worktree.head_sha` 三方一致；`git worktree list` 显示该路径归属本分支（另一条为 `pool/e3b5944cc84341fd/slot-2` 的 detached 槽位与主检出的另一分支，均未触碰）。开始时 `git status --porcelain` 只有 `?? .pi/`；本节与 `docs/README.md` 追加后读回 ` M docs/README.md`、` M docs/series-selection-csim4lhdf81m1k7wib615fdv.plan.md`、`?? .pi/` 三条，即本轮唯一被授权的两份文档变更（均未提交），没有其他改动，构建产物在 `.gitignore` 内未进入版本控制。全过程未 commit、push、merge、tag、reset、stash、rebase，未建新工作树、未切换分支。
+- 历史保护核对：`.pi/goal/` 三份既有记录 SHA-256 仍为 `f9c16abb2c8c05a5bb207c42bf12876eca3fb268662d0cf24ecfd902a1158cf9`（2100）、`2f11fb2f7d69b27a57abcecb67d290a83266cfa373fd84aedb1f8e6fc37bbab3`（1352）、`71eedf3542e0cc69ccbf6b589e6e76452afc30c211064c54cf8cb71b1dd1bd6c`（2058）；既有 `.pi/kanpilot/codex/8d4fb649-…/native-acceptance/`（64 文件）聚合 SHA-256 仍为 `80fbac8a456d9870868b61f46bd8915b4dac036629eaa90ed2367ef27a3f1b0a`；`f9e2e018-…/` 仍只有 `pub-cache -> /Users/sakurasep/.pub-cache`。两条既有任务提交 `d2be80a`（20 文件）与 `d3d7eb7`（2 文件：`docs/README.md` 与本文件）经 `git show --stat` 复核未变。
+
+### 本轮用户决定的范围（历史签核不扩展到这些项）
+
+- macOS 原生选季/选集/播放/返回、桌面窗口视觉与桌面服务端观察**移出本轮必要验收**；本轮未取得 macOS 原生证据（未启动该应用、未做桌面窗口截图或桌面服务端观察），本机 `AXIsProcessTrusted()` 与 `CGPreflightScreenCaptureAccess()` 均为 `false`，按实际状态记录且未申请系统权限。任何位置都不把 macOS 写成本轮通过或实测。
+- 不提供多季、特别篇编号 0、超过 60 集的真实样本；实测中库内存在多季样本（`铁齿铜牙纪晓岚` 4 季、`画江湖之不良人` 3 季、`爱神巧克力` 2 季），仅作补充记录（见下），不作为本轮必要项，也不改变“特别篇 0 / 超过 60 集真实未验证”的口径。
+- Windows 不纳入本轮：未构建、未实测，历史签核不扩展到本功能。
+- 手机错误态使用可恢复隔离手段：临时 `adb shell svc wifi disable` 触发失败，验证后立即恢复并重试验证。
+- 服务端只读观察复用用户提供的只读 API Key 文件（进程内读取，未打印、未写入仓库）。
+
+### 继承证据的对应关系
+
+- 继承来源：执行 `8d4fb649` 及其最终产物 `a724cf61dcf497dbb26c87cff0b4cdaa590fb3e38993fc719a3007c84a47eb52`（219249363 字节）。
+- 可继承判断依据：候选源码（`lib/**`、`test/**`）自提交 `d3d7eb7` 起未变；依赖（`pubspec.yaml`、`pubspec.lock`）未变；平台配置（`android/**`、`macos/**`）未变；相关环境无影响性变化（同机 Flutter 3.47.7 / Dart 3.13.5、同一设备 `8085d06e`、同一 LAN 服务端与同一登录账号）。
+- 身份核对：本轮实测所用的 APK 与设备 `pm path` 的 `base.apk` SHA-256 均为 `a724cf61…47eb52`，与本轮重新构建的产物逐字一致。
+- `execution-device-info.txt`（磁盘上实际文件名为 `.pi/kanpilot/codex/8d4fb649-…/native-acceptance/device-info.txt`）对应那次执行的**首次构建** `2590904b…e9980f`，不作为最终产物身份。
+- 继承项在本节一律标注为历史证据，不写成本轮实测。
+
+### 手机必要视觉（本轮实测，Mi 10 / Android 16 / SDK 36，序列号 `8085d06e`，系统用户 0）
+
+- 运行对象：包名 `dev.mediaplayer.media_player`，`versionName=0.2.3`、`versionCode=5`、Debug；`topResumedActivity=dev.mediaplayer.media_player/.MainActivity`，进程 `u0_a347 17007`；`wm size` 1080×2340、`wm density` 440dpi（逻辑 392.7×850.9，dpr 2.75），`dumpsys window displays` 为 `cur=1080x2340 app=1080x2340`。运行包身份即设备 `base.apk` 的 SHA-256 `a724cf61…47eb52`。未卸载、未清数据、未读取应用私有 token 或会话。
+- 长剧名：库内最长剧名为 `斗罗大陆Ⅱ绝世唐门`（9 字），标题栏单行渲染 `[198,129][713,206]`，可用宽度到 992px，未溢出、未触发省略。
+- 简介（三行上限）：`铁齿铜牙纪晓岚`（约 240 字）与 `斗罗大陆Ⅱ绝世唐门`（约 130 字）的简介语义容器均为 `[44,277][1036,442]`，高 165px ≈ 60 逻辑像素 = 3 行 bodyMedium，左右各 44px（16 逻辑）留白，与冻结的 `maxLines: 3` + ellipsis 一致。
+- 季条：`SizedBox(height: 56)` 实测 154px（`铁齿铜牙纪晓岚` 的季条横滑区域 `[0,464][1080,618]`）；`ChoiceChip` 实测高 110px（40 逻辑，垂直内边距 8）、间距 8、左右留白各 44px（16 逻辑）。
+- 季条横向滚动与末项可达：`铁齿铜牙纪晓岚` 服务端返回 **4 个季**，初始第 4 个 chip 被屏幕右缘裁切 `[896,486][1080,596]`；横向滑动后变为 `[603,486][1047,596]`（完全可见，右侧 44px 留白），点击后 `selected=true`。
+- 切季真实生效：选中第 4 季并播放其第 1 集，服务端读回 `ParentIndexNumber=4`、`IndexNumber=1`，说明季选择真切到了分集查询与播放对象，而不只是标签变化。
+- 分集名（两行上限）：`武林外传` 的 24 字标题条目实测高 176px，而单行标题条目为 154px，即换行为两行且不截断、不溢出；列表左右留白 44px（16 逻辑），首项从 `[44,657]` 起。
+- 观看状态：`雍正王朝` 第 43 集显示 `第 43 集 · 雍正亲自审问弘时` / `时长 44:37 · 已观看 22:40`，条目高 198px（标题 1 行 + 副标题），无遮挡。
+- 末集可达：`雍正王朝` 该季 44 集，滚动到底后第 44 集 `雍正皇帝去世` 条目 `[44,2076][1036,2274]` 可见可点。
+- 播放操作：第 4 季第 1 集进入播放器后读到 `直连播放`、`00:00 / 00:00` 起播；服务端同一条目 `PlayState.PositionTicks` 由 `90801233` 增至 `239220674`（约 9s → 24s）；应用内返回后回到原季（第 4 季仍选中，列表回到顶部并刷新出 `时长 45:05`）。
+- 如实缺口：本轮核对了 17 个剧集样本（`国产剧` 12 个、`国漫` 5 个）的剧名与季名、以及代表性剧集的分集名——最长剧名 9 字（`斗罗大陆Ⅱ绝世唐门`）、最长季名 8 字（`画江湖之不良人` 的“初露锋芒 江湖启幕”与 `铁齿铜牙纪晓岚2`；chip 文字可用宽度上限约 296.7 逻辑像素 ≈ 816px）、最长分集名 24 字（`武林外传`），均未触发 AppBar / chip 的省略号分支，**超长名称的省略行为仍只有 widget 与模拟证据**；`特别篇编号 0` 无样本；`超过 60 集` 无样本（本轮数到底的最大季为 44 集，`斗罗大陆Ⅱ绝世唐门` 的第 1 季只有 1 集，编号 140）。
+
+### 错误态与重试（本轮实测）
+
+- 触发：媒体库已加载后执行 `adb shell svc wifi disable`（`settings get global wifi_on` 读回 `0`），再进入 `斗罗大陆Ⅱ绝世唐门`；剧集页显示错误文字 `无法连接服务器，请检查网络` 与 `重试` 按钮 `[435,1265][645,1397]`，截图为 `09-series-load-error.png`。
+- 恢复：立即执行 `adb shell svc wifi enable`，8 秒后 `settings get global wifi_on` 读回 `1`；点击 `重试` 后同一页面恢复剧名、简介、季 chip 与分集，语义树与出错前逐字相同（`b2_douluo.xml` 与 `c2_retry_ok.xml` 的 SHA-256 均为 `2ddc22449a149f56b95d06671c769e1048b59ad1099f717275495dc60a444608`）。`adb devices` 复核该设备状态为 `device`。
+- 未修改服务器数据、用户现用配置或应用私有凭据；未向产品加入任何测试入口；网络开关已恢复并验证。
+
+### 服务端（只读会话观察，绑定本任务自己的播放）
+
+- 观察方式：仅使用用户提供的只读 API Key 文件（进程内读取，未打印、未写入仓库），`GET /Sessions` 共 3 次（播放中 2 次、退出后 1 次），HTTP 均为 200。
+- 唯一匹配：以 `DeviceId` + `NowPlayingItem.Id` 关联，活动播放唯一 1 条——`DeviceId` 的 SHA-256 截断为 `beb6faf632f6`、`NowPlayingItem.Id=1519`、`Type=Episode`、`SeriesId` 截断 `ee47968ec53b`、`SeasonId` 截断 `48d300745236`、`ParentIndexNumber=4`、`IndexNumber=1`。
+- 转码判据：完整响应中**无 `TranscodingInfo` 字段**（`hasTranscodingInfo:false`、`transcodingInfoKeys:null`），按冻结口径记为视频未转码；`PlayState.PlayMethod=DirectPlay` 与客户端标签仅作辅证。
+- 播放进行：同一条目 `PositionTicks` 两次读取由 `90801233` 增至 `239220674`。
+- 退出停止：应用内返回后同一匹配条件 `active_count=0`，`total_sessions=8`（登录设备会话仍在）。请求失败、401/403、空白页或丢失匹配条件均未被用作停止证据；未停止他人会话。
+- 脱敏：服务端基地址与 Key 未写入本记录或证据文件，记录只保留截断 SHA-256 与派生字段；证据目录已按 Key 明文、服务端地址与端口三项全文扫描，均为 0 命中（目录内出现的 `http://`／`https://` 字符串全部来自单元测试夹具，例如 `http://host/path/?api_key=abc#frag`、`http://nas.local:8096`、`https://[::1]:8920`，不含真实地址或凭据）。
+
+### 本轮自动检查（逐条、独立、串行）
+
+- 构建轮（22:55 起，用于取得产物指纹与测试数量，五次独立调用）：`./tool/check_layering.sh` 退出 0（`layering ok`）；`~/devsdk/flutter/bin/flutter analyze --no-pub` 退出 0（`No issues found!` 4.4s）；`~/devsdk/flutter/bin/flutter test --no-pub` 退出 0（`+364: All tests passed!`，与上一轮 364 持平，无失败、无跳过计数）；`LANG=en_US.UTF-8 ~/devsdk/flutter/bin/flutter build macos --debug --no-pub` 退出 0；`~/devsdk/flutter/bin/flutter build apk --debug --no-pub` 退出 0（Gradle `assembleDebug` 2,680ms）。
+- 最终轮：在**最后一次人工文件编辑之后**，按上列冻结原文逐条、独立、串行重跑五条；原始输出与退出码写入证据目录 `final-checks/` 的 `*.out` / `*.exit`，退出码同时逐条列在最终答复。之后未再修改源码、测试、文档或记录。
+- 环境：macOS 27.0.1 arm64，Flutter 3.47.7 stable / Dart 3.13.5；未安装或升级 SDK/JDK，未执行 `pub get/upgrade`，未修改依赖、锁文件、平台工程、签名或质量门；macOS 仍有 media_kit 未采用 SPM 的 Swift 告警、Android 仍有既有 SDK 告警，两条命令实际均退出 0，未为消除告警改配置。
+
+### 最终产物与指纹（本轮最后一次构建后实测）
+
+- Android：`build/app/outputs/flutter-apk/app-debug.apk`，219249363 字节，SHA-256 `a724cf61dcf497dbb26c87cff0b4cdaa590fb3e38993fc719a3007c84a47eb52`；设备 `pm path` 指向的 `base.apk` 与实测运行对象 SHA-256 与之逐字一致，即本轮实测就跑在最终产物上，无需重装复核。
+- macOS：`build/macos/Build/Products/Debug/Media Player.app`，bundle ID `dev.mediaplayer.mediaPlayer`，主可执行文件 `Contents/MacOS/Media Player` 40976 字节、SHA-256 `99e0ff4cfc87ae39ecd2f66376da806cd7a285ecd6cce7116b5c423a82fbe12f`；按用户本轮决定未启动该应用，因此没有 macOS 原生实测对象可供比对，也不给出 macOS 结论。
+- 两处产物均在 `.gitignore` 的 `**/build/` 内，不改变 `git status --porcelain`。产物存在、构建退出 0、测试通过或界面标签都不作为真实播放、无视频转码或会话已停止的证据。
+
+### 证据位置与指纹
+
+- 目录（本轮新增，不改动既有目录）：`.pi/kanpilot/codex/review-evidence-20261108-2235/native-acceptance/`，内含 10 张本轮截图、10 份 `uiautomator` 语义树 XML、`server-observation.jsonl`、`server-observation-after-exit.json`、`device-info.txt`，以及五条检查的 `final-checks/` 原始输出。
+- 关键指纹：`01-series-three-seasons.png` `a54faf3188fa51d47fc1d2a7567a32429c3397f7ea33643082fae63e77354728`；`02-season-bar-scrolled.png` `a53ac9d7743386e5f05e0f90bd554a9228188436e6ed461bea313711dbec35d8`；`03-season4-selected.png` `49c920a9c592eed0e1d2854a2646e9c06d5c395f1391fd2df294ba1dc43587a6`；`04-player-episode.png` `2c4e976c3999461a43eaad299695ae5973223a0856d7b7ad6213b54ea269345c`；`06-long-episode-names.png` `0f343ac54fb690c4b92f670a15cb9fe67313244d256185980f6c6a3a6d316233`；`07-watch-state-44-episodes.png` `1ed421715a7b7157404a13cc523b2d1a4d819466ccd31270d6c52b86185395f0`；`08-longest-series-name.png` `619ad054b33f6f58808a830612e3cb0ad9b81342dcb2e42e50c9ec4eebdcfbe6`；`09-series-load-error.png` `2e265a2d0261dc58f6754acc323fe3e542bb83a3ffbffad0ce7efbb8bf7e3978`；`10-retry-success.png` `e7e09e7f1294f68d82f432a22f240efce2e0bbd61e387a2847365a659255576b`；`server-observation.jsonl` `b19546c3385a202242e6250b79ce158d1600f1c260bd1e91d7f24dd30110c9e2`；`server-observation-after-exit.json` `ce65cecf4562a16b50c047f763a92570c391e48da76cca4d28be637677149e30`；`device-info.txt` `58d68b879b7dccc53376f14fabd4f3fa99f364fe3ff7ea0e57e67a2afeb6ead9`。
+
+### 结果分类（历史／模拟／本轮实测／未运行项）
+
+- **本轮实测（Mi 10 / Android 16）**：长剧名、简介三行上限、季条高 56 与横向滚动、4 季切换并真实播放第 4 季第 1 集、两行分集名、观看状态、44 集末项可达、单集播放操作；错误态与重试（含网络恢复与语义树一致）；服务端活动播放唯一匹配、无 `TranscodingInfo`、退出后清零；五条冻结检查；两端 Debug 产物与指纹。
+- **历史证据（不冒充本轮）**：本文件前面各节的 macOS/Android 实测、364 项测试与 `8d4fb649` 的封版补记保留原适用范围；本轮 Android 的继承来源为执行 `8d4fb649` 与其产物 `a724cf61…47eb52`；`execution-device-info.txt` 对应首次构建 `2590904b…e9980f`，不代表最终产物。
+- **模拟证据**：超长名称的省略分支、特别篇编号 0、超过 60 集仍只有 widget 与 `test/features/series/` 下的 fake 用例证据。
+- **未运行项（本轮未验证）**：macOS 原生选季/选集/播放/返回、桌面窗口视觉与桌面服务端观察（用户决定移出本轮必要验收）；特别篇编号 0 与超过 60 集的真实样本；Windows 构建与实测。
+- 文档：`docs/README.md` 同步更新索引条目与“验证状态”段，逐字保留“入口与调用关系：媒体库 → `/series/:seriesId` → 季集查询 → `/player/:episodeId` → 返回原季。”，并按历史证据／模拟证据／本轮实测／未运行项四类分开陈述。
+
+### 剩余项与体验入口
+
+- 剩余项：macOS（按用户决定移出本轮必要验收，本轮未取得原生证据，历史签核不扩展到该功能）；特别篇编号 0、超过 60 集（模拟已覆盖、真实未验证）；Windows（未构建未实测）；`.pi/kanpilot/codex/f9e2e018-…/pub-cache -> /Users/sakurasep/.pub-cache` 保持现状，未推测正文、未覆盖、未清理（本轮 `flutter` 命令均在缓存可用状态下运行，无需报告环境缺项）。
+- 体验入口：媒体库 →（`国产剧` / `国漫`）剧集海报 → 选集页（简介 + 季条 + 单列分集）→ 点击分集 → `/player/:episodeId` 播放器 → 返回原季。多季样本可用 `铁齿铜牙纪晓岚`（4 季），长分集名样本可用 `武林外传`，观看状态样本可用 `雍正王朝` 第 43 集，长剧名样本可用 `斗罗大陆Ⅱ绝世唐门`。
+- 本节不判定 blocked 解除、不判定 pass、不创建提交；由核心在 Review 前自行创建本地提交，不推送、不合并。
