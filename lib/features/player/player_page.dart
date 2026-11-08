@@ -111,6 +111,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     }
   }
 
+  Future<void> _selectEpisodes(String seriesId) async {
+    if (_leaving || _redirecting) return;
+    _leaving = true;
+    await _controller?.stop();
+    if (!mounted || _redirecting) return;
+    context.pushReplacement(AppRoutes.seriesFor(seriesId));
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -140,18 +148,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     }
 
     if (state.unsupported) {
+      final seriesId = state.selectionSeriesId;
       return _NoticeView(
         message: state.error ?? '这个条目暂不支持播放',
         onBack: _leave,
+        onSelectEpisodes: seriesId == null
+            ? null
+            : () => unawaited(_selectEpisodes(seriesId)),
       );
     }
     final error = state.error;
     if (error != null && !state.ready) {
-      return _NoticeView(
-        message: error,
-        onBack: _leave,
-        onRetry: _reload,
-      );
+      return _NoticeView(message: error, onBack: _leave, onRetry: _reload);
     }
 
     return Stack(
@@ -202,7 +210,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
               children: <Widget>[
                 IconButton(
                   key: const Key('player-back'),
-                  tooltip: '返回媒体库',
+                  tooltip: '返回',
                   color: Colors.white,
                   onPressed: _leave,
                   icon: const Icon(Icons.arrow_back),
@@ -212,8 +220,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                     state.itemName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(color: Colors.white),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: Colors.white,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -241,8 +250,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   Widget _controlBar(PlayerController controller, PlayerState state) {
     final theme = Theme.of(context);
     final total = state.duration;
-    final max =
-        total > Duration.zero ? total.inMilliseconds.toDouble() : 1.0;
+    final max = total > Duration.zero ? total.inMilliseconds.toDouble() : 1.0;
     final value = (_dragMillis ?? state.position.inMilliseconds.toDouble())
         .clamp(0.0, max);
     final shown = _dragMillis == null
@@ -321,14 +329,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   progress,
-                  Row(
-                    children: <Widget>[
-                      toggle,
-                      time,
-                      const Spacer(),
-                      volume,
-                    ],
-                  ),
+                  Row(children: <Widget>[toggle, time, const Spacer(), volume]),
                 ],
               );
             }
@@ -350,7 +351,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
 
 /// Direct-play verdict from §10.9 f: `null` is "unconfirmed", never "direct".
 class _DirectStatus extends StatelessWidget {
-  const _DirectStatus({required this.videoDirect, required this.audioTranscoded});
+  const _DirectStatus({
+    required this.videoDirect,
+    required this.audioTranscoded,
+  });
 
   final bool? videoDirect;
   final bool audioTranscoded;
@@ -399,11 +403,17 @@ class _Banner extends StatelessWidget {
 }
 
 class _NoticeView extends StatelessWidget {
-  const _NoticeView({required this.message, required this.onBack, this.onRetry});
+  const _NoticeView({
+    required this.message,
+    required this.onBack,
+    this.onRetry,
+    this.onSelectEpisodes,
+  });
 
   final String message;
   final VoidCallback onBack;
   final Future<void> Function()? onRetry;
+  final VoidCallback? onSelectEpisodes;
 
   @override
   Widget build(BuildContext context) {
@@ -435,6 +445,12 @@ class _NoticeView extends StatelessWidget {
                   FilledButton(
                     onPressed: () => unawaited(retry()),
                     child: const Text('重试'),
+                  ),
+                if (onSelectEpisodes != null)
+                  FilledButton(
+                    key: const Key('player-select-episodes'),
+                    onPressed: onSelectEpisodes,
+                    child: const Text('选择分集'),
                   ),
               ],
             ),

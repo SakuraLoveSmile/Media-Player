@@ -7,6 +7,10 @@ void main() {
     expect(AppRoutes.playerFor('42'), '/player/42');
   });
 
+  test('series route carries the series id', () {
+    expect(AppRoutes.seriesFor('series-42'), '/series/series-42');
+  });
+
   test('only transport-level failures are retryable', () {
     expect(AppErrorCode.networkUnreachable.retryable, isTrue);
     expect(AppErrorCode.serverError.retryable, isTrue);

@@ -17,6 +17,28 @@
 - [M2 签核记录](m2-signoff.md) — macOS + Android 已签；Windows 拆为 M2-W，验收条件见契约 §8.1。
 - [F4 反馈与在线更新](f4-notes.md) — feedback_widget 0.8.4 接入、设置页、GitHub Releases 在线更新与验证记录。
 - [发布与在线更新流程](release.md) — tag 发布、三平台资产、Android 固定签名与更新安装行为。
+- [剧集选季与单集播放执行记录](series-selection-csim4lhdf81m1k7wib615fdv.plan.md) — 本任务冻结计划、实现范围与验证限制；Android 已部分实测，macOS 与服务端验收待完成。
+
+## 媒体库到单集播放器
+
+入口与调用关系：媒体库 → `/series/:seriesId` → 季集查询 → `/player/:episodeId` → 返回原季。
+
+媒体库 `lib/features/library/library_page.dart` 按条目类型导航：电影沿用
+`/player/:itemId`；剧集通过 push 打开 `/series/:seriesId`，保留媒体库的库选择与滚动位置。
+路由集中注册在 `lib/app/router.dart`，路径契约位于 `lib/core/router/app_routes.dart`。
+
+`lib/features/series/series_page.dart` 从 `bootstrapProvider` 获取同一组服务，
+`SeriesController` 通过 `LibraryService.item(seriesId)` / `seasons(seriesId)` 读取剧名与季，
+再按真实 `seasonId` 调用 `episodes(seriesId: ..., seasonId: ...)`。页面只读服务端观看状态，
+保留季选择及每季滚动位置，切季的过期响应不会覆盖当前季；请求仍由认证仓储派生自同一
+`ResolvedEndpoint`，不增加接口或持久化结构。
+
+点击分集通过 push 打开 `/player/:episodeId`，继续由 `PlayerController` 重新读取单集详情，
+并沿用 `PlaybackService`、每次新建的 `PlaybackEngine` / `PlaybackReporter` 完成播放协商、
+严格大于 10 秒且未看完时的续播、进度上报与 Stopped。播放器先等待 Stopped 完成再返回，
+选集页随后刷新当前季的服务端观看状态。旧 `/player/:seriesId` 仍禁止对 Series 协商播放，
+并提供“选择分集”按钮替换当前路由。LAN 视频不转码、片源选择及反馈元数据剥离编号的规则沿用现有契约。
+选集页仅在页面及原播放会话仍有效时刷新；系统返回离页或会话失效、被替换后不再发起该刷新。
 
 ## 当前硬约束
 
