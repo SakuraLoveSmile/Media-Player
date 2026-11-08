@@ -94,6 +94,7 @@ const Set<String> _pageCategories = <String>{
   'login',
   'library',
   'player',
+  'series',
   'settings',
 };
 

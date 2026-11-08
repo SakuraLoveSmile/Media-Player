@@ -109,6 +109,7 @@ void main() {
       expect(feedbackPageLabelFromUri(Uri.parse('/login')), 'login');
       expect(feedbackPageLabelFromUri(Uri.parse('/library')), 'library');
       expect(feedbackPageLabelFromUri(Uri.parse('/player')), 'player');
+      expect(feedbackPageLabelFromUri(Uri.parse('/series')), 'series');
       expect(feedbackPageLabelFromUri(Uri.parse('/settings')), 'settings');
     });
 
@@ -128,6 +129,15 @@ void main() {
     test('unknown top-level segments collapse to other', () {
       expect(feedbackPageLabelFromUri(Uri.parse('/admin/secret')), 'other');
       expect(feedbackPageLabelFromUri(Uri.parse('/unknown')), 'other');
+    });
+
+    test('series drops identifiers and query parameters', () {
+      expect(
+        feedbackPageLabelFromUri(
+          Uri.parse('/series/private-series?token=secret&server=private'),
+        ),
+        'series',
+      );
     });
 
     test('never leaks ids, query parameters or the server address', () {

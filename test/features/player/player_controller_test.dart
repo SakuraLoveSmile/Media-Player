@@ -93,15 +93,17 @@ void main() {
     expect(player.state.resumedFrom, isNull);
   });
 
-  test('a position below the 10 s threshold starts from the beginning',
-      () async {
-    final player = build(testItem(position: const Duration(seconds: 8)));
+  test(
+    'a position below the 10 s threshold starts from the beginning',
+    () async {
+      final player = build(testItem(position: const Duration(seconds: 8)));
 
-    await player.load();
+      await player.load();
 
-    expect(playback.resolveStartAts, <Duration>[Duration.zero]);
-    expect(player.state.resumedFrom, isNull);
-  });
+      expect(playback.resolveStartAts, <Duration>[Duration.zero]);
+      expect(player.state.resumedFrom, isNull);
+    },
+  );
 
   test('a series stops before negotiating', () async {
     final player = build(testItem(type: 'Series'));
@@ -112,7 +114,46 @@ void main() {
     expect(player.state.unsupported, isTrue);
     expect(player.state.ready, isFalse);
     expect(player.state.error, contains('分集'));
+    expect(player.state.selectionSeriesId, 'item-1');
+    expect(engine.openedPlans, isEmpty);
+    expect(reporter.startedItemIds, isEmpty);
   });
+
+  for (final sample in <({Duration position, bool played, bool resumes})>[
+    (position: const Duration(seconds: 8), played: false, resumes: false),
+    (position: const Duration(seconds: 10), played: false, resumes: false),
+    (
+      position: const Duration(seconds: 10, microseconds: 1),
+      played: false,
+      resumes: true,
+    ),
+    (position: const Duration(seconds: 125), played: true, resumes: false),
+  ]) {
+    test('Episode resume boundary: $sample', () async {
+      final player = build(
+        testItem(
+          id: 'episode-42',
+          type: 'Episode',
+          position: sample.position,
+          played: sample.played,
+        ),
+      );
+      await player.load();
+
+      final expected = sample.resumes ? sample.position : Duration.zero;
+      expect(playback.resolveItemIds, ['episode-42']);
+      expect(playback.resolveStartAts, [expected]);
+      expect(engine.openedPlans.single.itemId, 'episode-42');
+      expect(engine.openedPlans.single.startAt, expected);
+      expect(reporter.startedItemIds, ['episode-42']);
+      expect(player.state.selectionSeriesId, isNull);
+      await player.seekTo(const Duration(seconds: 30));
+      await player.togglePlayPause();
+      await player.stop();
+      expect(reporter.progressItemIds, ['episode-42', 'episode-42']);
+      expect(reporter.stoppedItemIds, ['episode-42']);
+    });
+  }
 
   test('a denied direct play is mapped to copy, not thrown', () async {
     final player = build(testItem());
@@ -136,24 +177,26 @@ void main() {
     expect(player.state.ready, isFalse);
   });
 
-  test('a successful start opens once and reports the engine position',
-      () async {
-    final player = build(testItem(position: const Duration(seconds: 120)));
+  test(
+    'a successful start opens once and reports the engine position',
+    () async {
+      final player = build(testItem(position: const Duration(seconds: 120)));
 
-    await player.load();
+      await player.load();
 
-    expect(engine.openedPlans, hasLength(1));
-    expect(engine.openedPlans.single.startAt, const Duration(seconds: 120));
-    expect(player.state.ready, isTrue);
-    expect(player.state.itemName, '测试影片');
-    expect(reporter.startedCalls, 1);
-    expect(reporter.startedAt, const Duration(seconds: 120));
+      expect(engine.openedPlans, hasLength(1));
+      expect(engine.openedPlans.single.startAt, const Duration(seconds: 120));
+      expect(player.state.ready, isTrue);
+      expect(player.state.itemName, '测试影片');
+      expect(reporter.startedCalls, 1);
+      expect(reporter.startedAt, const Duration(seconds: 120));
 
-    engine.emit(const PlaybackSnapshot(position: Duration(seconds: 42)));
-    await pumpEventQueue();
+      engine.emit(const PlaybackSnapshot(position: Duration(seconds: 42)));
+      await pumpEventQueue();
 
-    expect(reporter.positionGetter!(), const Duration(seconds: 42));
-  });
+      expect(reporter.positionGetter!(), const Duration(seconds: 42));
+    },
+  );
 
   test('the verdict check fills in the confirmed values', () async {
     playback.confirmedPlan = fakePlan(videoDirect: true, audioTranscoded: true);
@@ -370,7 +413,10 @@ void main() {
 
     expect(engine.seeks, <Duration>[const Duration(minutes: 5)]);
     expect(reporter.progressReports, hasLength(1));
-    expect(reporter.progressReports.single.position, const Duration(minutes: 5));
+    expect(
+      reporter.progressReports.single.position,
+      const Duration(minutes: 5),
+    );
     expect(reporter.progressReports.single.paused, isTrue);
     expect(player.state.position, const Duration(minutes: 5));
   });

@@ -13,6 +13,9 @@ class ProgressReport {
 /// `Stopped`-once guarantee under test belongs to the controller here, while
 /// `SessionReporter` keeps its own flag for the real runs.
 class FakePlaybackReporter implements PlaybackReporter {
+  final List<String> startedItemIds = <String>[];
+  final List<String> progressItemIds = <String>[];
+  final List<String> stoppedItemIds = <String>[];
   int startedCalls = 0;
   Duration? startedAt;
 
@@ -31,6 +34,7 @@ class FakePlaybackReporter implements PlaybackReporter {
     required Duration Function() position,
   }) async {
     startedCalls++;
+    startedItemIds.add(plan.itemId);
     startedAt = initialPosition;
     positionGetter = position;
   }
@@ -42,11 +46,13 @@ class FakePlaybackReporter implements PlaybackReporter {
     required bool paused,
   }) async {
     progressReports.add(ProgressReport(position, paused: paused));
+    progressItemIds.add(plan.itemId);
   }
 
   @override
   Future<void> stopped(PlaybackPlan plan, Duration position) async {
     stoppedCalls++;
+    stoppedItemIds.add(plan.itemId);
     stoppedAt = position;
   }
 }

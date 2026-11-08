@@ -1,0 +1,10 @@
+device-package-info.txt  2026-11-08 22:57:14 CST
+    versionCode=5 minSdk=24 targetSdk=36
+    versionName=0.2.3
+package: dev.mediaplayer.media_player
+pid/uid: 17007 / u0_a347
+Physical size: 1080x2340
+Physical density: 440
+ro.product.model=Mi 10 release=16 sdk=36
+installed base.apk sha256: a724cf61dcf497dbb26c87cff0b4cdaa590fb3e38993fc719a3007c84a47eb52
+built app-debug.apk sha256: a724cf61dcf497dbb26c87cff0b4cdaa590fb3e38993fc719a3007c84a47eb52

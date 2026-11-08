@@ -6,10 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/app/app.dart';
 import 'package:media_player/app/providers.dart';
+import 'package:media_player/app/router.dart';
 import 'package:media_player/app/services.dart';
 import 'package:media_player/core/errors/app_error.dart';
 import 'package:media_player/core/errors/emby_exception.dart';
 import 'package:media_player/core/network/endpoint_kind.dart';
+import 'package:media_player/core/router/app_routes.dart';
 import 'package:media_player/data/auth/auth_service.dart';
 import 'package:media_player/data/models/auth_session.dart';
 import 'package:media_player/data/models/library_view.dart';
@@ -40,11 +42,11 @@ class ResettingSurfaceEngine extends FakePlaybackEngine {
 
   @override
   Widget createSurface() => _TeardownSurface(
-        onDispose: () {
-          emit(const PlaybackSnapshot());
-          onSurfaceDispose();
-        },
-      );
+    onDispose: () {
+      emit(const PlaybackSnapshot());
+      onSurfaceDispose();
+    },
+  );
 }
 
 class _TeardownSurface extends StatefulWidget {
@@ -70,11 +72,11 @@ class _TeardownSurfaceState extends State<_TeardownSurface> {
 class StaticAuth implements AuthService {
   @override
   AuthSession? get current => const AuthSession(
-        userId: 'u1',
-        userName: 'test',
-        accessToken: 'token',
-        deviceId: 'd1',
-      );
+    userId: 'u1',
+    userName: 'test',
+    accessToken: 'token',
+    deviceId: 'd1',
+  );
 
   @override
   Stream<AuthSession?> get session => const Stream<AuthSession?>.empty();
@@ -90,16 +92,14 @@ class StaticAuth implements AuthService {
     required String username,
     required String password,
     required ServerProfile profile,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<ServerProfile> adoptAddress({
     required ServerProfile profile,
     required EndpointKind kind,
     required String rawUrl,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<void> logout() async {}
@@ -140,14 +140,18 @@ void main() {
     MediaItem? item,
     FakePlaybackEngine Function()? createEngine,
     FakePlaybackReporter Function()? createReporter,
+    FakeLibraryService? libraryOverride,
+    bool legacyRoute = false,
   }) async {
     final media = item ?? playerItem();
-    final library = FakeLibraryService(
-      viewList: <LibraryView>[fakeMoviesView],
-      itemsByView: <String, List<MediaItem>>{
-        fakeMoviesView.id: <MediaItem>[media],
-      },
-    );
+    final library =
+        libraryOverride ??
+        FakeLibraryService(
+          viewList: <LibraryView>[fakeMoviesView],
+          itemsByView: <String, List<MediaItem>>{
+            fakeMoviesView.id: <MediaItem>[media],
+          },
+        );
 
     await tester.pumpWidget(
       ProviderScope(
@@ -167,7 +171,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text(media.name));
+    if (legacyRoute) {
+      ProviderScope.containerOf(tester.element(find.byType(MediaPlayerApp)))
+          .read(appRouterProvider)
+          .go(AppRoutes.playerFor(media.id));
+    } else {
+      await tester.tap(find.text(media.name));
+    }
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
@@ -176,8 +186,7 @@ void main() {
   Future<void> systemBack(WidgetTester tester) async {
     await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
       'flutter/navigation',
-      const JSONMethodCodec()
-          .encodeMethodCall(const MethodCall('popRoute')),
+      const JSONMethodCodec().encodeMethodCall(const MethodCall('popRoute')),
       (_) {},
     );
     await tester.pumpAndSettle();
@@ -194,6 +203,70 @@ void main() {
     await tester.tap(find.byKey(const Key('player-play-toggle')));
     await tester.pumpAndSettle();
     expect(engine.pauseCalls, 1);
+  });
+
+  testWidgets(
+    'legacy Series player can replace itself with episode selection',
+    (tester) async {
+      const series = MediaItem(id: 'show', name: '测试剧集', type: 'Series');
+      final library = FakeLibraryService(
+        viewList: [fakeShowsView],
+        itemsByView: {
+          fakeShowsView.id: [series],
+        },
+        seasonsBySeries: {
+          'show': [
+            const MediaItem(
+              id: 's1',
+              name: '第一季',
+              type: 'Season',
+              indexNumber: 1,
+            ),
+          ],
+        },
+        episodesBySeason: {
+          's1': [
+            const MediaItem(
+              id: 'ep1',
+              name: '开场',
+              type: 'Episode',
+              indexNumber: 1,
+            ),
+          ],
+        },
+      );
+      await pumpPlayer(
+        tester,
+        item: series,
+        libraryOverride: library,
+        legacyRoute: true,
+      );
+      expect(find.text('请选择分集后播放'), findsOneWidget);
+      expect(playback.resolveCalls, 0);
+      expect(engine.openedPlans, isEmpty);
+      await tester.tap(find.byKey(const Key('player-select-episodes')));
+      await tester.pumpAndSettle();
+      expect(find.text('第 1 集 · 开场'), findsOneWidget);
+      expect(find.byKey(const Key('player-error')), findsNothing);
+      expect(playback.resolveCalls, 0);
+      expect(reporter.startedCalls, 0);
+      expect(engine.disposeCalls, 1);
+
+      await tester.tap(find.byKey(const Key('series-back')));
+      await tester.pumpAndSettle();
+      expect(find.text('媒体库'), findsOneWidget);
+      expect(find.byKey(const Key('player-error')), findsNothing);
+    },
+  );
+
+  testWidgets('an Episode playback 401 returns to login', (tester) async {
+    playback.failure = EmbyException(AppErrorCode.unauthorized);
+    const episode = MediaItem(id: 'ep1', name: '测试分集', type: 'Episode');
+    await pumpPlayer(tester, item: episode, legacyRoute: true);
+    expect(find.byKey(const Key('login-submit')), findsOneWidget);
+    expect(playback.resolveItemIds, ['ep1']);
+    expect(engine.openedPlans, isEmpty);
+    expect(reporter.startedItemIds, isEmpty);
   });
 
   testWidgets('finishing a progress drag seeks once', (tester) async {
@@ -317,8 +390,9 @@ void main() {
     );
   });
 
-  testWidgets('a failure shows mapped copy without an exception string',
-      (tester) async {
+  testWidgets('a failure shows mapped copy without an exception string', (
+    tester,
+  ) async {
     playback.failure = EmbyException(AppErrorCode.playbackUnsupported);
     await pumpPlayer(tester);
 
@@ -328,9 +402,13 @@ void main() {
     expect(find.textContaining('EmbyException'), findsNothing);
   });
 
-  testWidgets('a resumed playback states where it continued from',
-      (tester) async {
-    await pumpPlayer(tester, item: playerItem(position: const Duration(seconds: 125)));
+  testWidgets('a resumed playback states where it continued from', (
+    tester,
+  ) async {
+    await pumpPlayer(
+      tester,
+      item: playerItem(position: const Duration(seconds: 125)),
+    );
 
     final hint = find.byKey(const Key('player-resume-hint'));
     expect(hint, findsOneWidget);
@@ -393,8 +471,9 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('closes the failed session and builds a new pair',
-        (tester) async {
+    testWidgets('closes the failed session and builds a new pair', (
+      tester,
+    ) async {
       await pumpFailingPlayer(tester);
       await tapRetry(tester);
 

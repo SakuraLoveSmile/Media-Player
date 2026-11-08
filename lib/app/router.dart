@@ -6,6 +6,7 @@ import '../core/router/app_routes.dart';
 import '../features/library/library_page.dart';
 import '../features/login/login_page.dart';
 import '../features/player/player_page.dart';
+import '../features/series/series_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/startup/startup_page.dart';
 
@@ -35,6 +36,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.library,
         builder: (context, state) => const LibraryPage(),
+      ),
+      GoRoute(
+        path: '${AppRoutes.series}/:seriesId',
+        builder: (context, state) =>
+            SeriesPage(seriesId: state.pathParameters['seriesId'] ?? ''),
       ),
       GoRoute(
         path: '${AppRoutes.player}/:itemId',

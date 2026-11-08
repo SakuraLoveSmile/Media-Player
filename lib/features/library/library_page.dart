@@ -101,8 +101,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       body: _fatal != null
           ? _ErrorView(message: _fatal!, onRetry: _bootstrap)
           : controller == null || state == null
-              ? const Center(child: CircularProgressIndicator())
-              : _content(context, controller, state),
+          ? const Center(child: CircularProgressIndicator())
+          : _content(context, controller, state),
     );
   }
 
@@ -148,13 +148,12 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         Expanded(
           child: state.items.isEmpty
               ? (state.loaded
-                  ? const _MessageView(message: '这个库还没有内容')
-                  : const Center(child: CircularProgressIndicator()))
+                    ? const _MessageView(message: '这个库还没有内容')
+                    : const Center(child: CircularProgressIndicator()))
               : GridView.builder(
                   controller: _scroll,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                  gridDelegate:
-                      const SliverGridDelegateWithMaxCrossAxisExtent(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: 160,
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 12,
@@ -170,7 +169,13 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                         tag: item.imageTag,
                         maxWidth: 320,
                       ),
-                      onTap: () => context.go(AppRoutes.playerFor(item.id)),
+                      onTap: () {
+                        if (item.type == 'Series') {
+                          context.push(AppRoutes.seriesFor(item.id));
+                        } else {
+                          context.go(AppRoutes.playerFor(item.id));
+                        }
+                      },
                     );
                   },
                 ),

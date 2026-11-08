@@ -17,6 +17,51 @@
 - [M2 签核记录](m2-signoff.md) — macOS + Android 已签；Windows 拆为 M2-W，验收条件见契约 §8.1。
 - [F4 反馈与在线更新](f4-notes.md) — feedback_widget 0.8.4 接入、设置页、GitHub Releases 在线更新与验证记录。
 - [发布与在线更新流程](release.md) — tag 发布、三平台资产、Android 固定签名与更新安装行为。
+- [剧集选季与单集播放执行记录](series-selection-csim4lhdf81m1k7wib615fdv.plan.md) — 本任务冻结计划、实现范围与验证限制；历史证据（Android 主路径、人耳听音、服务端无视频转码与退出后停止）来自执行 `8d4fb649` 与其最终产物 `a724cf61…47eb52`；本轮补证实测手机长文本视觉（长剧名、简介、季条横向滚动与 4 季切换、两行分集名、观看状态、末集可达）与错误态加重试，状态定稿“待体验”；macOS 按用户决定移出本轮必要验收且本轮未取得原生证据，特别篇 0、超过 60 集与 Windows 仍未验证。
+
+## 媒体库到单集播放器
+
+入口与调用关系：媒体库 → `/series/:seriesId` → 季集查询 → `/player/:episodeId` → 返回原季。
+
+媒体库 `lib/features/library/library_page.dart` 按条目类型导航：电影沿用
+`/player/:itemId`；剧集通过 push 打开 `/series/:seriesId`，保留媒体库的库选择与滚动位置。
+路由集中注册在 `lib/app/router.dart`，路径契约位于 `lib/core/router/app_routes.dart`。
+
+`lib/features/series/series_page.dart` 从 `bootstrapProvider` 获取同一组服务，
+`SeriesController` 通过 `LibraryService.item(seriesId)` / `seasons(seriesId)` 读取剧名与季，
+再按真实 `seasonId` 调用 `episodes(seriesId: ..., seasonId: ...)`。页面只读服务端观看状态，
+保留季选择及每季滚动位置，切季的过期响应不会覆盖当前季；请求仍由认证仓储派生自同一
+`ResolvedEndpoint`，不增加接口或持久化结构。
+
+点击分集通过 push 打开 `/player/:episodeId`，继续由 `PlayerController` 重新读取单集详情，
+并沿用 `PlaybackService`、每次新建的 `PlaybackEngine` / `PlaybackReporter` 完成播放协商、
+严格大于 10 秒且未看完时的续播、进度上报与 Stopped。播放器先等待 Stopped 完成再返回，
+选集页随后刷新当前季的服务端观看状态。旧 `/player/:seriesId` 仍禁止对 Series 协商播放，
+并提供“选择分集”按钮替换当前路由。LAN 视频不转码、片源选择及反馈元数据剥离编号的规则沿用现有契约。
+选集页仅在页面及原播放会话仍有效时刷新；系统返回离页或会话失效、被替换后不再发起该刷新。
+
+### 验证状态
+
+五条冻结质量门在本轮最后一次人工文件编辑之后逐条、独立、串行重跑，真实退出码全为 0（原始输出见
+`.pi/kanpilot/codex/review-evidence-20261108-2235/native-acceptance/final-checks/`），两端 Debug 产物生成。
+
+- **本轮实测（Mi 10 / Android 16 / SDK 36，序列号 `8085d06e`，1080×2340 竖屏，包 `dev.mediaplayer.media_player` 0.2.3+5）**：
+  长剧名（9 字）单行不溢出；简介按三行上限截断；季条高 56、可横向滚动，`铁齿铜牙纪晓岚` 的 4 个季 chip
+  末项横滑后完全可见且可选中；切到第 4 季后播放其第 1 集，服务端 `ParentIndexNumber=4` 证明所选季真实生效；
+  24 字分集名换行为两行不截断；观看状态读作“时长 44:37 · 已观看 22:40”；`雍正王朝` 44 集末项可达。
+  错误态实测：`adb shell svc wifi disable` 后读出“无法连接服务器，请检查网络”与“重试”，恢复网络后重试
+  成功，语义树与出错前逐字相同。服务端在同一活动以 `DeviceId` + `NowPlayingItem.Id` 关联到唯一活动播放
+  （`NowPlayingItem.Id=1519`）且无 `TranscodingInfo`，退出后该活动播放清零（`active_count=0`、`total_sessions=8`）。
+- **历史证据（不冒充本轮）**：画面/暂停/继续/拖动、两条退出路径、跨集独立、电影原入口、人耳听音与
+  `8d4fb649` 的封版补记保留原适用范围；本轮 Android 的继承来源为执行 `8d4fb649` 与其最终产物
+  `a724cf61dcf497dbb26c87cff0b4cdaa590fb3e38993fc719a3007c84a47eb52`，本轮实测 APK 与设备 `base.apk`
+  的 SHA-256 与之逐字一致。
+- **模拟证据**：超长名称的省略分支（库内最长剧名 9 字、最长季名 8 字、最长分集名 24 字均未触发）、
+  特别篇编号 0、超过 60 集仍只有 widget 与单元测试证据。
+- **未运行项**：macOS 原生选季/选集/播放/返回、桌面窗口视觉与桌面服务端观察（用户决定移出本轮必要验收，
+  本轮未取得 macOS 原生证据，历史签核不扩展到该功能）；特别篇 0 与超过 60 集的真实样本；Windows 构建与实测。
+
+状态定稿为“待体验”，不自行宣布 pass；终态由核心 Review 判定。
 
 ## 当前硬约束
 
