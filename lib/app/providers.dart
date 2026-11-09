@@ -13,6 +13,7 @@ import '../data/playback/media_kit_engine.dart';
 import '../data/playback/playback_repository.dart';
 import '../data/playback/session_reporter.dart';
 import '../data/storage/device_id_store.dart';
+import '../data/storage/moviepilot_config_store.dart';
 import '../data/storage/profile_store.dart';
 import '../data/storage/session_store.dart';
 import '../data/storage/storage_factory.dart';
@@ -59,5 +60,8 @@ final bootstrapProvider = FutureProvider<AppServices>((ref) async {
     resolver: resolver,
     deviceId: deviceId,
     store: store,
+    // Settings only for now; the MoviePilot client is wired in S4/S9 so this
+    // slice adds no HTTP surface.
+    moviePilotConfigStore: MoviePilotConfigStore(store),
   );
 });
