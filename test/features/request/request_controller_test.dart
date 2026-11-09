@@ -568,6 +568,43 @@ void main() {
     });
   });
 
+  group('sharing between pages', () {
+    test('pause stops the heartbeat and resume starts it again', () async {
+      final harness = _Harness();
+      await harness.configure();
+      final controller = harness.build();
+      await controller.load();
+      final record = await controller.subscribe(fakeMedia());
+
+      await controller.pausePolling();
+      final afterPause = harness.service.pollCalls;
+      harness.heartbeat.add(null);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(harness.service.pollCalls, afterPause);
+
+      await controller.resumePolling();
+      harness.heartbeat.add(null);
+      await waitFor(() => harness.service.pollCalls > afterPause);
+
+      // Pausing must not lose anything: the record is still there.
+      expect(controller.state.requests.single.id, record!.id);
+      controller.dispose();
+    });
+
+    test('resume on a disposed controller is a no-op', () async {
+      final harness = _Harness();
+      await harness.configure();
+      final controller = harness.build();
+      await controller.load();
+      controller.dispose();
+
+      await controller.resumePolling();
+
+      // Nothing scheduled: a tick from a stale subscription must not fire.
+      expect(harness.service.pollCalls, 1);
+    });
+  });
+
   group('errors', () {
     test('a network failure keeps the last snapshot and retries', () async {
       final harness = _Harness();

@@ -8,6 +8,9 @@ abstract final class AppRoutes {
   static const String settings = '/settings';
   static const String request = '/request';
 
+  /// The progress list, pushed from the search page and from settings.
+  static const String myRequests = '/request/mine';
+
   static String playerFor(String itemId) => '$player/$itemId';
   static String seriesFor(String seriesId) => '$series/$seriesId';
 }

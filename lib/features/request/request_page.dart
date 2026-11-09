@@ -15,13 +15,14 @@ import '../../ui/glass/glass_theme.dart';
 import '../../ui/glass/glass_tokens.dart';
 import 'request_controller.dart';
 import 'request_state.dart';
-import 'widgets/my_requests_list.dart';
 import 'widgets/search_result_card.dart';
 
-/// 求片: search MoviePilot, subscribe, and watch the progress (plan S11).
+/// 求片: search MoviePilot and subscribe (plan S11/S12).
 ///
-/// The page owns the controller and its poll: leaving the page stops the
-/// heartbeat, so MoviePilot is only queried while the user is watching.
+/// Searching is all this page does; the progress list lives on its own page
+/// (`/request/mine`) so a fresh request is not buried under the search results.
+/// The controller is shared with that page, and this one keeps the heartbeat
+/// alive only while it is visible.
 class RequestPage extends ConsumerStatefulWidget {
   const RequestPage({super.key, this.heartbeat, this.pollInterval});
 
@@ -39,6 +40,7 @@ class RequestPage extends ConsumerStatefulWidget {
 class _RequestPageState extends ConsumerState<RequestPage> {
   final TextEditingController _query = TextEditingController();
   RequestController? _controller;
+  ProviderSubscription<AsyncValue<RequestController?>>? _subscription;
   String? _fatal;
 
   @override
@@ -49,39 +51,38 @@ class _RequestPageState extends ConsumerState<RequestPage> {
 
   @override
   void dispose() {
+    _subscription?.close();
     _query.dispose();
-    _controller?.dispose();
+    // The controller outlives this page (我的求片 uses the same one), so only
+    // the poll is stopped here.
+    final controller = _controller?..removeListener(_onChanged);
+    unawaited(controller?.pausePolling());
     super.dispose();
   }
 
   Future<void> _bootstrap() async {
     setState(() => _fatal = null);
-    try {
-      final service = await ref.read(moviePilotServiceProvider.future);
-      final configStore = await ref.read(moviePilotConfigStoreProvider.future);
-      final requestStore = await ref.read(requestStoreProvider.future);
-      final library = await ref.read(requestLibraryProvider.future);
-      if (!mounted) return;
-      if (service == null ||
-          configStore == null ||
-          requestStore == null ||
-          library == null) {
-        setState(() => _fatal = '无法读取本地存储，请重启 App 后重试');
-        return;
-      }
-      final controller = RequestController(
-        service: service,
-        requestStore: requestStore,
-        configStore: configStore,
-        library: library,
-        heartbeat: widget.heartbeat,
-        pollInterval: widget.pollInterval ?? const Duration(seconds: 8),
-      )..addListener(_onChanged);
-      setState(() => _controller = controller);
-      await controller.load();
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _fatal = '求片页加载失败，请稍后重试');
+    _subscription = ref.listenManual<AsyncValue<RequestController?>>(
+      requestControllerProvider,
+      (_, _) => _attach(),
+      fireImmediately: true,
+    );
+  }
+
+  void _attach() {
+    final controller = ref.read(requestControllerProvider).value;
+    if (identical(controller, _controller)) return;
+    _controller?.removeListener(_onChanged);
+    _controller = controller;
+    controller?.addListener(_onChanged);
+    // This page is visible, so it owns the heartbeat; 我的求片 pauses it when it
+    // is the one on screen.
+    unawaited(controller?.resumePolling());
+    if (!mounted) return;
+    if (controller == null) {
+      setState(() => _fatal = '无法读取本地存储，请重启 App 后重试');
+    } else {
+      setState(() => _fatal = null);
     }
   }
 
@@ -95,21 +96,6 @@ class _RequestPageState extends ConsumerState<RequestPage> {
     await controller.search(_query.text);
   }
 
-  void _play(MediaRequest request) {
-    final itemId = request.embyItemId;
-    if (itemId == null || itemId.isEmpty) {
-      context.go(AppRoutes.library);
-      return;
-    }
-    if (request.isSeries) {
-      // A series has no playable source of its own, so it opens the episode
-      // picker; picking an episode then starts playback.
-      context.push(AppRoutes.seriesFor(itemId));
-      return;
-    }
-    context.push(AppRoutes.playerFor(itemId));
-  }
-
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
@@ -120,6 +106,12 @@ class _RequestPageState extends ConsumerState<RequestPage> {
       title: '求片',
       onBack: () => context.pop(),
       actions: <Widget>[
+        GlassIconButton(
+          key: const Key('request-open-mine-top'),
+          tooltip: '我的求片',
+          icon: const Icon(Icons.downloading_outlined),
+          onPressed: _openMine,
+        ),
         GlassIconButton(
           key: const Key('request-settings'),
           tooltip: 'MoviePilot 设置',
@@ -255,7 +247,22 @@ class _RequestPageState extends ConsumerState<RequestPage> {
         ),
       ],
       if (state.searchResults.isNotEmpty) ...<Widget>[
-        const RequestSectionHeader(title: '搜索结果'),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            GlassSpacing.xs,
+            GlassSpacing.xl,
+            GlassSpacing.xs,
+            GlassSpacing.sm,
+          ),
+          child: Text(
+            '搜索结果',
+            style: GlassType.footnote.copyWith(
+              color: palette.secondaryLabel,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
         for (final media in state.searchResults)
           Padding(
             padding: const EdgeInsets.only(bottom: GlassSpacing.md),
@@ -266,44 +273,46 @@ class _RequestPageState extends ConsumerState<RequestPage> {
             ),
           ),
       ],
-      RequestSectionHeader(
-        title: '我的求片',
-        trailing: state.requests.isEmpty
-            ? null
-            : Text(
-                '${state.requests.length}',
-                style: GlassType.caption1.copyWith(
-                  color: palette.tertiaryLabel,
-                ),
-              ),
-      ),
-      MyRequestsList(
-        requests: state.requests,
-        busyIds: state.busyRequestIds,
-        onSearchNow: (request) => unawaited(controller.searchNow(request)),
-        onCancel: (request) => unawaited(controller.cancel(request)),
-        onPlay: _play,
-      ),
+      if (state.hasRequests) ...<Widget>[
+        const SizedBox(height: GlassSpacing.xl),
+        _MyRequestsEntry(
+          count: state.requests.length,
+          inFlight: state.requests
+              .where((request) => !request.isFinished && !request.isCancelled)
+              .length,
+          onTap: _openMine,
+        ),
+      ],
     ];
+  }
+
+  /// Opens 我的求片; the controller keeps its poll for this page until the push
+  /// finishes, then `_attach` resumes it on return.
+  void _openMine() {
+    unawaited(context.push(AppRoutes.myRequests));
   }
 
   Future<void> _requestFromSearch(MpMediaInfo media) async {
     final controller = _controller;
     if (controller == null) return;
 
+    final MediaRequest? record;
     if (media.isSeries) {
       final season = await showSeasonPickerFor(context, controller, media);
       if (season == null) return;
       if (!mounted) return;
-      await controller.subscribe(media, season: season);
-      return;
+      record = await controller.subscribe(media, season: season);
+    } else {
+      // The controller checks the library first, so a title that is already
+      // there comes back playable instead of creating a subscription.
+      record = await controller.subscribe(media);
     }
 
-    // The controller checks the library first, so a title that is already
-    // there comes back playable. It is not opened automatically: the user
-    // asked for a request, and a surprise navigation would be worse than one
-    // extra tap on the card that now offers 去播放.
-    await controller.subscribe(media);
+    if (!mounted || record == null) return;
+    // A request the user just made is what they want to watch next, so the
+    // progress page opens on it. One that was already in the library is shown
+    // as a card there too, with 去播放 waiting.
+    _openMine();
   }
 }
 
@@ -426,6 +435,72 @@ class _ErrorView extends StatelessWidget {
               ),
               const SizedBox(height: GlassSpacing.lg),
               GlassButton(label: '重试', onPressed: onRetry),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Entry from the search page into 我的求片.
+class _MyRequestsEntry extends StatelessWidget {
+  const _MyRequestsEntry({
+    required this.count,
+    required this.inFlight,
+    required this.onTap,
+  });
+
+  final int count;
+  final int inFlight;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final GlassPalette palette = context.glass;
+    // A plain tappable row, not a ListTile: GlassCard paints a background, and
+    // a ListTile inside it hides its own ink (the framework asserts about it).
+    return GlassCard(
+      padding: EdgeInsets.zero,
+      child: InkWell(
+        key: const Key('request-open-mine'),
+        borderRadius: BorderRadius.circular(GlassRadii.cardLarge),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: GlassSpacing.lg,
+            vertical: GlassSpacing.md,
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.downloading_outlined, color: palette.tint, size: 22),
+              const SizedBox(width: GlassSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      '我的求片',
+                      style: GlassType.body.copyWith(color: palette.label),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      inFlight > 0
+                          ? '$count 个求片，$inFlight 个进行中'
+                          : '$count 个求片',
+                      style: GlassType.caption1.copyWith(
+                        color: palette.secondaryLabel,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: palette.tertiaryLabel,
+                size: 20,
+              ),
             ],
           ),
         ),

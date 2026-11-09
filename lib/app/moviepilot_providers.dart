@@ -8,6 +8,7 @@ import '../data/moviepilot/moviepilot_service.dart';
 import '../data/moviepilot/models/moviepilot_config.dart';
 import '../data/storage/moviepilot_config_store.dart';
 import '../data/storage/request_store.dart';
+import '../features/request/request_controller.dart';
 import 'providers.dart';
 
 /// MoviePilot wiring for 求片 (plan S9).
@@ -108,3 +109,37 @@ moviePilotSettingsProvider =
     AsyncNotifierProvider<MoviePilotSettings, MoviePilotConfig?>(
       MoviePilotSettings.new,
     );
+
+/// The heartbeat the request pages poll on.
+///
+/// A provider rather than a constant so a widget test can replace it with an
+/// empty stream and drive the rounds itself.
+final Provider<Stream<void>?> requestHeartbeatProvider =
+    Provider<Stream<void>?>((Ref ref) => null);
+
+/// The one controller both 求片 pages share.
+///
+/// Declared at the app level rather than per page so pushing from search to
+/// 我的求片 does not build a second poller: whichever page is on screen owns
+/// the heartbeat, and the other one merely renders. The provider disposes the
+/// controller when the app tears down.
+final FutureProvider<RequestController?> requestControllerProvider =
+    FutureProvider<RequestController?>((Ref ref) async {
+      final service = await ref.watch(moviePilotServiceProvider.future);
+      final configStore = await ref.watch(moviePilotConfigStoreProvider.future);
+      final requestStore = await ref.watch(requestStoreProvider.future);
+      final library = await ref.watch(requestLibraryProvider.future);
+      if (service == null || configStore == null || requestStore == null) {
+        return null;
+      }
+      final controller = RequestController(
+        service: service,
+        requestStore: requestStore,
+        configStore: configStore,
+        library: library,
+        heartbeat: ref.watch(requestHeartbeatProvider),
+      );
+      ref.onDispose(controller.dispose);
+      await controller.load();
+      return controller;
+    });

@@ -6,6 +6,7 @@ import '../core/router/app_routes.dart';
 import '../features/library/library_page.dart';
 import '../features/login/login_page.dart';
 import '../features/player/player_page.dart';
+import '../features/request/my_requests_page.dart';
 import '../features/request/request_page.dart';
 import '../features/series/series_page.dart';
 import '../features/settings/settings_page.dart';
@@ -51,6 +52,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.request,
         builder: (context, state) => const RequestPage(),
+        routes: <RouteBase>[
+          GoRoute(
+            path: 'mine',
+            builder: (context, state) => const MyRequestsPage(),
+          ),
+        ],
       ),
       GoRoute(
         path: AppRoutes.settings,

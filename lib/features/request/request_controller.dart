@@ -137,6 +137,24 @@ class RequestController extends ChangeNotifier {
     await load();
   }
 
+  /// Suspends the heartbeat without forgetting anything.
+  ///
+  /// Two pages can show the same controller (the search page and 我的求片), and
+  /// whichever is on screen owns the poll; the other one pauses it instead of
+  /// running a second copy. Records and the last snapshot stay untouched.
+  Future<void> pausePolling() async {
+    _started = false;
+    await _ticks?.cancel();
+    _ticks = null;
+  }
+
+  /// Resumes the heartbeat and runs one round, unless it is already running.
+  Future<void> resumePolling() async {
+    if (_disposed) return;
+    _start();
+    if (_started && _heartbeatShouldPoll) await pollRound();
+  }
+
   /// Whether the heartbeat should ask MoviePilot for progress.
   ///
   /// A brand-new page has nothing to watch yet, so the first rounds are driven

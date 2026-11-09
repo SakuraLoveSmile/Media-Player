@@ -146,6 +146,21 @@ class SettingsPage extends ConsumerWidget {
                 ),
                 onTap: () => context.push(AppRoutes.request),
               ),
+              ListTile(
+                key: const Key('settings-my-requests'),
+                leading: Icon(
+                  Icons.downloading_outlined,
+                  color: palette.indigo,
+                ),
+                title: const Text('我的求片'),
+                subtitle: const Text('查看每个求片走到哪一步'),
+                trailing: Icon(
+                  Icons.chevron_right,
+                  color: palette.tertiaryLabel,
+                  size: 20,
+                ),
+                onTap: () => context.push(AppRoutes.myRequests),
+              ),
             ],
           ),
           if (feedbackEnabled) ...<Widget>[
