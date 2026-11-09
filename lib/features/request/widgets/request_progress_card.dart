@@ -53,19 +53,8 @@ class RequestProgressCard extends StatelessWidget {
           const SizedBox(height: GlassSpacing.md),
           RequestStageChain(stage: request.stage),
           const SizedBox(height: GlassSpacing.md),
+          _status(palette),
           _progress(context, palette),
-          if (request.message.isNotEmpty) ...<Widget>[
-            const SizedBox(height: GlassSpacing.sm),
-            Text(
-              request.message,
-              key: Key('request-message-${request.id}'),
-              style: GlassType.footnote.copyWith(
-                color: request.stage == RequestStage.noResource
-                    ? palette.orange
-                    : palette.secondaryLabel,
-              ),
-            ),
-          ],
           const SizedBox(height: GlassSpacing.md),
           _actions(palette),
         ],
@@ -105,82 +94,78 @@ class RequestProgressCard extends StatelessWidget {
     );
   }
 
+  /// The one sentence describing the phase, and the only place it is written.
+  Widget _status(GlassPalette palette) {
+    final String text;
+    final Color color;
+    switch (request.stage) {
+      case RequestStage.inLibrary:
+        text = request.message.isEmpty ? '已入库，可以播放' : request.message;
+        color = palette.green;
+      case RequestStage.noResource:
+        text = request.message.isEmpty ? '暂未找到资源，持续订阅中' : request.message;
+        color = palette.orange;
+      case RequestStage.paused:
+        text = request.message.isEmpty ? '已在 MoviePilot 中暂停' : request.message;
+        color = palette.tertiaryLabel;
+      case RequestStage.cancelled:
+        text = request.message.isEmpty ? '已取消求片' : request.message;
+        color = palette.tertiaryLabel;
+      case RequestStage.submitted:
+        text = request.message.isEmpty ? '已提交，等待 MoviePilot 搜索' : request.message;
+        color = palette.secondaryLabel;
+      case RequestStage.searching:
+        text = request.message.isEmpty ? '正在搜索资源' : request.message;
+        color = palette.tint;
+      case RequestStage.downloading:
+        text = request.message.isEmpty ? '正在下载' : request.message;
+        color = palette.tint;
+      case RequestStage.organizing:
+        text = request.message.isEmpty ? '正在整理文件到媒体库' : request.message;
+        color = palette.tint;
+      case RequestStage.organizedPendingLibrary:
+        text = request.message.isEmpty ? '整理完成，等待 Emby 入库' : request.message;
+        color = palette.tint;
+    }
+    return Text(
+      text,
+      key: Key('request-status-${request.id}'),
+      style: GlassType.footnote.copyWith(color: color),
+    );
+  }
+
+  /// Numbers and badges instead of a progress bar.
+  ///
+  /// A bar was misleading here: MoviePilot reports a phase, not a fraction, so
+  /// an indeterminate bar sat at some arbitrary fill and looked like stalled
+  /// progress. The sentence describing the phase lives in the message line
+  /// below; this method only adds what that cannot express — the download
+  /// numbers, or a badge for a stage that is not progress at all.
   Widget _progress(BuildContext context, GlassPalette palette) {
     switch (request.stage) {
       case RequestStage.downloading:
         final progress = request.progressPercent;
-        final hasValue = progress != null;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(GlassRadii.capsule),
-              child: LinearProgressIndicator(
-                key: Key('request-bar-${request.id}'),
-                value: hasValue ? progress.clamp(0.0, 1.0) : null,
-                minHeight: 6,
-              ),
-            ),
-            const SizedBox(height: GlassSpacing.sm),
-            Row(
-              children: <Widget>[
-                if (hasValue)
-                  Text(
-                    '${request.percentDisplay}%',
-                    key: Key('request-percent-${request.id}'),
-                    style: GlassType.footnote.copyWith(
-                      color: palette.tint,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                const Spacer(),
-                if (request.downloadSpeed.isNotEmpty)
-                  Text(
-                    request.downloadSpeed,
-                    style: GlassType.caption1.copyWith(
-                      color: palette.secondaryLabel,
-                    ),
-                  ),
-                if (request.eta.isNotEmpty) ...<Widget>[
-                  const SizedBox(width: GlassSpacing.sm),
-                  Text(
-                    '剩余 ${request.eta}',
-                    style: GlassType.caption1.copyWith(
-                      color: palette.tertiaryLabel,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            if (request.isSeries && request.totalEpisodes > 0) ...<Widget>[
-              const SizedBox(height: GlassSpacing.xs),
-              Text(
-                '已完成 ${request.completedEpisodes}/${request.totalEpisodes} 集',
-                key: Key('request-episodes-${request.id}'),
-                style: GlassType.caption1.copyWith(
-                  color: palette.secondaryLabel,
-                ),
-              ),
-            ],
-            if (request.activeTaskCount > 1) ...<Widget>[
-              const SizedBox(height: GlassSpacing.xs),
-              Text(
-                '${request.activeTaskCount} 个任务并行下载',
-                style: GlassType.caption2.copyWith(
-                  color: palette.tertiaryLabel,
-                ),
-              ),
-            ],
-          ],
-        );
-      case RequestStage.organizing:
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(GlassRadii.capsule),
-          child: LinearProgressIndicator(
-            key: Key('request-bar-${request.id}'),
-            minHeight: 6,
-          ),
+        final details = <String>[
+          if (progress != null) '${request.percentDisplay}%',
+          if (request.downloadSpeed.isNotEmpty) request.downloadSpeed,
+          if (request.eta.isNotEmpty) '剩余 ${request.eta}',
+        ];
+        final episodes = request.isSeries && request.totalEpisodes > 0
+            ? '已完成 ${request.completedEpisodes}/${request.totalEpisodes} 集'
+            : null;
+        final tasks = request.activeTaskCount > 1
+            ? '${request.activeTaskCount} 个任务并行'
+            : null;
+        final below = <String>[
+          if (details.isNotEmpty) details.join(' · '),
+          ?episodes,
+          ?tasks,
+        ];
+        if (below.isEmpty) return const SizedBox.shrink();
+        return Text(
+          below.join('\n'),
+          key: Key('request-detail-${request.id}'),
+          style: GlassType.caption1.copyWith(color: palette.secondaryLabel),
         );
       case RequestStage.inLibrary:
         return _Badge(
@@ -212,14 +197,10 @@ class RequestProgressCard extends StatelessWidget {
         );
       case RequestStage.submitted:
       case RequestStage.searching:
+      case RequestStage.organizing:
       case RequestStage.organizedPendingLibrary:
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(GlassRadii.capsule),
-          child: LinearProgressIndicator(
-            key: Key('request-bar-${request.id}'),
-            minHeight: 6,
-          ),
-        );
+        // The message line already states the phase.
+        return const SizedBox.shrink();
     }
   }
 

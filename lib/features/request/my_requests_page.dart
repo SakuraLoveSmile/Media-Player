@@ -169,11 +169,11 @@ class _MyRequestsPageState extends ConsumerState<MyRequestsPage> {
         ),
         children: <Widget>[
           if (state.polling) ...<Widget>[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(GlassRadii.capsule),
-              child: const LinearProgressIndicator(
-                key: Key('my-requests-syncing'),
-                minHeight: 3,
+            Text(
+              '同步中…',
+              key: const Key('my-requests-syncing'),
+              style: GlassType.caption1.copyWith(
+                color: palette.tertiaryLabel,
               ),
             ),
             const SizedBox(height: GlassSpacing.md),

@@ -14,6 +14,7 @@ import 'package:media_player/data/moviepilot/models/moviepilot_config.dart';
 import 'package:media_player/data/moviepilot/models/mp_downloader_torrent.dart';
 import 'package:media_player/data/moviepilot/models/mp_media_info.dart';
 import 'package:media_player/data/moviepilot/models/mp_subscribe.dart';
+import 'package:media_player/data/moviepilot/models/mp_transfer_job.dart';
 import 'package:media_player/data/moviepilot/moviepilot_service.dart';
 import 'package:media_player/data/moviepilot/progress/poll_snapshot.dart';
 import 'package:media_player/data/storage/key_value_store.dart';
@@ -211,24 +212,51 @@ void main() {
       ],
     );
 
-    expect(find.byKey(const Key('request-bar-req-1')), findsOneWidget);
-    expect(find.text('42%'), findsOneWidget);
-    expect(find.text('5 MB/s'), findsOneWidget);
-    expect(find.text('剩余 10m'), findsOneWidget);
-    expect(find.text('已完成 0/10 集'), findsOneWidget);
-    expect(find.text('2 个任务并行下载'), findsOneWidget);
+    // No progress bar: the card states the phase and the numbers MoviePilot
+    // reports.
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.byKey(const Key('request-status-req-1')), findsOneWidget);
+    expect(find.text('正在下载'), findsOneWidget);
+    // One detail line: numbers on the first row, then episodes and task count.
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key('request-detail-req-1')))
+          .data,
+      '42% · 5 MB/s · 剩余 10m\n已完成 0/10 集\n2 个任务并行',
+    );
   });
 
-  testWidgets('a searching request shows an indeterminate bar', (tester) async {
+  testWidgets('a searching request shows its state, not a bar', (tester) async {
     service.snapshot = PollSnapshot(
       subscribes: <MpSubscribe>[fakeSubscribe(submittedCount: 0)],
     );
     await pumpPage(tester, requests: <MediaRequest>[seeded()]);
 
-    final bar = tester.widget<LinearProgressIndicator>(
-      find.byKey(const Key('request-bar-req-1')),
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.byKey(const Key('request-status-req-1')), findsOneWidget);
+    expect(find.text('正在搜索资源'), findsOneWidget);
+  });
+
+  testWidgets('every stage states itself in words', (tester) async {
+    service.snapshot = PollSnapshot(
+      subscribes: <MpSubscribe>[fakeSubscribe()],
+      transferQueue: <MpTransferJob>[
+        MpTransferJob.fromJson(<String, dynamic>{
+          'media': <String, dynamic>{
+            'media_source': 'themoviedb',
+            'media_id': '693134',
+            'type': '电影',
+          },
+          'tasks': <Object?>[
+            <String, dynamic>{'download_hash': 'h1'},
+          ],
+        }),
+      ],
     );
-    expect(bar.value, isNull);
+    await pumpPage(tester, requests: <MediaRequest>[seeded()]);
+
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.text('正在整理文件到媒体库'), findsOneWidget);
   });
 
   testWidgets('a request with no resource offers an immediate search', (

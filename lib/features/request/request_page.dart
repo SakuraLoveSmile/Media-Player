@@ -140,9 +140,12 @@ class _RequestPageState extends ConsumerState<RequestPage> {
                     _searchBar(state, palette),
                     if (state.polling) ...<Widget>[
                       const SizedBox(height: GlassSpacing.sm),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(GlassRadii.capsule),
-                        child: const LinearProgressIndicator(minHeight: 3),
+                      Text(
+                        '同步中…',
+                        key: const Key('request-syncing'),
+                        style: GlassType.caption1.copyWith(
+                          color: palette.tertiaryLabel,
+                        ),
                       ),
                     ],
                     ..._body(controller, state, palette),
