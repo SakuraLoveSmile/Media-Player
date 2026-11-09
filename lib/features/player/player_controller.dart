@@ -28,6 +28,7 @@ class PlayerState {
     this.audioTranscoded = false,
     this.error,
     this.unsupported = false,
+    this.selectionSeriesId,
     this.unauthorized = false,
   });
 
@@ -56,6 +57,7 @@ class PlayerState {
 
   /// The item cannot be played as-is, e.g. a series needs an episode first.
   final bool unsupported;
+  final String? selectionSeriesId;
   final bool unauthorized;
 
   static const Object _unset = Object();
@@ -73,6 +75,7 @@ class PlayerState {
     bool? audioTranscoded,
     Object? error = _unset,
     bool? unsupported,
+    Object? selectionSeriesId = _unset,
     bool? unauthorized,
   }) {
     return PlayerState(
@@ -92,6 +95,9 @@ class PlayerState {
       audioTranscoded: audioTranscoded ?? this.audioTranscoded,
       error: identical(error, _unset) ? this.error : error as String?,
       unsupported: unsupported ?? this.unsupported,
+      selectionSeriesId: identical(selectionSeriesId, _unset)
+          ? this.selectionSeriesId
+          : selectionSeriesId as String?,
       unauthorized: unauthorized ?? this.unauthorized,
     );
   }
@@ -111,13 +117,13 @@ class PlayerController extends ChangeNotifier {
     required PlaybackReporter reporter,
     Duration probeDelay = const Duration(seconds: 3),
     Future<void> Function(Duration)? delay,
-  })  : _itemId = itemId,
-        _library = library,
-        _playback = playback,
-        _engine = engine,
-        _reporter = reporter,
-        _probeDelay = probeDelay,
-        _delay = delay ?? Future<void>.delayed;
+  }) : _itemId = itemId,
+       _library = library,
+       _playback = playback,
+       _engine = engine,
+       _reporter = reporter,
+       _probeDelay = probeDelay,
+       _delay = delay ?? Future<void>.delayed;
 
   /// Contract §10.9 d: resume only past this much playback.
   static const Duration _resumeThreshold = Duration(seconds: 10);
@@ -150,34 +156,39 @@ class PlayerController extends ChangeNotifier {
   Future<void> load() async {
     if (_disposed || _stopped || _state.loading) return;
 
-    _set(_state.copyWith(
-      loading: true,
-      error: null,
-      unsupported: false,
-      unauthorized: false,
-    ));
+    _set(
+      _state.copyWith(
+        loading: true,
+        error: null,
+        unsupported: false,
+        selectionSeriesId: null,
+        unauthorized: false,
+      ),
+    );
 
     try {
       final item = await _library.item(_itemId);
       if (_disposed || _stopped) return;
       _set(_state.copyWith(itemName: item.name, duration: item.duration));
 
-      // Picking an episode belongs to the detail page, so stop before
+      // Picking an episode belongs to the series page, so stop before
       // negotiating: /PlaybackInfo on a series id has no playable source.
       if (item.type == 'Series') {
-        _set(_state.copyWith(
-          loading: false,
-          unsupported: true,
-          error: '剧集需要先选择分集（详情页尚未实现）',
-        ));
+        _set(
+          _state.copyWith(
+            loading: false,
+            unsupported: true,
+            selectionSeriesId: item.id,
+            error: '请选择分集后播放',
+          ),
+        );
         return;
       }
 
       // Contract §10.9 d: > 10 s and not finished resumes, everything else
       // starts from zero.
       final userData = item.userData;
-      final resume =
-          !userData.played && userData.position > _resumeThreshold;
+      final resume = !userData.played && userData.position > _resumeThreshold;
       final startAt = resume ? userData.position : Duration.zero;
 
       final plan = await _playback.resolve(_itemId, startAt: startAt);
@@ -194,19 +205,17 @@ class PlayerController extends ChangeNotifier {
 
       await _engine.open(plan);
       if (_disposed || _stopped) return;
-      _set(_state.copyWith(
-        loading: false,
-        ready: true,
-        position: startAt,
-        resumedFrom: resume ? startAt : null,
-      ));
+      _set(
+        _state.copyWith(
+          loading: false,
+          ready: true,
+          position: startAt,
+          resumedFrom: resume ? startAt : null,
+        ),
+      );
 
       // Heartbeats and final reports share the teardown-safe position.
-      await _reporter.started(
-        plan,
-        startAt,
-        position: () => _reportPosition,
-      );
+      await _reporter.started(plan, startAt, position: () => _reportPosition);
 
       unawaited(_confirmDirect(plan));
     } catch (error) {
@@ -262,19 +271,21 @@ class PlayerController extends ChangeNotifier {
     if (snapshot.position > Duration.zero) {
       _lastTrustedPosition = snapshot.position;
     }
-    _set(_state.copyWith(
-      position: snapshot.position,
-      // The engine reports a zero duration until the demuxer read it; keep
-      // the runtime from the detail response until then.
-      duration: snapshot.duration > Duration.zero
-          ? snapshot.duration
-          : _state.duration,
-      buffering: snapshot.buffering,
-      playing: snapshot.playing,
-      // Engine errors are opaque objects; the UI gets fixed copy, never a
-      // toString (contract §6).
-      error: snapshot.error == null ? _state.error : '播放失败，请重试',
-    ));
+    _set(
+      _state.copyWith(
+        position: snapshot.position,
+        // The engine reports a zero duration until the demuxer read it; keep
+        // the runtime from the detail response until then.
+        duration: snapshot.duration > Duration.zero
+            ? snapshot.duration
+            : _state.duration,
+        buffering: snapshot.buffering,
+        playing: snapshot.playing,
+        // Engine errors are opaque objects; the UI gets fixed copy, never a
+        // toString (contract §6).
+        error: snapshot.error == null ? _state.error : '播放失败，请重试',
+      ),
+    );
   }
 
   Future<void> _confirmDirect(PlaybackPlan plan) async {
@@ -286,21 +297,25 @@ class PlayerController extends ChangeNotifier {
     final confirmed = await _playback.confirmDirect(plan);
     if (_disposed || _stopped) return;
     _plan = confirmed;
-    _set(_state.copyWith(
-      videoDirect: confirmed.videoDirect,
-      audioTranscoded: confirmed.audioTranscoded,
-    ));
+    _set(
+      _state.copyWith(
+        videoDirect: confirmed.videoDirect,
+        audioTranscoded: confirmed.audioTranscoded,
+      ),
+    );
   }
 
   void _fail(Object error) {
     final unauthorized =
         error is EmbyException && error.code == AppErrorCode.unauthorized;
-    _set(_state.copyWith(
-      loading: false,
-      ready: false,
-      error: playerErrorMessage(error),
-      unauthorized: unauthorized,
-    ));
+    _set(
+      _state.copyWith(
+        loading: false,
+        ready: false,
+        error: playerErrorMessage(error),
+        unauthorized: unauthorized,
+      ),
+    );
   }
 
   void _set(PlayerState state) {

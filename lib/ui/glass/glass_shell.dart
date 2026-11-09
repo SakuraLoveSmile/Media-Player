@@ -143,7 +143,10 @@ class _GlassNavigationBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final GlassPalette palette = context.glass;
-    final bool compact = progress > 0.02;
+    // Past this point the large title has faded out, so the capsule takes
+    // over; keeping the swap at one threshold keeps exactly one title widget
+    // in the tree.
+    final bool compact = progress >= 0.6;
 
     return SafeArea(
       bottom: false,
@@ -179,30 +182,34 @@ class _GlassNavigationBar extends StatelessWidget {
                 ),
               ),
             ),
-            // Large title.
-            Positioned(
-              left: GlassSpacing.xl,
-              right: GlassSpacing.xl,
-              top: GlassHeaderMetrics.barHeight + GlassSpacing.xs,
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: (1 - progress * 1.6).clamp(0.0, 1.0),
-                  child: Transform.scale(
-                    alignment: Alignment.centerLeft,
-                    scale: 1 - 0.08 * progress,
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GlassType.largeTitle.copyWith(
-                        color: palette.label,
-                        fontWeight: FontWeight.w700,
+            // Large title. Only one of the two title widgets is mounted at a
+            // time: they carry the same string, and two live copies would make
+            // every `find.text(<page title>)` ambiguous for tests and screen
+            // readers while the page is scrolled.
+            if (!compact)
+              Positioned(
+                left: GlassSpacing.xl,
+                right: GlassSpacing.xl,
+                top: GlassHeaderMetrics.barHeight + GlassSpacing.xs,
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: (1 - progress * 1.6).clamp(0.0, 1.0),
+                    child: Transform.scale(
+                      alignment: Alignment.centerLeft,
+                      scale: 1 - 0.08 * progress,
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GlassType.largeTitle.copyWith(
+                          color: palette.label,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
             // Compact, centered capsule title.
             if (compact)
               Positioned.fill(

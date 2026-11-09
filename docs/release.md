@@ -10,6 +10,15 @@
 - 只接受**正式 Release**（`draft=false`、`prerelease=false`），标签必须是 `vX.Y.Z`，
   且 `X.Y.Z` 严格大于当前 `PackageInfo.version`。
 - 没有 Release（HTTP 404）按「暂无发布版本」处理，不是错误。
+- 更新渠道（设置 → 更新渠道）：
+  - **正式版**（默认）：只查 `/releases/latest`，只接受 `prerelease=false` 的正式 Release；
+  - **预览版**：查 `/releases` 列表，正式版与预发布都参与，取「版本号 + 构建号」最大的一个；
+    预发布 tag 形如 `v<X.Y.Z>-pilot.<build>`，构建号取自 tag 后缀（例如
+    `v0.2.4-pilot.1794215665` → 0.2.4 + 1794215665）。
+  - 比较规则：先比 `X.Y.Z`，相同时再比构建号；正式 Release 没有构建号，因此不会被当作
+    「同版本的更新」。任何情况下都不降级：从预览版切回正式版，只有出现更高的正式版本才会提示更新。
+  - 渠道选择保存在本机偏好（`update.channel.v1`），读不到或值非法时回落到正式版。
+
 - 每个 Release 必须带三个资产，名字是更新契约的一部分，不能改：
 
   | 平台 | 资产名 |
@@ -82,6 +91,28 @@ base64 -i ~/.android/debug.keystore | gh secret set ANDROID_KEYSTORE_BASE64 \
    「检查更新」应能看到新版本并完成下载安装。
 
 也可以手动在 Actions 里 `workflow_dispatch` 并填 `tag_name`（标签需已存在且指向目标提交）。
+
+### 4.1 KaneoPilot 预发布（pilot release）
+
+KaneoPilot 的发布调度复用同一个工作流，但走预发布通道，契约见
+`KaneoPilot/docs/release-contract.md` §T2。与正式 tag 流程的差别：
+
+- 触发方式：`workflow_dispatch` 携带 5 个 string 输入 `release_batch_id`、`target_sha`、
+  `task_manifest_json`、`task_manifest_sha256`、`tag_name`；填了 `release_batch_id` 即按
+  预发布处理，否则仍按上面的正式 tag 流程执行。
+- 身份来源：版本号与构建号来自 `task_manifest_json`（`version` / `build_number`），
+  **不读 `pubspec.yaml`**；三个构建 job 都 checkout `target_sha` 并核对 HEAD，
+  因此预发布包与冻结的合并提交严格对应。
+- 运行名：必须是 `pilot-release-<batch_id>`。KaneoPilot 只按这个显示名认领运行，
+  改名会导致调度一直"未查到本批次运行"。
+- 产物：三个资产名不变；Release 以 `prerelease` 创建，tag 为
+  `v<version>-pilot.<build_number>` 并指向 `target_sha`。另需附带
+  `kaneopilot-release.json`，且与 Actions artifact `kaneopilot-provenance` 内的同一文件
+  逐字节一致（调度侧会下载比对）。
+- 正文：存在 `release/notes/<tag>.md` 时照旧使用；预发布通常没有手写日志，此时由流水线
+  生成一句简短的预发布说明。客户端只查正式 Release，预发布不会出现在更新提示里。
+- 失败策略与正式流程一致：`task_manifest_sha256` 不符、HEAD 与 `target_sha` 不符、
+  资产缺失、同名 Release 已存在，都在构建或发布前 fail-closed。
 
 ## 5. 更新日志（Release Notes）
 

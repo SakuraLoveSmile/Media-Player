@@ -76,7 +76,10 @@ class _FakeUpdateService implements UpdateService {
   String get repo => UpdateService.defaultRepo;
 
   @override
-  Future<AppRelease?> checkForUpdate({String? platform}) async => release;
+  Future<AppRelease?> checkForUpdate({
+    String? platform,
+    UpdateChannel channel = UpdateChannel.stable,
+  }) async => release;
 
   @override
   Future<File> downloadUpdate(

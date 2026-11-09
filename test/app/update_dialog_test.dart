@@ -36,7 +36,10 @@ class FakeUpdateService extends UpdateService {
   final List<String> downloadedAssets = <String>[];
 
   @override
-  Future<AppRelease?> checkForUpdate({String? platform}) async => release;
+  Future<AppRelease?> checkForUpdate({
+    String? platform,
+    UpdateChannel channel = UpdateChannel.stable,
+  }) async => release;
 
   @override
   Future<File> downloadUpdate(

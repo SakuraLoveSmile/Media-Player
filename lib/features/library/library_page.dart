@@ -189,7 +189,13 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                         tag: item.imageTag,
                         maxWidth: 320,
                       ),
-                      onTap: () => context.go(AppRoutes.playerFor(item.id)),
+                      onTap: () {
+                        if (item.type == 'Series') {
+                          context.push(AppRoutes.seriesFor(item.id));
+                        } else {
+                          context.push(AppRoutes.playerFor(item.id));
+                        }
+                      },
                     );
                   },
                 ),

@@ -7,8 +7,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/feedback_config.dart';
 import '../../app/feedback_orb_settings.dart';
+import '../../app/update_channel_settings.dart';
 import '../../app/update_providers.dart';
 import '../../core/config/app_config.dart';
+import '../../data/update/update_models.dart';
 import '../../ui/glass/glass_controls.dart';
 import '../../ui/glass/glass_shell.dart';
 import '../../ui/glass/glass_surface.dart';
@@ -30,6 +32,8 @@ class SettingsPage extends ConsumerWidget {
       updateControllerProvider.select((UpdateState state) => state.status),
     );
     final bool checking = updateStatus == UpdateStatus.checking;
+    final UpdateChannel channel =
+        ref.watch(updateChannelControllerProvider).value ?? UpdateChannel.stable;
     final packageInfo = ref.watch(appVersionProvider).value;
     final String version = packageInfo == null
         ? AppConfig.appVersion
@@ -59,13 +63,50 @@ class SettingsPage extends ConsumerWidget {
                 subtitle: Text('版本 $version'),
               ),
               ListTile(
+                leading: Icon(
+                  Icons.new_releases_outlined,
+                  color: palette.tint,
+                ),
+                title: const Text('更新渠道'),
+                subtitle: const Text('正式版只接收正式发布；预览版还包含预发布构建'),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  GlassSpacing.lg,
+                  0,
+                  GlassSpacing.lg,
+                  GlassSpacing.sm,
+                ),
+                child: SegmentedButton<UpdateChannel>(
+                  key: const Key('settings-update-channel'),
+                  segments: const <ButtonSegment<UpdateChannel>>[
+                    ButtonSegment<UpdateChannel>(
+                      value: UpdateChannel.stable,
+                      label: Text('正式版'),
+                    ),
+                    ButtonSegment<UpdateChannel>(
+                      value: UpdateChannel.preview,
+                      label: Text('预览版'),
+                    ),
+                  ],
+                  selected: <UpdateChannel>{channel},
+                  onSelectionChanged: checking
+                      ? null
+                      : (Set<UpdateChannel> selection) => unawaited(
+                            _selectChannel(context, ref, selection.first),
+                          ),
+                ),
+              ),
+              ListTile(
                 enabled: !checking,
                 leading: Icon(
                   Icons.system_update_outlined,
                   color: palette.tint,
                 ),
                 title: const Text('检查更新'),
-                subtitle: checking ? const Text('检查中…') : null,
+                subtitle: checking
+                    ? const Text('检查中…')
+                    : Text('渠道：${channel.label}'),
                 trailing: checking
                     ? SizedBox(
                         width: 16,
@@ -150,6 +191,22 @@ class SettingsPage extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Persists the channel preference; failures keep the previous selection.
+  Future<void> _selectChannel(
+    BuildContext context,
+    WidgetRef ref,
+    UpdateChannel channel,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(updateChannelControllerProvider.notifier)
+          .setChannel(channel);
+    } on UpdateChannelSettingsException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   /// Runs one check, then reports the outcome. `check()` itself ignores

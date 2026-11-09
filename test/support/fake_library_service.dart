@@ -10,13 +10,25 @@ class FakeLibraryService implements LibraryService {
   FakeLibraryService({
     List<LibraryView>? viewList,
     Map<String, List<MediaItem>>? itemsByView,
+    Map<String, MediaItem>? itemsById,
+    Map<String, List<MediaItem>>? seasonsBySeries,
+    Map<String, List<MediaItem>>? episodesBySeason,
     this.failure,
     this.unauthorized = false,
-  })  : viewList = viewList ?? const <LibraryView>[],
-        itemsByView = itemsByView ?? const <String, List<MediaItem>>{};
+  }) : viewList = viewList ?? const <LibraryView>[],
+       itemsByView = itemsByView ?? const <String, List<MediaItem>>{},
+       itemsById = itemsById ?? <String, MediaItem>{},
+       seasonsBySeries = seasonsBySeries ?? <String, List<MediaItem>>{},
+       episodesBySeason = episodesBySeason ?? <String, List<MediaItem>>{};
 
   List<LibraryView> viewList;
   Map<String, List<MediaItem>> itemsByView;
+  Map<String, MediaItem> itemsById;
+  Map<String, List<MediaItem>> seasonsBySeries;
+  Map<String, List<MediaItem>> episodesBySeason;
+  final List<String> detailRequests = <String>[];
+  final List<String> seasonsRequests = <String>[];
+  final List<({String seriesId, String seasonId})> episodeRequests = [];
   EmbyException? failure;
   bool unauthorized;
 
@@ -49,21 +61,31 @@ class FakeLibraryService implements LibraryService {
 
   @override
   Future<MediaItem> item(String itemId) async {
+    detailRequests.add(itemId);
     _maybeThrow();
+    final detail = itemsById[itemId];
+    if (detail != null) return detail;
     return itemsByView.values
         .expand((items) => items)
         .firstWhere((item) => item.id == itemId);
   }
 
   @override
-  Future<List<MediaItem>> seasons(String seriesId) async => const [];
+  Future<List<MediaItem>> seasons(String seriesId) async {
+    seasonsRequests.add(seriesId);
+    _maybeThrow();
+    return seasonsBySeries[seriesId] ?? const [];
+  }
 
   @override
   Future<List<MediaItem>> episodes({
     required String seriesId,
     required String seasonId,
-  }) async =>
-      const [];
+  }) async {
+    episodeRequests.add((seriesId: seriesId, seasonId: seasonId));
+    _maybeThrow();
+    return episodesBySeason[seasonId] ?? const [];
+  }
 
   @override
   Uri? imageUrl(String itemId, {String? tag, int? maxWidth}) => null;

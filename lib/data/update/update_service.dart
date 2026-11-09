@@ -82,13 +82,16 @@ class UpdateService {
   final String _githubApiBase;
   final Random _random = Random();
 
-  /// Returns the newest release when it is newer than the running app.
+  /// Returns the newest release for [channel] when it is newer than the app.
   ///
-  /// A `null` result means "nothing to do": no published release (404), a
-  /// draft/prerelease, or a release that is not newer than the installed
-  /// version. [platform] is accepted for call-site symmetry; asset selection
-  /// is the caller's job via [pickAsset].
-  Future<AppRelease?> checkForUpdate({String? platform}) async {
+  /// A `null` result means "nothing to do": no published release (404), only
+  /// drafts, or nothing newer than the installed build. [platform] is accepted
+  /// for call-site symmetry; asset selection is the caller's job via
+  /// [pickAsset].
+  Future<AppRelease?> checkForUpdate({
+    String? platform,
+    UpdateChannel channel = UpdateChannel.stable,
+  }) async {
     final PackageInfo info = await _loadPackageInfo();
     final String currentVersion;
     try {
@@ -96,8 +99,92 @@ class UpdateService {
     } on FormatException {
       throw const UpdateException('无法识别当前应用版本，请稍后重试');
     }
+    final int currentBuild = int.tryParse(info.buildNumber.trim()) ?? 0;
 
-    final String url = '$_githubApiBase/repos/$owner/$repo/releases/latest';
+    if (channel == UpdateChannel.preview) {
+      // Preview accepts both stable and prerelease builds and offers the
+      // newest of them, so a later stable release still wins over an old
+      // preview of the same base version.
+      final List<AppRelease> releases = await _fetchReleaseList(info);
+      AppRelease? newest;
+      for (final AppRelease release in releases) {
+        if (!isNewerThanInstalled(
+          release,
+          version: currentVersion,
+          buildNumber: currentBuild,
+        )) {
+          continue;
+        }
+        if (newest == null ||
+            isNewerThanInstalled(
+              release,
+              version: newest.version,
+              buildNumber: newest.buildNumber ?? 0,
+            )) {
+          newest = release;
+        }
+      }
+      return newest;
+    }
+
+    final AppRelease? release = await _fetchLatestRelease(info);
+    if (release == null || release.isPrerelease) return null;
+    if (!isNewerThanInstalled(
+      release,
+      version: currentVersion,
+      buildNumber: currentBuild,
+    )) {
+      return null;
+    }
+    return release;
+  }
+
+  /// Reads `/releases/latest`; null when the repository has no release yet.
+  Future<AppRelease?> _fetchLatestRelease(PackageInfo info) async {
+    final dynamic data = await _requestJson(
+      '$_githubApiBase/repos/$owner/$repo/releases/latest',
+      info,
+    );
+    if (data == null) return null;
+    if (data is! Map) {
+      throw const UpdateException('更新信息格式异常，请稍后重试');
+    }
+    final Map<String, dynamic> json = Map<String, dynamic>.from(data);
+    if (json['draft'] == true) return null;
+    try {
+      return AppRelease.fromGitHubJson(json);
+    } on FormatException {
+      throw const UpdateException('更新信息格式异常，请稍后重试');
+    }
+  }
+
+  /// Reads the newest page of `/releases` for the preview channel.
+  Future<List<AppRelease>> _fetchReleaseList(PackageInfo info) async {
+    final dynamic data = await _requestJson(
+      '$_githubApiBase/repos/$owner/$repo/releases?per_page=30',
+      info,
+    );
+    if (data == null) return const <AppRelease>[];
+    if (data is! List) {
+      throw const UpdateException('更新信息格式异常，请稍后重试');
+    }
+    final List<AppRelease> releases = <AppRelease>[];
+    for (final dynamic raw in data) {
+      if (raw is! Map) continue;
+      final Map<String, dynamic> json = Map<String, dynamic>.from(raw);
+      if (json['draft'] == true) continue;
+      try {
+        releases.add(AppRelease.fromGitHubJson(json));
+      } on FormatException {
+        // One unreadable release must not hide the rest of the channel.
+        continue;
+      }
+    }
+    return releases;
+  }
+
+  /// Shared GitHub read with the updater's user-facing error mapping.
+  Future<dynamic> _requestJson(String url, PackageInfo info) async {
     final Response<dynamic> response;
     try {
       response = await _dio.get<dynamic>(
@@ -126,24 +213,7 @@ class UpdateService {
     if (status < HttpStatus.ok || status >= HttpStatus.multipleChoices) {
       throw UpdateException('检查更新失败（HTTP $status），请稍后重试');
     }
-
-    final dynamic data = response.data;
-    if (data is! Map) {
-      throw const UpdateException('更新信息格式异常，请稍后重试');
-    }
-    final Map<String, dynamic> json = Map<String, dynamic>.from(data);
-    // Drafts are internal to the repository owner and must never surface.
-    if (json['draft'] == true) return null;
-
-    final AppRelease release;
-    try {
-      release = AppRelease.fromGitHubJson(json);
-    } on FormatException {
-      throw const UpdateException('更新信息格式异常，请稍后重试');
-    }
-    if (release.isPrerelease) return null;
-    if (compareVersions(release.version, currentVersion) <= 0) return null;
-    return release;
+    return response.data;
   }
 
   /// Downloads [asset] into a fresh temp directory and verifies its SHA-256.

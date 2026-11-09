@@ -115,6 +115,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     }
   }
 
+  /// A series id has no playable source: stop reporting first, then hand the
+  /// route over to the episode picker.
+  Future<void> _selectEpisodes(String seriesId) async {
+    if (_leaving || _redirecting) return;
+    _leaving = true;
+    await _controller?.stop();
+    if (!mounted || _redirecting) return;
+    context.pushReplacement(AppRoutes.seriesFor(seriesId));
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -144,9 +154,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     }
 
     if (state.unsupported) {
+      final seriesId = state.selectionSeriesId;
       return _NoticeView(
         message: state.error ?? '这个条目暂不支持播放',
         onBack: _leave,
+        onSelectEpisodes: seriesId == null
+            ? null
+            : () => unawaited(_selectEpisodes(seriesId)),
       );
     }
     final error = state.error;
@@ -456,11 +470,17 @@ class _Banner extends StatelessWidget {
 }
 
 class _NoticeView extends StatelessWidget {
-  const _NoticeView({required this.message, required this.onBack, this.onRetry});
+  const _NoticeView({
+    required this.message,
+    required this.onBack,
+    this.onRetry,
+    this.onSelectEpisodes,
+  });
 
   final String message;
   final VoidCallback onBack;
   final Future<void> Function()? onRetry;
+  final VoidCallback? onSelectEpisodes;
 
   @override
   Widget build(BuildContext context) {
@@ -501,6 +521,12 @@ class _NoticeView extends StatelessWidget {
                     variant: GlassButtonVariant.glass,
                     onPressed: onBack,
                   ),
+                  if (onSelectEpisodes != null)
+                    GlassButton(
+                      key: const Key('player-select-episodes'),
+                      label: '选择分集',
+                      onPressed: onSelectEpisodes,
+                    ),
                   if (retry != null)
                     GlassButton(
                       label: '重试',

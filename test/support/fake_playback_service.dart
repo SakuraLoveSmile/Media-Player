@@ -5,7 +5,7 @@ import 'package:media_player/data/playback/playback_service.dart';
 /// Negotiation double for the F3 controller/page tests; no HTTP, no token.
 class FakePlaybackService implements PlaybackService {
   FakePlaybackService({PlaybackPlan? plan, this.confirmedPlan, this.failure})
-      : plan = plan ?? fakePlan();
+    : plan = plan ?? fakePlan();
 
   /// Returned by [resolve] (with `startAt` applied).
   PlaybackPlan plan;
@@ -18,6 +18,7 @@ class FakePlaybackService implements PlaybackService {
   Object? failure;
 
   final List<Duration> resolveStartAts = <Duration>[];
+  final List<String> resolveItemIds = <String>[];
   int confirmCalls = 0;
 
   int get resolveCalls => resolveStartAts.length;
@@ -28,6 +29,7 @@ class FakePlaybackService implements PlaybackService {
     Duration startAt = Duration.zero,
   }) async {
     resolveStartAts.add(startAt);
+    resolveItemIds.add(itemId);
     final error = failure;
     if (error != null) throw error;
     return plan.copyWith(itemId: itemId, startAt: startAt);
