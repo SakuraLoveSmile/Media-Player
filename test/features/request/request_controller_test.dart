@@ -591,6 +591,42 @@ void main() {
       controller.dispose();
     });
 
+    test('pausing and resuming twice keeps the poll alive', () async {
+      // Regression: the default beat used to be a single-subscription
+      // Stream.periodic, so the second resume threw
+      // "Stream has already been listened to" and silently stopped polling for
+      // good (the record sat on 已提交 for 28 minutes on a real instance).
+      final harness = _Harness();
+      await harness.configure();
+      // No injected heartbeat: this exercises the controller's own timer.
+      final controller = RequestController(
+        service: harness.service,
+        requestStore: harness.requestStore,
+        configStore: harness.configStore,
+        delay: (Duration _) async {},
+        clock: () => DateTime.utc(2026, 1, 10, 12),
+        idGenerator: () => 'req-1',
+        pollInterval: const Duration(milliseconds: 20),
+      );
+      await controller.load();
+      harness.service.snapshot = PollSnapshot(
+        subscribes: <MpSubscribe>[fakeSubscribe()],
+      );
+      await controller.subscribe(fakeMedia());
+
+      for (var i = 0; i < 3; i++) {
+        await controller.pausePolling();
+        final before = harness.service.pollCalls;
+        await controller.resumePolling();
+        await waitFor(
+          () => harness.service.pollCalls > before,
+          reason: 'poll to resume after pause cycle ${i + 1}',
+        );
+      }
+
+      controller.dispose();
+    });
+
     test('resume on a disposed controller is a no-op', () async {
       final harness = _Harness();
       await harness.configure();

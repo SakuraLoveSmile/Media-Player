@@ -48,12 +48,21 @@ class MpExecutionStatus {
 
   bool get hasError => error.isNotEmpty;
 
-  bool get isRunning => state == 'R';
+  /// The execution round is in progress.
+  ///
+  /// v3 spells this `running` (observed on 3.2.5); a bare `R` is the older
+  /// spelling and still appears in some payloads, so both count.
+  bool get isRunning => state == 'running' || state == 'R';
 
-  bool get isPaused => state == 'S';
+  /// The round finished. This says the *round* ended, never that the
+  /// subscription is done: a finished round can have found nothing.
+  bool get isCompletedRound => state == 'completed';
+
+  /// The subscription is paused.
+  bool get isPaused => state == 'S' || state == 'paused';
 
   /// A round that did not find anything: `P` is v3's "failed / gave up".
-  bool get failed => state == 'P';
+  bool get failed => state == 'P' || state == 'failed';
 
   /// True while the round is looking for a resource rather than downloading.
   bool get isSearching => submittedCount == 0;
@@ -135,7 +144,8 @@ class MpSubscribe {
 
   bool get isSeries => type == MpMediaType.series;
 
-  bool get isPaused => state == 'S';
+  /// The subscription itself is paused (`S` on 3.2.5).
+  bool get isPaused => state == 'S' || state == 'paused';
 
   /// Episodes already in the library, preferring v3's derived value and
   /// falling back to `total - lack` for older payloads.

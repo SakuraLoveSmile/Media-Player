@@ -444,6 +444,85 @@ void main() {
     });
   });
 
+  group('real v3 execution status', () {
+    // Values observed on a live MoviePilot 3.2.5 instance.
+    test('a finished round that submitted nothing is noResource, not submitted',
+        () {
+      final subscribe = active();
+      final withCompleted = MpSubscribe(
+        id: subscribe.id,
+        ref: subscribe.ref,
+        type: subscribe.type,
+        name: subscribe.name,
+        year: subscribe.year,
+        state: 'R',
+        executionStatus: const MpExecutionStatus(
+          state: 'completed',
+          phase: 'completed',
+          submittedCount: 0,
+        ),
+      );
+
+      final progress = derive(
+        request(),
+        PollSnapshot(subscribes: <MpSubscribe>[withCompleted]),
+      );
+
+      expect(progress.stage, RequestStage.noResource);
+      expect(progress.message, contains('没有找到资源'));
+      expect(progress.canSearchNow, isTrue);
+    });
+
+    test('a running round in the submitting phase says so', () {
+      final subscribe = active();
+      final submitting = MpSubscribe(
+        id: subscribe.id,
+        ref: subscribe.ref,
+        type: subscribe.type,
+        name: subscribe.name,
+        year: subscribe.year,
+        state: 'R',
+        executionStatus: const MpExecutionStatus(
+          state: 'running',
+          phase: 'submitting',
+          submittedCount: 0,
+        ),
+      );
+
+      final progress = derive(
+        request(),
+        PollSnapshot(subscribes: <MpSubscribe>[submitting]),
+      );
+
+      expect(progress.stage, RequestStage.searching);
+      expect(progress.message, '正在提交下载');
+    });
+
+    test('a submitted count still wins over the phase text', () {
+      final subscribe = active();
+      final submitted = MpSubscribe(
+        id: subscribe.id,
+        ref: subscribe.ref,
+        type: subscribe.type,
+        name: subscribe.name,
+        year: subscribe.year,
+        state: 'R',
+        executionStatus: const MpExecutionStatus(
+          state: 'completed',
+          phase: 'completed',
+          submittedCount: 1,
+        ),
+      );
+
+      final progress = derive(
+        request(),
+        PollSnapshot(subscribes: <MpSubscribe>[submitted]),
+      );
+
+      expect(progress.stage, RequestStage.downloading);
+    });
+  });
+
   group('mutation checks', () {
     // Each block flips exactly one decisive input and asserts the stage moves.
     // Without these, a derive() that always returned one stage would pass the

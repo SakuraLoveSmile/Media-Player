@@ -204,10 +204,22 @@ class RequestProgressEngine {
         message: '正在整理文件到媒体库',
       );
     }
-    if (status.isRunning) {
+    // v3 reports a finished round as state/phase "completed", which means the
+    // round ended — not that the subscription is done. A finished round that
+    // submitted nothing found no resource; saying "已提交，等待搜索" forever
+    // would hide the one fact the user can act on.
+    final roundFinished =
+        status.isCompletedRound || status.phase == 'completed';
+    if (status.isRunning || roundFinished) {
       return RequestProgress(
-        stage: RequestStage.searching,
-        message: '正在搜索资源',
+        // A run in progress is searching; a finished round with nothing
+        // submitted is "没找到资源，等下一次".
+        stage: status.isRunning
+            ? RequestStage.searching
+            : RequestStage.noResource,
+        message: status.isRunning
+            ? (status.phase == 'submitting' ? '正在提交下载' : '正在搜索资源')
+            : '这一轮没有找到资源，会继续搜索',
         canSearchNow: true,
         completedEpisodes: subscribe.effectiveCompletedEpisode,
         totalEpisodes: subscribe.totalEpisode,

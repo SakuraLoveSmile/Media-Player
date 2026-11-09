@@ -45,7 +45,8 @@ class RequestController extends ChangeNotifier {
        _configStore = configStore,
        _library = library,
        _engine = engine,
-       _heartbeat = heartbeat ?? Stream<void>.periodic(pollInterval),
+       _externalHeartbeat = heartbeat,
+       _pollInterval = pollInterval,
        _delay = delay ?? Future<void>.delayed,
        _clock = clock ?? DateTime.now,
        _newId = idGenerator ?? (() => const Uuid().v4());
@@ -55,7 +56,13 @@ class RequestController extends ChangeNotifier {
   final MoviePilotConfigStore _configStore;
   final LibraryService? _library;
   final RequestProgressEngine _engine;
-  final Stream<void> _heartbeat;
+
+  /// Test-only heartbeat. Production uses [_pollInterval] with a timer the
+  /// controller owns, because a single-subscription `Stream.periodic` cannot be
+  /// listened to twice: pausing and resuming a page would throw
+  /// `Stream has already been listened to` and silently stop the poll for good.
+  final Stream<void>? _externalHeartbeat;
+  final Duration _pollInterval;
   final Future<void> Function(Duration) _delay;
   final DateTime Function() _clock;
   final String Function() _newId;
@@ -69,6 +76,7 @@ class RequestController extends ChangeNotifier {
   RequestState _state = const RequestState();
   PollSnapshot _snapshot = PollSnapshot.empty;
   StreamSubscription<void>? _ticks;
+  Timer? _timer;
   Future<void> _queue = Future<void>.value();
   bool _disposed = false;
   bool _roundInFlight = false;
@@ -119,21 +127,40 @@ class RequestController extends ChangeNotifier {
   }
 
   /// Starts the heartbeat once; safe to call again after [load].
+  ///
+  /// The default beat is a timer the controller creates and cancels itself, so
+  /// it can be stopped and restarted any number of times. An injected
+  /// [_externalHeartbeat] is single-use by nature and only exists for tests,
+  /// which pass a broadcast stream or an empty one.
   void _start() {
     if (_started || _disposed) return;
     _started = true;
-    _ticks = _heartbeat.listen((_) {
-      // A tick with nothing to watch costs nothing.
-      if (_heartbeatShouldPoll) unawaited(pollRound());
-    });
+    final external = _externalHeartbeat;
+    if (external != null) {
+      _ticks = external.listen((_) => _onTick());
+      return;
+    }
+    _timer = Timer.periodic(_pollInterval, (_) => _onTick());
+  }
+
+  void _onTick() {
+    if (_disposed) return;
+    // A tick with nothing to watch costs nothing.
+    if (_heartbeatShouldPoll) unawaited(pollRound());
+  }
+
+  void _stopBeat() {
+    _started = false;
+    unawaited(_ticks?.cancel());
+    _ticks = null;
+    _timer?.cancel();
+    _timer = null;
   }
 
   /// Re-reads the connection and starts polling again (called after the dialog
   /// saved a connection).
   Future<void> reconnect() async {
-    _started = false;
-    await _ticks?.cancel();
-    _ticks = null;
+    _stopBeat();
     await load();
   }
 
@@ -143,9 +170,7 @@ class RequestController extends ChangeNotifier {
   /// whichever is on screen owns the poll; the other one pauses it instead of
   /// running a second copy. Records and the last snapshot stay untouched.
   Future<void> pausePolling() async {
-    _started = false;
-    await _ticks?.cancel();
-    _ticks = null;
+    _stopBeat();
   }
 
   /// Resumes the heartbeat and runs one round, unless it is already running.
@@ -326,8 +351,7 @@ class RequestController extends ChangeNotifier {
           unauthorizedToken: true,
           pollError: 'MoviePilot API_TOKEN 无效，请重新填写',
         ));
-        _started = false;
-        unawaited(_ticks?.cancel().then((_) => _ticks = null));
+        _stopBeat();
       default:
         // Everything else is transient: keep the last snapshot and retry.
         _set(_state.copyWith(
@@ -584,9 +608,7 @@ class RequestController extends ChangeNotifier {
   /// Clears the stored connection; the records stay (plan S10).
   Future<void> clearConnection() async {
     await _configStore.delete();
-    _started = false;
-    await _ticks?.cancel();
-    _ticks = null;
+    _stopBeat();
     if (_disposed) return;
     _set(_state.copyWith(
       configured: false,
@@ -709,9 +731,7 @@ class RequestController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _started = false;
-    unawaited(_ticks?.cancel());
-    _ticks = null;
+    _stopBeat();
     super.dispose();
   }
 }
