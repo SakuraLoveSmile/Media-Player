@@ -67,6 +67,10 @@ class FakeMoviePilotServer {
   /// Id handed back by `POST /subscribe/`.
   int createdSubscribeId = 100;
 
+  /// When true, `POST /subscribe/` answers without an `id`, the shape a
+  /// half-implemented or proxied instance can produce.
+  bool omitCreatedId = false;
+
   /// `GET /download/` reply.
   List<Map<String, dynamic>> downloads = <Map<String, dynamic>>[];
 
@@ -141,7 +145,9 @@ class FakeMoviePilotServer {
         return;
       }
       if (method == 'POST' && path == '/api/v1/subscribe/') {
-        await _payload(response, <String, dynamic>{'id': createdSubscribeId});
+        await _payload(response, <String, dynamic>{
+          if (!omitCreatedId) 'id': createdSubscribeId,
+        });
         return;
       }
       if (method == 'POST' && path.startsWith('/api/v1/subscribe/search/')) {
