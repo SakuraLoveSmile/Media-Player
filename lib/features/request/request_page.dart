@@ -102,7 +102,8 @@ class _RequestPageState extends ConsumerState<RequestPage> {
       return;
     }
     if (request.isSeries) {
-      // The episode picker exists, so a series deep-links to it.
+      // A series has no playable source of its own, so it opens the episode
+      // picker; picking an episode then starts playback.
       context.push(AppRoutes.seriesFor(itemId));
       return;
     }

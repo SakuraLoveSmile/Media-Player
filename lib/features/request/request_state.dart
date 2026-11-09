@@ -105,17 +105,6 @@ class RequestState {
   }
 }
 
-/// A search result prepared for the UI, with the action it offers.
-class RequestSearchResult {
-  const RequestSearchResult({required this.media, this.alreadyInLibrary});
-
-  final MpMediaInfo media;
-
-  /// The Emby item id when the title is already playable, so the card offers
-  /// "去播放" instead of "求片".
-  final String? alreadyInLibrary;
-}
-
 /// Seasonal data for the picker dialog (plan S12).
 class RequestSeasonChoice {
   const RequestSeasonChoice({

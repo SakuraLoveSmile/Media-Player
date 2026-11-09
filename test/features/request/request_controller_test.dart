@@ -125,7 +125,25 @@ void main() {
   });
 
   group('polling', () {
-    test('heartbeat ticks run a round', () async {
+    test('heartbeat ticks run a round while a request is under way', () async {
+      final harness = _Harness();
+      await harness.configure();
+      final controller = harness.build();
+      await controller.load();
+      // A stored request gives the heartbeat something to watch.
+      harness.service.snapshot = PollSnapshot(
+        subscribes: <MpSubscribe>[fakeSubscribe()],
+      );
+      await controller.subscribe(fakeMedia());
+      final initial = harness.service.pollCalls;
+
+      harness.heartbeat.add(null);
+      await waitFor(() => harness.service.pollCalls > initial);
+
+      controller.dispose();
+    });
+
+    test('the heartbeat idles when nothing can change', () async {
       final harness = _Harness();
       await harness.configure();
       final controller = harness.build();
@@ -133,8 +151,10 @@ void main() {
       final initial = harness.service.pollCalls;
 
       harness.heartbeat.add(null);
-      await waitFor(() => harness.service.pollCalls > initial);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
 
+      expect(harness.service.pollCalls, initial);
+      expect(controller.needsPolling, isFalse);
       controller.dispose();
     });
 

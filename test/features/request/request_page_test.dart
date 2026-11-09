@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:media_player/app/moviepilot_providers.dart';
 import 'package:media_player/app/providers.dart';
 import 'package:media_player/app/services.dart';
@@ -114,6 +115,65 @@ void main() {
     PollSnapshot? snapshot,
   }) async {
     await RequestStore(store).write(<MediaRequest>[request], snapshot: snapshot);
+  }
+
+  /// Pumps the request page inside a router so navigation can be asserted.
+  Future<GoRouter> pumpWithRouter(
+    WidgetTester tester,
+    MediaRequest request,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await seedRequest(request);
+    await MoviePilotConfigStore(store).write(
+      const MoviePilotConfig(baseUrl: 'http://nas:3002', apiToken: 'token'),
+    );
+
+    final router = GoRouter(
+      initialLocation: '/request',
+      routes: <RouteBase>[
+        GoRoute(
+          path: '/request',
+          builder: (_, _) => RequestPage(heartbeat: _silentHeartbeat),
+        ),
+        GoRoute(
+          path: '/player/:itemId',
+          builder: (_, GoRouterState state) =>
+              Text('player ${state.pathParameters['itemId']}'),
+        ),
+        GoRoute(
+          path: '/series/:seriesId',
+          builder: (_, GoRouterState state) =>
+              Text('series ${state.pathParameters['seriesId']}'),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bootstrapProvider.overrideWith(
+            (ref) async => AppServices(
+              auth: _NoAuth(),
+              library: library,
+              playback: FakePlaybackService(),
+              createEngine: FakePlaybackEngine.new,
+              createReporter: FakePlaybackReporter.new,
+              store: store,
+              moviePilotConfigStore: MoviePilotConfigStore(store),
+            ),
+          ),
+          moviePilotServiceProvider.overrideWith(
+            (ref) async => service as MoviePilotService,
+          ),
+          requestLibraryProvider.overrideWith((ref) async => library),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await settle(tester);
+    return router;
   }
 
   MediaRequest seeded({
@@ -368,6 +428,38 @@ void main() {
 
     expect(find.text('已入库'), findsOneWidget);
     expect(find.byKey(const Key('request-play-req-1')), findsOneWidget);
+  });
+
+  testWidgets('a movie in the library opens the player', (tester) async {
+    final router = await pumpWithRouter(
+      tester,
+      seeded(stage: RequestStage.inLibrary, embyItemId: 'emby-9'),
+    );
+
+    await tester.tap(find.byKey(const Key('request-play-req-1')));
+    await settle(tester);
+
+    expect(router.state.matchedLocation, '/player/emby-9');
+  });
+
+  testWidgets('a series in the library opens the episode picker', (
+    tester,
+  ) async {
+    final router = await pumpWithRouter(
+      tester,
+      seeded(
+        type: MpMediaType.series,
+        season: 1,
+        stage: RequestStage.inLibrary,
+        embyItemId: 'emby-series',
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('request-play-req-1')));
+    await settle(tester);
+
+    // The episode picker, not the player: a series id has no playable source.
+    expect(router.state.matchedLocation, '/series/emby-series');
   });
 
   testWidgets('cancelling removes the card and the subscription', (

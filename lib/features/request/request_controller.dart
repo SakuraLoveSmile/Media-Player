@@ -104,14 +104,28 @@ class RequestController extends ChangeNotifier {
       unauthorizedToken: false,
     ));
     _start();
-    await pollRound();
+    await _enqueue(_pollOnceGuarded);
+  }
+
+  /// One round without the "is there anything to watch?" gate.
+  Future<void> _pollOnceGuarded() async {
+    if (_disposed || _roundInFlight) return;
+    _roundInFlight = true;
+    try {
+      await _pollOnce();
+    } finally {
+      _roundInFlight = false;
+    }
   }
 
   /// Starts the heartbeat once; safe to call again after [load].
   void _start() {
     if (_started || _disposed) return;
     _started = true;
-    _ticks = _heartbeat.listen((_) => unawaited(pollRound()));
+    _ticks = _heartbeat.listen((_) {
+      // A tick with nothing to watch costs nothing.
+      if (_heartbeatShouldPoll) unawaited(pollRound());
+    });
   }
 
   /// Re-reads the connection and starts polling again (called after the dialog
@@ -122,6 +136,28 @@ class RequestController extends ChangeNotifier {
     _ticks = null;
     await load();
   }
+
+  /// Whether the heartbeat should ask MoviePilot for progress.
+  ///
+  /// A brand-new page has nothing to watch yet, so the first rounds are driven
+  /// by [load] and by the actions themselves; once a request exists, every
+  /// unfinished one keeps the heartbeat going. When all of them are in the
+  /// library or cancelled there is nothing left to learn and the rounds stop;
+  /// a new 求片 or a reopened page starts them again.
+  bool get needsPolling {
+    if (_state.requests.isEmpty) return false;
+    return _state.requests.any(
+      (request) => !request.isFinished && !request.isCancelled,
+    );
+  }
+
+  /// Whether a heartbeat tick should run a round.
+  ///
+  /// The heartbeat is the only source that may be gated: an explicit
+  /// [refresh], the round after [load] and the round an action triggers all
+  /// have to run even with an empty list, because they are what tell an empty
+  /// history apart from an unreachable MoviePilot.
+  bool get _heartbeatShouldPoll => needsPolling;
 
   /// Runs exactly one poll round, skipping when another is still in flight so a
   /// slow MoviePilot cannot pile up requests.
