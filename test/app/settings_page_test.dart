@@ -121,6 +121,11 @@ void main() {
     Future<PackageInfo>? version,
     KeyValueStore? store,
   }) async {
+    // The settings list now holds four sections (about, update, 求片, feedback).
+    // A 600pt test window would keep the lower rows out of the lazy ListView's
+    // build range, so use a phone-height surface.
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -364,10 +369,6 @@ void main() {
       store: store,
     );
 
-    // The settings list grew (update channel), so this row can start below
-    // the fold; scroll it into view before tapping.
-    await tester.ensureVisible(find.text('唤醒灵感球'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('唤醒灵感球'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('双指长按'));

@@ -10,12 +10,14 @@ import '../../app/feedback_orb_settings.dart';
 import '../../app/update_channel_settings.dart';
 import '../../app/update_providers.dart';
 import '../../core/config/app_config.dart';
+import '../../core/router/app_routes.dart';
 import '../../data/update/update_models.dart';
 import '../../ui/glass/glass_controls.dart';
 import '../../ui/glass/glass_shell.dart';
 import '../../ui/glass/glass_surface.dart';
 import '../../ui/glass/glass_theme.dart';
 import '../../ui/glass/glass_tokens.dart';
+import 'moviepilot_config_dialog.dart';
 import 'update_dialog.dart';
 
 /// Settings: about, manual update check, and the optional feedback entries.
@@ -125,6 +127,24 @@ class SettingsPage extends ConsumerWidget {
                 onTap: checking
                     ? null
                     : () => unawaited(_checkForUpdate(context, ref)),
+              ),
+            ],
+          ),
+          GlassSection(
+            header: '求片',
+            children: <Widget>[
+              const MoviePilotSettingsTile(),
+              ListTile(
+                key: const Key('settings-request-page'),
+                leading: Icon(Icons.add_task, color: palette.green),
+                title: const Text('求片'),
+                subtitle: const Text('搜索库里没有的影片，提交给 MoviePilot 下载'),
+                trailing: Icon(
+                  Icons.chevron_right,
+                  color: palette.tertiaryLabel,
+                  size: 20,
+                ),
+                onTap: () => context.push(AppRoutes.request),
               ),
             ],
           ),

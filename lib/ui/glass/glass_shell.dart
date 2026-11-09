@@ -403,7 +403,15 @@ Future<T?> showGlassDialog<T>({
               child: const SizedBox.expand(),
             ),
           ),
-          Center(child: builder(dialogContext)),
+          // A dialog route is not under a Scaffold, so it has no Material
+          // ancestor of its own. Text fields inside a glass dialog need one;
+          // a transparent Material keeps the frosted look.
+          Center(
+            child: Material(
+              type: MaterialType.transparency,
+              child: builder(dialogContext),
+            ),
+          ),
         ],
       );
     },

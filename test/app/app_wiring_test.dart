@@ -223,6 +223,10 @@ void main() {
   testWidgets('feedback layer is mounted when the service is configured', (
     WidgetTester tester,
   ) async {
+    // The settings list now has four sections; a 600pt window would keep the
+    // feedback rows outside the lazy ListView's build range.
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await _pumpApp(tester, feedbackEnabled: true);
 
     // The orb lives above the router, so it is present on the login page.
