@@ -100,6 +100,74 @@ class LibraryRepository implements LibraryService {
   }
 
   @override
+  Future<MediaItem?> findByTmdb(int tmdbId, {required bool isSeries}) async {
+    // `AnyProviderIdEquals` takes `<provider>.<id>`; Emby stores TMDB ids under
+    // the `tmdbid` provider. Versions that do not know the parameter ignore it
+    // and answer the whole library, so the result is filtered by year and type
+    // on the client before it is trusted.
+    final json = await _session.authorizedGet(
+      _uri('/Users/$_userId/Items', <String, String>{
+        'Recursive': 'true',
+        'IncludeItemTypes': isSeries ? 'Series' : 'Movie',
+        'AnyProviderIdEquals': 'tmdbid.$tmdbId',
+        'Fields': listFields,
+        'Limit': '5',
+      }),
+    );
+    return _firstMatching(
+      asMapList(json['Items']).map(MediaItem.fromJson),
+      isSeries: isSeries,
+    );
+  }
+
+  @override
+  Future<MediaItem?> searchByTitle(
+    String title, {
+    int? year,
+    required bool isSeries,
+  }) async {
+    if (title.trim().isEmpty) return null;
+    final json = await _session.authorizedGet(
+      _uri('/Users/$_userId/Items', <String, String>{
+        'Recursive': 'true',
+        'IncludeItemTypes': isSeries ? 'Series' : 'Movie',
+        'SearchTerm': title,
+        'Fields': listFields,
+        'Limit': '10',
+      }),
+    );
+    return _firstMatching(
+      asMapList(json['Items']).map(MediaItem.fromJson),
+      isSeries: isSeries,
+      year: year,
+    );
+  }
+
+  /// Picks the first item of the right type, preferring an exact year.
+  ///
+  /// A title search happily returns a remake, so an item whose year disagrees
+  /// is only accepted when nothing better exists.
+  MediaItem? _firstMatching(
+    Iterable<MediaItem> items, {
+    required bool isSeries,
+    int? year,
+  }) {
+    final wanted = isSeries ? 'Series' : 'Movie';
+    MediaItem? fallback;
+    for (final item in items) {
+      if (item.id.isEmpty) continue;
+      if (item.type.isNotEmpty && item.type != wanted) continue;
+      if (year == null || item.productionYear == null) {
+        fallback ??= item;
+        continue;
+      }
+      if (item.productionYear == year) return item;
+      fallback ??= item;
+    }
+    return fallback;
+  }
+
+  @override
   Uri? imageUrl(String itemId, {String? tag, int? maxWidth}) {
     final endpoint = _session.endpoint;
     final token = _session.accessToken;

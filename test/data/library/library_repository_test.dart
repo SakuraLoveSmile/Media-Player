@@ -107,6 +107,108 @@ void main() {
     expect(third.startIndex, 120);
   });
 
+  group('lookup for 求片', () {
+    test('findByTmdb sends AnyProviderIdEquals and parses the hit', () async {
+      server.lookupItems = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'Id': 'emby-99',
+          'Name': 'Dune: Part Two',
+          'Type': 'Movie',
+          'ProductionYear': 2024,
+        },
+      ];
+
+      final item = await library.findByTmdb(693134, isSeries: false);
+
+      final query = server.lastItemsQuery!;
+      expect(query['AnyProviderIdEquals'], 'tmdbid.693134');
+      expect(query['IncludeItemTypes'], 'Movie');
+      expect(query['Recursive'], 'true');
+      expect(query['Fields'], contains('ProductionYear'));
+      expect(item, isNotNull);
+      expect(item!.id, 'emby-99');
+      expect(item.productionYear, 2024);
+    });
+
+    test('findByTmdb asks for Series when the title is a show', () async {
+      await library.findByTmdb(1399, isSeries: true);
+
+      expect(server.lastItemsQuery!['IncludeItemTypes'], 'Series');
+    });
+
+    test('findByTmdb returns null when the library has nothing', () async {
+      expect(await library.findByTmdb(1, isSeries: false), isNull);
+    });
+
+    test('findByTmdb ignores an item of the wrong type', () async {
+      server.lookupItems = <Map<String, dynamic>>[
+        <String, dynamic>{'Id': 'season-1', 'Type': 'Season'},
+      ];
+
+      expect(await library.findByTmdb(1, isSeries: false), isNull);
+    });
+
+    test('searchByTitle sends SearchTerm and prefers the matching year',
+        () async {
+      server.lookupItems = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'Id': 'old',
+          'Name': 'Dune',
+          'Type': 'Movie',
+          'ProductionYear': 1984,
+        },
+        <String, dynamic>{
+          'Id': 'new',
+          'Name': 'Dune',
+          'Type': 'Movie',
+          'ProductionYear': 2021,
+        },
+      ];
+
+      final item = await library.searchByTitle(
+        'Dune',
+        year: 2021,
+        isSeries: false,
+      );
+
+      expect(server.lastItemsQuery!['SearchTerm'], 'Dune');
+      expect(item!.id, 'new');
+    });
+
+    test('searchByTitle falls back to the only hit when years are unknown',
+        () async {
+      server.lookupItems = <Map<String, dynamic>>[
+        <String, dynamic>{'Id': 'only', 'Name': 'Dune', 'Type': 'Movie'},
+      ];
+
+      final item = await library.searchByTitle('Dune', isSeries: false);
+
+      expect(item!.id, 'only');
+    });
+
+    test('searchByTitle with a blank title makes no request', () async {
+      final before = server.lookupRequests;
+
+      expect(await library.searchByTitle('   ', isSeries: false), isNull);
+      expect(server.lookupRequests, before);
+    });
+
+    test('a failing lookup surfaces as an EmbyException', () async {
+      server.lookupStatus = 500;
+
+      await expectLater(
+        library.findByTmdb(1, isSeries: false),
+        throwsA(
+          isA<EmbyException>().having(
+            (e) => e.code,
+            'code',
+            AppErrorCode.serverError,
+          ),
+        ),
+      );
+    });
+  });
+
   test('rejects invalid paging arguments without a request', () async {
     server.requestLog.clear();
 

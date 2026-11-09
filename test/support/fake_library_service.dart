@@ -87,6 +87,44 @@ class FakeLibraryService implements LibraryService {
     return episodesBySeason[seasonId] ?? const [];
   }
 
+  /// Items the 求片 lookup may find, with the queries that asked for them.
+  List<MediaItem> lookupItems = const <MediaItem>[];
+  Object? lookupFailure;
+  final List<int> tmdbLookups = <int>[];
+  final List<String> titleLookups = <String>[];
+
+  @override
+  Future<MediaItem?> findByTmdb(int tmdbId, {required bool isSeries}) async {
+    tmdbLookups.add(tmdbId);
+    final error = lookupFailure;
+    if (error != null) throw error;
+    for (final item in lookupItems) {
+      if (item.type == (isSeries ? 'Series' : 'Movie')) return item;
+    }
+    return null;
+  }
+
+  @override
+  Future<MediaItem?> searchByTitle(
+    String title, {
+    int? year,
+    required bool isSeries,
+  }) async {
+    titleLookups.add(title);
+    final error = lookupFailure;
+    if (error != null) throw error;
+    for (final item in lookupItems) {
+      if (item.type != (isSeries ? 'Series' : 'Movie')) continue;
+      if (year != null &&
+          item.productionYear != null &&
+          item.productionYear != year) {
+        continue;
+      }
+      return item;
+    }
+    return null;
+  }
+
   @override
   Uri? imageUrl(String itemId, {String? tag, int? maxWidth}) => null;
 
