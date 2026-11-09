@@ -50,8 +50,9 @@ class _MyRequestsPageState extends ConsumerState<MyRequestsPage> {
     _controller?.removeListener(_onChanged);
     _controller = controller;
     controller?.addListener(_onChanged);
-    // This page is now the visible one, so it takes over the poll.
-    unawaited(controller?.resumePolling());
+    // The app owns the heartbeat; this only requests a fresh round so the
+    // page shows current progress on entry.
+    unawaited(controller?.startWatching());
     if (mounted) setState(() {});
   }
 
@@ -62,10 +63,8 @@ class _MyRequestsPageState extends ConsumerState<MyRequestsPage> {
   @override
   void dispose() {
     _subscription?.close();
-    final controller = _controller?..removeListener(_onChanged);
-    // Leaving hands the poll back to whoever is on screen next; the search page
-    // resumes it in its own initState.
-    unawaited(controller?.pausePolling());
+    // The heartbeat belongs to the app, so leaving this page keeps it running.
+    _controller?.removeListener(_onChanged);
     super.dispose();
   }
 

@@ -18,6 +18,7 @@ import '../../ui/glass/glass_surface.dart';
 import '../../ui/glass/glass_theme.dart';
 import '../../ui/glass/glass_tokens.dart';
 import 'moviepilot_config_dialog.dart';
+import 'request_notification_settings_tile.dart';
 import 'update_dialog.dart';
 
 /// Settings: about, manual update check, and the optional feedback entries.
@@ -161,6 +162,7 @@ class SettingsPage extends ConsumerWidget {
                 ),
                 onTap: () => context.push(AppRoutes.myRequests),
               ),
+              const RequestNotificationSwitchTile(),
             ],
           ),
           if (feedbackEnabled) ...<Widget>[

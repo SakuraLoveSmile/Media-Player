@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/app/feedback_config.dart';
 import 'package:media_player/app/feedback_orb_settings.dart';
+import 'package:media_player/app/request_notification_settings.dart';
 import 'package:media_player/app/update_channel_settings.dart';
 import 'package:media_player/app/update_providers.dart';
 import 'package:media_player/core/config/app_config.dart';
@@ -141,6 +142,11 @@ void main() {
           updateChannelStoreProvider.overrideWith(
             (ref) async => store ?? InMemoryKeyValueStore(),
           ),
+          // The 求片 notification switches read the same app store; without an
+          // override they would await the real bootstrap and never settle.
+          requestNotificationStoreProvider.overrideWith(
+            (ref) async => store ?? InMemoryKeyValueStore(),
+          ),
           feedbackServiceConfigProvider.overrideWithValue(feedback),
           if (feedbackController != null)
             feedbackControllerProvider.overrideWithValue(feedbackController),
@@ -200,6 +206,9 @@ void main() {
           updateInstallerProvider.overrideWithValue(installer),
           updatePlatformProvider.overrideWithValue('macos'),
           feedbackOrbStoreProvider.overrideWith(
+            (ref) async => InMemoryKeyValueStore(),
+          ),
+          requestNotificationStoreProvider.overrideWith(
             (ref) async => InMemoryKeyValueStore(),
           ),
           feedbackServiceConfigProvider.overrideWithValue(null),

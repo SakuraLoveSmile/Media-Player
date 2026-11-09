@@ -11,6 +11,7 @@ import 'package:media_player/data/moviepilot/models/mp_season.dart';
 import 'package:media_player/data/moviepilot/models/mp_subscribe.dart';
 import 'package:media_player/data/moviepilot/moviepilot_service.dart';
 import 'package:media_player/data/moviepilot/progress/poll_snapshot.dart';
+import 'package:media_player/data/moviepilot/progress/request_notification.dart';
 import 'package:media_player/data/storage/key_value_store.dart';
 import 'package:media_player/data/storage/moviepilot_config_store.dart';
 import 'package:media_player/data/storage/request_store.dart';
@@ -743,6 +744,120 @@ void main() {
       expect(result.ok, isFalse);
       expect(result.error, contains('API_TOKEN'));
       expect(await harness.configStore.read(), isNull);
+      controller.dispose();
+    });
+  });
+
+  group('notifications', () {
+    test('a request that becomes playable notifies its subscribers once',
+        () async {
+      final library = FakeLibraryService()
+        ..lookupItems = <MediaItem>[
+          const MediaItem(
+            id: 'emby-7',
+            name: '沙丘2',
+            type: 'Movie',
+            productionYear: 2024,
+          ),
+        ];
+      final harness = _Harness(library: library);
+      await harness.configure();
+      final controller = harness.build();
+      await controller.load();
+      final events = <RequestNotification>[];
+      final unsubscribe = controller.addNotificationListener(events.add);
+      await controller.subscribe(fakeMedia());
+
+      harness.service.snapshot = PollSnapshot(
+        movieHistory: <MpSubscribe>[fakeSubscribe()],
+      );
+      await controller.refresh();
+      await controller.refresh();
+
+      expect(events, hasLength(1));
+      expect(events.single.requestId, controller.state.requests.single.id);
+      expect(events.single.body, '已入库，可以播放');
+      expect(events.single.embyItemId, 'emby-7');
+      unsubscribe();
+      controller.dispose();
+    });
+
+    test('unsubscribing stops the events', () async {
+      final library = FakeLibraryService()
+        ..lookupItems = <MediaItem>[
+          const MediaItem(
+            id: 'emby-7',
+            name: '沙丘2',
+            type: 'Movie',
+            productionYear: 2024,
+          ),
+        ];
+      final harness = _Harness(library: library);
+      await harness.configure();
+      final controller = harness.build();
+      await controller.load();
+      final events = <RequestNotification>[];
+      final unsubscribe = controller.addNotificationListener(events.add);
+      await controller.subscribe(fakeMedia());
+      unsubscribe();
+
+      harness.service.snapshot = PollSnapshot(
+        movieHistory: <MpSubscribe>[fakeSubscribe()],
+      );
+      await controller.refresh();
+
+      expect(events, isEmpty);
+      controller.dispose();
+    });
+
+    test('a throwing listener does not break the round or other listeners',
+        () async {
+      final library = FakeLibraryService()
+        ..lookupItems = <MediaItem>[
+          const MediaItem(
+            id: 'emby-7',
+            name: '沙丘2',
+            type: 'Movie',
+            productionYear: 2024,
+          ),
+        ];
+      final harness = _Harness(library: library);
+      await harness.configure();
+      final controller = harness.build();
+      await controller.load();
+      final events = <RequestNotification>[];
+      controller.addNotificationListener((_) => throw StateError('boom'));
+      controller.addNotificationListener(events.add);
+      await controller.subscribe(fakeMedia());
+
+      harness.service.snapshot = PollSnapshot(
+        movieHistory: <MpSubscribe>[fakeSubscribe()],
+      );
+      await controller.refresh();
+
+      expect(events, hasLength(1));
+      expect(controller.state.polling, isFalse);
+      expect(controller.state.requests.single.stage, RequestStage.inLibrary);
+      controller.dispose();
+    });
+
+    test('startWatching keeps the heartbeat running with no page open', () async {
+      final harness = _Harness();
+      await harness.configure();
+      final controller = harness.build();
+      await controller.load();
+      await controller.subscribe(fakeMedia());
+
+      await controller.startWatching();
+      final afterStart = harness.service.pollCalls;
+      // No page is mounted and none ever called resume: the tick itself must
+      // still produce a round, which is what makes an off-screen 求片 notify.
+      harness.heartbeat.add(null);
+      await waitFor(
+        () => harness.service.pollCalls > afterStart,
+        reason: 'the app-level heartbeat to poll',
+      );
+
       controller.dispose();
     });
   });

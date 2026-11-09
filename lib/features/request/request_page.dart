@@ -53,10 +53,10 @@ class _RequestPageState extends ConsumerState<RequestPage> {
   void dispose() {
     _subscription?.close();
     _query.dispose();
-    // The controller outlives this page (我的求片 uses the same one), so only
-    // the poll is stopped here.
-    final controller = _controller?..removeListener(_onChanged);
-    unawaited(controller?.pausePolling());
+    // The controller and its heartbeat outlive this page: the app-level wiring
+    // owns the poll so a 求片 finishing off-screen can still notify. Leaving
+    // only detaches this listener.
+    _controller?.removeListener(_onChanged);
     super.dispose();
   }
 
@@ -75,9 +75,9 @@ class _RequestPageState extends ConsumerState<RequestPage> {
     _controller?.removeListener(_onChanged);
     _controller = controller;
     controller?.addListener(_onChanged);
-    // This page is visible, so it owns the heartbeat; 我的求片 pauses it when it
-    // is the one on screen.
-    unawaited(controller?.resumePolling());
+    // The heartbeat is started by the app, not by this page; asking for a round
+    // here just makes the page look alive on entry.
+    unawaited(controller?.startWatching());
     if (!mounted) return;
     if (controller == null) {
       setState(() => _fatal = '无法读取本地存储，请重启 App 后重试');

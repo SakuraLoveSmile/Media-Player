@@ -13,6 +13,7 @@ import '../../data/moviepilot/models/mp_season.dart';
 import '../../data/moviepilot/models/mp_subscribe.dart';
 import '../../data/moviepilot/moviepilot_service.dart';
 import '../../data/moviepilot/progress/poll_snapshot.dart';
+import '../../data/moviepilot/progress/request_notification.dart';
 import '../../data/moviepilot/progress/request_progress_engine.dart';
 import '../../data/storage/moviepilot_config_store.dart';
 import '../../data/storage/request_store.dart';
@@ -81,6 +82,11 @@ class RequestController extends ChangeNotifier {
   bool _disposed = false;
   bool _roundInFlight = false;
   bool _started = false;
+
+  /// Sinks for "became playable" events. Kept as plain callbacks so the
+  /// controller stays free of plugins and the app wiring owns the presentation.
+  final Set<void Function(RequestNotification event)> _notificationListeners =
+      <void Function(RequestNotification event)>{};
 
   RequestState get state => _state;
 
@@ -166,11 +172,23 @@ class RequestController extends ChangeNotifier {
 
   /// Suspends the heartbeat without forgetting anything.
   ///
-  /// Two pages can show the same controller (the search page and 我的求片), and
-  /// whichever is on screen owns the poll; the other one pauses it instead of
-  /// running a second copy. Records and the last snapshot stay untouched.
+  /// Kept for the pages that used to own the poll. Polling is now driven by the
+  /// app for as long as it is alive (see [startWatching]), so a page leaving the
+  /// screen must not silence notifications; the app-level wiring calls this only
+  /// when it really wants the rounds to stop (app paused, user signed out).
   Future<void> pausePolling() async {
     _stopBeat();
+  }
+
+  /// Starts the long-lived heartbeat and runs one round.
+  ///
+  /// Called once by the app-level wiring rather than by a page, because a
+  /// 求片 finishing while the user browses the library or watches something is
+  /// exactly when a notification is worth showing. Idempotent.
+  Future<void> startWatching() async {
+    if (_disposed) return;
+    _start();
+    if (_heartbeatShouldPoll) await pollRound();
   }
 
   /// Resumes the heartbeat and runs one round, unless it is already running.
@@ -297,12 +315,43 @@ class RequestController extends ChangeNotifier {
       for (final request in derived)
         if (live.contains(request.id)) request,
     ];
+    // The pre-round list is the only trustworthy "what the user already knew":
+    // _state.requests may have been changed by an action while the round was in
+    // flight, and the events must describe the transition, not the race.
+    final events = requestNotificationsFor(before: requests, after: kept);
     _set(_state.copyWith(
       requests: kept,
       polling: false,
       pollError: null,
     ));
     await _persist(kept);
+    for (final event in events) {
+      _notify(event);
+    }
+  }
+
+  /// Hands one event to every subscriber; a listener throwing must not break
+  /// the round or the other sinks.
+  void _notify(RequestNotification event) {
+    for (final listener in _notificationListeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        debugPrint('[request] 通知派发失败：$error');
+      }
+    }
+  }
+
+  /// Subscribes to "it became playable" events.
+  ///
+  /// The controller deliberately does not know how a notification is shown: the
+  /// app-level wiring decides whether that is a system notification, an in-app
+  /// banner, or both. Returns the unsubscribe callback.
+  void Function() addNotificationListener(
+    void Function(RequestNotification event) listener,
+  ) {
+    _notificationListeners.add(listener);
+    return () => _notificationListeners.remove(listener);
   }
 
   /// Looks the request up in Emby; never throws (plan S8).
@@ -732,6 +781,7 @@ class RequestController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _stopBeat();
+    _notificationListeners.clear();
     super.dispose();
   }
 }

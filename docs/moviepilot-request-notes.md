@@ -49,7 +49,44 @@ S1 `ad1bbe7` … S14 `32ce556`，每片单独本地提交，未推送。
 6. Emby `AnyProviderIdEquals=tmdbid.<id>` 是否被目标版本支持；不支持时服务端会忽略该参数并返回整库，因此客户端按类型与年份二次过滤，并以 `SearchTerm` 兜底。
 7. 完成信号：订阅完成后是否确实从活动列表移入历史（若实例保留在活动态，回退到 Emby 命中 + `lack_episode == 0` 的路径尚未单独实现）。
 
-此外未做：系统级通知（计划内明确不做）、手动选种下载（计划内后续增强）。
+此外未做：手动选种下载（计划内后续增强）。系统级通知见下节（本轮已补，原计划明确不做）。
+
+## 求片通知（S15，本轮补做）
+
+原计划明确不做系统级通知；本轮按要求补上「求片入库提醒」，应用内横幅与系统通知两条通道都做。
+
+**触发范围**：只有「入库、可播放」一种事件（`RequestStage.inLibrary`）。用户重新确认过：下载完成、开始整理、失败/无资源这些中间态与异常态都不打扰。推导规则在 `lib/data/moviepilot/progress/request_notification.dart`，是纯函数，逐条规则有单测：
+
+- 只在 stage **进入** `inLibrary` 时产生事件；启动时已入库的记录、刚创建的记录、已取消的记录都不产生。
+- 一轮里多个求片同时完成，按列表顺序各产生一条。
+- 同一条求片重复轮询不会重复通知（`dedupeKey` 固定为 `request:<id>:inLibrary`）。
+
+**轮询范围改成应用存活期**：这是为了通知能真正送达而必须的前置改动。原来 `resumePolling`/`pausePolling` 由求片页与我的求片页在 `initState`/`dispose` 里抢占心跳，页面一关就停——用户浏览媒体库或看剧时永远不会收到提醒，系统通知也就失去意义。现在心跳由 `app.dart` 在应用级接管（`startWatching()`），页面只在进入时请求一轮刷新，离开时只解绑监听。仍然不做后台常驻：应用被系统杀掉或用户主动退出后不再轮询，这一点与「后台推送服务」是两回事，见下方未闭环。
+
+**通道与开关**：
+
+- 系统通知：`flutter_local_notifications` 23.0.0（Windows 走 `flutter_local_notifications_windows` 4.0.0 FFI 实现），`lib/data/notifications/local_notification_sink.dart`。懒初始化：只有真的产生事件时才初始化插件，没求过片的用户不会被弹权限框。权限在设置页打开开关时申请，不在启动时申请。
+- 应用内横幅：`lib/app/request_notification_banner.dart`，挂在路由之上、反馈浮层之下，因此播放页也能看到；点击进入「我的求片」，6 秒自动消失。
+- 设置页「求片」分区新增两个开关（`lib/features/settings/request_notification_settings_tile.dart`），分别控制系统通知与应用内横幅，存在 `request.notifications.v1`。两个开关分开是因为系统通知可能被 OS 单独拒绝。
+
+**平台工程改动**（都是新依赖的硬要求）：
+
+- `android/app/build.gradle.kts`：`compileSdk = 37`（插件 AAR 声明必须 ≥37，Flutter 默认是 36），`isCoreLibraryDesugaringEnabled = true` + `desugar_jdk_libs:2.1.4`（插件 AAR 强制要求 desugaring，即使不排程通知）。
+- `android/app/src/main/AndroidManifest.xml`：显式声明 `POST_NOTIFICATIONS`（插件自带，但本应用也应收敛自己申请的权限）。
+- macOS 未改 entitlements：`app-sandbox` 为 false，UserNotifications 无需额外 entitlement。
+
+**验证状态**：
+
+- `flutter analyze` 零问题；`./tool/check_layering.sh` 通过；`flutter test` 629 项通过（新增 9 项事件推导 + 4 项控制器派发 + 7 项设置持久化 + 3 项横幅组件）。
+- macOS release 构建通过（97.5MB）。
+- Android release 构建通过（三 ABI）。**注意**：debug 包装在 release 包上会因 versionCode 回退被拒装，`flutter test integration_test` 会先卸载 release 包再装 debug，所以真机验证顺序应为「先跑 integration_test，再装 release」。
+- 真机（Mi 10 / Android 16）：`integration_test/request_notification_device_test.dart` 通过，`requestPermission()` 返回 `granted=true`，通道 `request_progress` 创建成功。
+
+**未闭环**：
+
+1. 真机通知的视觉确认（通知栏里的实际呈现）还需要在应用真正产生一次「入库」事件时看一次——本轮没有真实 MoviePilot 实例驱动完整链路，只验证到「权限授予 + 插件调用成功」。
+2. Windows 的 toast 未在真机验证（只有 CI release 构建，没有 Windows 机器）。
+3. 用户提出的「支持 push 的走 push、小米等走后台常驻、GMS 兜底」没有实现。这需要第三方推送服务、服务端改动与各厂商通道接入，是独立于本轮的工程量；本轮交付的是应用存活期的本地通知，应用被系统清理后不会提醒。如果要做，建议单独开任务，且要先定服务端由谁托管。
 
 ## 设备/实例取证状态
 
