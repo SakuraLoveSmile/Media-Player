@@ -10,6 +10,15 @@ name: release
 # Every stable tag must ship release/notes/<tag>.md: the file is used verbatim
 # as the GitHub Release body, which the in-app update dialog shows to users.
 # Do not use auto-generated commit lists; write user-facing Chinese copy.
+#
+# KaneoPilot pilot releases (automated prerelease channel) reuse this pipeline.
+# A dispatch carrying `release_batch_id` builds the immutable `target_sha`
+# instead of a tag, stamps the version/build number frozen in the task manifest,
+# publishes a pre-release that also carries `kaneopilot-release.json`, and names
+# the run `pilot-release-<batch_id>` so the scheduler can bind exactly this run.
+# Contract: KaneoPilot docs/release-contract.md §T2. The manifest artifact must
+# stay named `kaneopilot-provenance` and contain that single JSON file at the
+# archive root; the Release must carry a byte-identical copy of the same file.
 on:
   push:
     tags:
@@ -19,7 +28,30 @@ on:
       tag_name:
         description: 'Tag to build and publish (e.g. v0.1.0). Leave empty to use the dispatched ref name.'
         required: false
+        type: string
         default: ''
+      release_batch_id:
+        description: 'KaneoPilot release batch id. Set only for an automated pilot release.'
+        required: false
+        type: string
+        default: ''
+      target_sha:
+        description: 'Immutable commit to build. Required with release_batch_id.'
+        required: false
+        type: string
+        default: ''
+      task_manifest_json:
+        description: 'Frozen KaneoPilot task manifest, canonical JSON. Required with release_batch_id.'
+        required: false
+        type: string
+        default: ''
+      task_manifest_sha256:
+        description: 'SHA-256 of the canonical task manifest JSON. Required with release_batch_id.'
+        required: false
+        type: string
+        default: ''
+
+run-name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_batch_id != '' && format('pilot-release-{0}', inputs.release_batch_id) || format('release {0}', github.ref_name) }}
 
 # Build jobs only read the repository; the release job lifts this to write access.
 permissions:
@@ -33,69 +65,165 @@ jobs:
       release_tag: ${{ steps.validate.outputs.release_tag }}
       version: ${{ steps.validate.outputs.version }}
       notes_file: ${{ steps.validate.outputs.notes_file }}
+      pilot: ${{ steps.validate.outputs.pilot }}
+      source_ref: ${{ steps.validate.outputs.source_ref }}
+      build_name: ${{ steps.validate.outputs.build_name }}
+      build_number: ${{ steps.validate.outputs.build_number }}
     steps:
       - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag_name || github.ref }}
+          ref: ${{ inputs.target_sha || inputs.tag_name || github.ref }}
           persist-credentials: false
 
-      - name: Validate tag against pubspec version
+      - name: Validate release source
         id: validate
         env:
           EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
           INPUT_TAG_NAME: ${{ inputs.tag_name }}
+          INPUT_BATCH_ID: ${{ inputs.release_batch_id }}
+          INPUT_TARGET_SHA: ${{ inputs.target_sha }}
+          INPUT_MANIFEST_JSON: ${{ inputs.task_manifest_json }}
+          INPUT_MANIFEST_SHA256: ${{ inputs.task_manifest_sha256 }}
         run: |
           set -euo pipefail
-          VERSION="$(python3 - <<'PY'
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
           import re
+          import subprocess
           import sys
 
+
+          def fail(message):
+              print("::error::" + message)
+              sys.exit(1)
+
+
+          def emit(name, value):
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+                  handle.write(f"{name}={value}\n")
+
+
+          def canonical(value):
+              return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+          def head_sha():
+              return subprocess.run(
+                  ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+              ).stdout.strip()
+
+
+          event_name = os.environ.get("EVENT_NAME", "")
+          input_tag = os.environ.get("INPUT_TAG_NAME", "").strip()
+          batch_id = os.environ.get("INPUT_BATCH_ID", "").strip()
+          target_sha = os.environ.get("INPUT_TARGET_SHA", "").strip()
+          manifest_raw = os.environ.get("INPUT_MANIFEST_JSON", "")
+          manifest_sha256 = os.environ.get("INPUT_MANIFEST_SHA256", "").strip()
+
+          if batch_id:
+              # Pilot release: every identity comes from the frozen manifest, never
+              # from the ref the dispatch happened to run on.
+              if not manifest_raw:
+                  fail("Pilot release requires task_manifest_json.")
+              try:
+                  task_manifest = json.loads(manifest_raw)
+              except ValueError:
+                  fail("task_manifest_json is not valid JSON.")
+              if not isinstance(task_manifest, dict):
+                  fail("task_manifest_json must be a JSON object.")
+              if canonical(task_manifest) != manifest_raw:
+                  fail("task_manifest_json is not canonical JSON.")
+              if hashlib.sha256(canonical(task_manifest).encode("utf-8")).hexdigest() != manifest_sha256:
+                  fail("task_manifest_sha256 does not match the canonical task manifest JSON.")
+              if re.fullmatch(r"[0-9a-f]{40}", target_sha) is None:
+                  fail("Pilot release requires a 40-hex target_sha.")
+              checked_out = head_sha()
+              if checked_out != target_sha:
+                  fail(f"Checked-out HEAD {checked_out} is not target_sha {target_sha}.")
+              if task_manifest.get("batch_id") != batch_id:
+                  fail("release_batch_id does not match the task manifest.")
+              if task_manifest.get("target_sha") != target_sha:
+                  fail("target_sha does not match the task manifest.")
+              tag = task_manifest.get("tag")
+              if not isinstance(tag, str) or not tag:
+                  fail("Task manifest has no tag.")
+              if input_tag and input_tag != tag:
+                  fail("tag_name does not match the task manifest tag.")
+              version = task_manifest.get("version")
+              if not isinstance(version, str) or re.fullmatch(r"\d+\.\d+\.\d+", version) is None:
+                  fail("Task manifest version must be X.Y.Z.")
+              build_number = task_manifest.get("build_number")
+              if type(build_number) is not int or not 0 < build_number <= 2147483647:
+                  fail("Task manifest build_number must be a positive 32-bit integer.")
+              notes_file = f"release/notes/{tag}.md"
+              if not os.path.isfile(notes_file) or os.path.getsize(notes_file) == 0:
+                  # Prereleases have no hand-written notes; the publish job then
+                  # writes a short generated body instead.
+                  notes_file = ""
+              emit("pilot", "true")
+              emit("release_tag", tag)
+              emit("version", version)
+              emit("notes_file", notes_file)
+              emit("source_ref", target_sha)
+              emit("build_name", version)
+              emit("build_number", str(build_number))
+              print(f"Pilot release {batch_id}: {tag} -> {version}+{build_number} from {target_sha}.")
+              sys.exit(0)
+
+          # Stable release: the tag must match pubspec.yaml and ship user notes.
           text = open("pubspec.yaml", encoding="utf-8").read()
           match = re.search(r"^version:\s*([^\s#]+)", text, re.MULTILINE)
           if match is None:
-              sys.exit("pubspec.yaml has no version field")
+              fail("pubspec.yaml has no version field.")
           raw = match.group(1).strip().strip("\"'")
           version = raw.split("+", 1)[0]
           if re.fullmatch(r"\d+\.\d+\.\d+", version) is None:
-              sys.exit("unsupported pubspec version %r (expected X.Y.Z[+build])" % raw)
-          print(version)
+              fail(f"unsupported pubspec version {raw!r} (expected X.Y.Z[+build])")
+          tag = os.environ.get("REF_NAME", "")
+          if event_name == "workflow_dispatch" and input_tag:
+              tag = input_tag
+          if not tag:
+              fail("No release tag resolved; pass tag_name or dispatch from a tag ref.")
+          expected = "v" + version
+          if tag != expected:
+              fail(
+                  f"Tag {tag!r} does not match pubspec version {version!r} "
+                  f"(expected {expected!r}); refusing to build a mismatched release."
+              )
+          notes_file = f"release/notes/{tag}.md"
+          if not os.path.isfile(notes_file) or os.path.getsize(notes_file) == 0:
+              fail(
+                  f"Missing user-facing release notes {notes_file!r}. Write the update notes "
+                  "(plain Chinese text/bullets) before tagging; the in-app update dialog shows this file."
+              )
+          emit("pilot", "false")
+          emit("release_tag", tag)
+          emit("version", version)
+          emit("notes_file", notes_file)
+          emit("source_ref", tag)
+          emit("build_name", "")
+          emit("build_number", "")
+          print(f"Release tag {tag} matches pubspec version {version}.")
           PY
-          )"
-          TAG="$GITHUB_REF_NAME"
-          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_TAG_NAME" ]; then
-            TAG="$INPUT_TAG_NAME"
-          fi
-          if [ -z "$TAG" ]; then
-            echo "::error::No release tag resolved; pass tag_name or dispatch from a tag ref."
-            exit 1
-          fi
-          EXPECTED="v$VERSION"
-          if [ "$TAG" != "$EXPECTED" ]; then
-            echo "::error::Tag '$TAG' does not match pubspec version '$VERSION' (expected '$EXPECTED'); refusing to build a mismatched release."
-            exit 1
-          fi
-          echo "Release tag $TAG matches pubspec version $VERSION."
-          NOTES_FILE="release/notes/$TAG.md"
-          if [ ! -s "$NOTES_FILE" ]; then
-            echo "::error::Missing user-facing release notes '$NOTES_FILE'. Write the update notes (plain Chinese text/bullets) before tagging; the in-app update dialog shows this file."
-            exit 1
-          fi
-          echo "Release notes: $NOTES_FILE ($(wc -c < "$NOTES_FILE") bytes)"
-          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "notes_file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
 
   build-android:
     name: Build Android APK
     needs: validate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout tagged source
+      - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.validate.outputs.release_tag }}
+          ref: ${{ needs.validate.outputs.source_ref }}
           persist-credentials: false
+
+      - name: Verify pilot source commit
+        if: needs.validate.outputs.pilot == 'true'
+        run: test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.source_ref }}"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -135,7 +263,18 @@ jobs:
         run: flutter pub get
 
       - name: Build Android APK
-        run: flutter build apk --release --dart-define=FEEDBACK_ENABLED=true --dart-define=FEEDBACK_API_BASE=https://feedback.xn--fhqths51enha.cn --dart-define=FEEDBACK_APP_ID=dev.mediaplayer.media_player
+        env:
+          PILOT_BUILD_NAME: ${{ needs.validate.outputs.build_name }}
+          PILOT_BUILD_NUMBER: ${{ needs.validate.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          args=(--release)
+          # A pilot release stamps the frozen version/build number; a stable tag
+          # keeps using pubspec.yaml.
+          if [ -n "${PILOT_BUILD_NAME:-}" ]; then
+            args+=("--build-name=${PILOT_BUILD_NAME}" "--build-number=${PILOT_BUILD_NUMBER}")
+          fi
+          flutter build apk "${args[@]}" --dart-define=FEEDBACK_ENABLED=true --dart-define=FEEDBACK_API_BASE=https://feedback.xn--fhqths51enha.cn --dart-define=FEEDBACK_APP_ID=dev.mediaplayer.media_player
 
       - name: Stage release asset
         run: cp build/app/outputs/flutter-apk/app-release.apk MediaPlayer-android.apk
@@ -152,11 +291,16 @@ jobs:
     needs: validate
     runs-on: windows-latest
     steps:
-      - name: Checkout tagged source
+      - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.validate.outputs.release_tag }}
+          ref: ${{ needs.validate.outputs.source_ref }}
           persist-credentials: false
+
+      - name: Verify pilot source commit
+        if: needs.validate.outputs.pilot == 'true'
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.source_ref }}"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -186,7 +330,16 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows release
-        run: flutter build windows --release --dart-define=FEEDBACK_ENABLED=true --dart-define=FEEDBACK_API_BASE=https://feedback.xn--fhqths51enha.cn --dart-define=FEEDBACK_APP_ID=dev.mediaplayer.media_player
+        env:
+          PILOT_BUILD_NAME: ${{ needs.validate.outputs.build_name }}
+          PILOT_BUILD_NUMBER: ${{ needs.validate.outputs.build_number }}
+        run: |
+          $extra = @()
+          if ($env:PILOT_BUILD_NAME) {
+            $extra += "--build-name=$($env:PILOT_BUILD_NAME)"
+            $extra += "--build-number=$($env:PILOT_BUILD_NUMBER)"
+          }
+          flutter build windows --release @extra --dart-define=FEEDBACK_ENABLED=true --dart-define=FEEDBACK_API_BASE=https://feedback.xn--fhqths51enha.cn --dart-define=FEEDBACK_APP_ID=dev.mediaplayer.media_player
 
       - name: Package release asset
         shell: pwsh
@@ -207,11 +360,15 @@ jobs:
       # CocoaPods warns and may misbehave under a non-UTF-8 locale.
       LANG: en_US.UTF-8
     steps:
-      - name: Checkout tagged source
+      - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.validate.outputs.release_tag }}
+          ref: ${{ needs.validate.outputs.source_ref }}
           persist-credentials: false
+
+      - name: Verify pilot source commit
+        if: needs.validate.outputs.pilot == 'true'
+        run: test "$(git rev-parse HEAD)" = "${{ needs.validate.outputs.source_ref }}"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -224,7 +381,16 @@ jobs:
         run: flutter pub get
 
       - name: Build macOS release
-        run: flutter build macos --release --dart-define=FEEDBACK_ENABLED=true --dart-define=FEEDBACK_API_BASE=https://feedback.xn--fhqths51enha.cn --dart-define=FEEDBACK_APP_ID=dev.mediaplayer.media_player
+        env:
+          PILOT_BUILD_NAME: ${{ needs.validate.outputs.build_name }}
+          PILOT_BUILD_NUMBER: ${{ needs.validate.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          args=(--release)
+          if [ -n "${PILOT_BUILD_NAME:-}" ]; then
+            args+=("--build-name=${PILOT_BUILD_NAME}" "--build-number=${PILOT_BUILD_NUMBER}")
+          fi
+          flutter build macos "${args[@]}" --dart-define=FEEDBACK_ENABLED=true --dart-define=FEEDBACK_API_BASE=https://feedback.xn--fhqths51enha.cn --dart-define=FEEDBACK_APP_ID=dev.mediaplayer.media_player
 
       - name: Package release asset
         run: ditto -c -k --sequesterRsrc --keepParent "build/macos/Build/Products/Release/Media Player.app" MediaPlayer-macos.zip
@@ -244,10 +410,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout tagged source for release notes
+      - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.validate.outputs.release_tag }}
+          ref: ${{ needs.validate.outputs.source_ref }}
           persist-credentials: false
 
       - name: Download release artifacts
@@ -264,11 +430,90 @@ jobs:
             test -s "release-assets/$asset" || { echo "::error::Missing or empty release asset: $asset"; exit 1; }
           done
 
+      - name: Write pilot provenance manifest
+        if: needs.validate.outputs.pilot == 'true'
+        env:
+          TASK_MANIFEST_JSON: ${{ inputs.task_manifest_json }}
+          TASK_MANIFEST_SHA256: ${{ inputs.task_manifest_sha256 }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+
+
+          def fail(message):
+              print("::error::" + message)
+              sys.exit(1)
+
+
+          def canonical(value):
+              return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+          raw = os.environ.get("TASK_MANIFEST_JSON", "")
+          if not raw:
+              fail("Pilot release requires task_manifest_json.")
+          task_manifest = json.loads(raw)
+          if canonical(task_manifest) != raw:
+              fail("task_manifest_json is not in canonical form.")
+          if hashlib.sha256(raw.encode("utf-8")).hexdigest() != os.environ.get("TASK_MANIFEST_SHA256", ""):
+              fail("task_manifest_sha256 does not match the canonical task manifest JSON.")
+
+          declared = []
+          for name in task_manifest["required_assets"]:
+              path = os.path.join("release-assets", name)
+              if not os.path.isfile(path) or os.path.getsize(path) == 0:
+                  fail(f"Missing or empty release asset: {name}")
+              with open(path, "rb") as handle:
+                  payload = handle.read()
+              declared.append(
+                  {"name": name, "size": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
+              )
+
+          document = {
+              "schema": 1,
+              "batch_id": task_manifest["batch_id"],
+              "repository": os.environ["TARGET_REPOSITORY"],
+              "target_sha": task_manifest["target_sha"],
+              "task_manifest_sha256": os.environ["TASK_MANIFEST_SHA256"],
+              "task_manifest": task_manifest,
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "channel": task_manifest["channel"],
+              "version": task_manifest["version"],
+              "tag": task_manifest["tag"],
+              "build_number": task_manifest["build_number"],
+              "assets": declared,
+          }
+          with open(os.path.join("release-assets", "kaneopilot-release.json"), "w", encoding="utf-8") as handle:
+              handle.write(canonical(document))
+          print(f"Wrote provenance manifest for batch {task_manifest['batch_id']}.")
+          PY
+
+      - name: Upload pilot provenance artifact
+        if: needs.validate.outputs.pilot == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaneopilot-provenance
+          path: release-assets/kaneopilot-release.json
+          if-no-files-found: error
+          overwrite: true
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.validate.outputs.release_tag }}
+          PILOT: ${{ needs.validate.outputs.pilot }}
+          TARGET_SHA: ${{ needs.validate.outputs.source_ref }}
+          NOTES_FILE: ${{ needs.validate.outputs.notes_file }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          BUILD_NUMBER: ${{ needs.validate.outputs.build_number }}
+          BATCH_ID: ${{ inputs.release_batch_id }}
         run: |
           set -euo pipefail
           # Never overwrite an existing release: the updater must only ever see
@@ -277,11 +522,26 @@ jobs:
             echo "::error::Release '$TAG' already exists; refusing to overwrite it."
             exit 1
           fi
-          NOTES_FILE="release/notes/$TAG.md"
-          test -s "$NOTES_FILE" || { echo "::error::Missing release notes: $NOTES_FILE"; exit 1; }
-          # The file is the user-facing changelog shown on GitHub and in the
-          # in-app update dialog; never replace it with commit titles.
-          gh release create "$TAG" --title "Media Player $TAG" --notes-file "$NOTES_FILE" --verify-tag \
-            release-assets/MediaPlayer-android.apk \
-            release-assets/MediaPlayer-windows-x64.zip \
+          assets=(
+            release-assets/MediaPlayer-android.apk
+            release-assets/MediaPlayer-windows-x64.zip
             release-assets/MediaPlayer-macos.zip
+          )
+          if [ "$PILOT" = "true" ]; then
+            test -s release-assets/kaneopilot-release.json || { echo "::error::Missing pilot provenance manifest"; exit 1; }
+            if [ -n "$NOTES_FILE" ]; then
+              note_args=(--notes-file "$NOTES_FILE")
+            else
+              # Prereleases are acceptance builds; the in-app updater ignores them.
+              note_args=(--notes "KaneoPilot 预发布构建 ${VERSION} (build ${BUILD_NUMBER})，批次 ${BATCH_ID}。")
+            fi
+            gh release create "$TAG" --title "Media Player $TAG" "${note_args[@]}" \
+              --prerelease --target "$TARGET_SHA" \
+              "${assets[@]}" release-assets/kaneopilot-release.json
+          else
+            # The file is the user-facing changelog shown on GitHub and in the
+            # in-app update dialog; never replace it with commit titles.
+            test -s "$NOTES_FILE" || { echo "::error::Missing release notes: $NOTES_FILE"; exit 1; }
+            gh release create "$TAG" --title "Media Player $TAG" --notes-file "$NOTES_FILE" --verify-tag \
+              "${assets[@]}"
+          fi
