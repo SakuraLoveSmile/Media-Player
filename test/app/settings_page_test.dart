@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/app/feedback_config.dart';
 import 'package:media_player/app/feedback_orb_settings.dart';
+import 'package:media_player/app/update_channel_settings.dart';
 import 'package:media_player/app/update_providers.dart';
 import 'package:media_player/core/config/app_config.dart';
 import 'package:media_player/data/update/update_installer.dart';
@@ -37,9 +38,15 @@ class FakeUpdateService extends UpdateService {
   Completer<AppRelease?>? checkGate;
   int checkCalls = 0;
 
+  final List<UpdateChannel> channels = <UpdateChannel>[];
+
   @override
-  Future<AppRelease?> checkForUpdate({String? platform}) async {
+  Future<AppRelease?> checkForUpdate({
+    String? platform,
+    UpdateChannel channel = UpdateChannel.stable,
+  }) async {
     checkCalls++;
+    channels.add(channel);
     final Completer<AppRelease?>? gate = checkGate;
     if (gate != null) return gate.future;
     final Object? error = checkError;
@@ -126,6 +133,9 @@ void main() {
           feedbackOrbStoreProvider.overrideWith(
             (ref) async => store ?? InMemoryKeyValueStore(),
           ),
+          updateChannelStoreProvider.overrideWith(
+            (ref) async => store ?? InMemoryKeyValueStore(),
+          ),
           feedbackServiceConfigProvider.overrideWithValue(feedback),
           if (feedbackController != null)
             feedbackControllerProvider.overrideWithValue(feedbackController),
@@ -140,6 +150,23 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('switches the update channel and persists the choice', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    await pumpSettings(tester, store: store);
+
+    expect(find.text('更新渠道'), findsOneWidget);
+    expect(find.text('正式版'), findsWidgets);
+    await tester.tap(find.widgetWithText(SegmentedButton<UpdateChannel>, '预览版'));
+    await tester.pumpAndSettle();
+    expect(await store.read(updateChannelStorageKey), 'preview');
+
+    await tester.tap(find.text('检查更新'));
+    await tester.pumpAndSettle();
+    expect(service.channels, contains(UpdateChannel.preview));
+  });
 
   testWidgets('renders the about section with the current version', (
     tester,

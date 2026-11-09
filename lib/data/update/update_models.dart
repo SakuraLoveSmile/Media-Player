@@ -13,6 +13,83 @@ const String defaultReleaseOwner = 'SakuraLoveSmile';
 const String defaultReleaseRepo = 'Media-Player';
 
 final RegExp _versionPattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)$');
+final RegExp _previewTagPattern =
+    RegExp(r'^(\d+)\.(\d+)\.(\d+)-(?:pilot|preview|beta|rc|alpha)\.(\d+)$');
+final RegExp _tagPrefix = RegExp(r'^[vV]');
+
+/// Update channel the user opted into.
+///
+/// `stable` only accepts正式发布 (GitHub `prerelease=false`); `preview` also
+/// accepts prerelease builds such as `v0.2.4-pilot.1794215665`.
+enum UpdateChannel {
+  stable('stable', '正式版'),
+  preview('preview', '预览版');
+
+  const UpdateChannel(this.id, this.label);
+
+  final String id;
+  final String label;
+
+  /// Parses a persisted channel id; unknown or missing values fall back to
+  /// [stable] so an upgraded app never silently joins the preview channel.
+  static UpdateChannel fromId(String? raw) {
+    for (final UpdateChannel channel in values) {
+      if (channel.id == raw) return channel;
+    }
+    return stable;
+  }
+}
+
+/// A release tag split into its comparable parts.
+class ReleaseVersion {
+  const ReleaseVersion({
+    required this.base,
+    required this.prerelease,
+    this.buildNumber,
+  });
+
+  /// `major.minor.patch` without the channel suffix.
+  final String base;
+  final bool prerelease;
+
+  /// Numeric build of a prerelease tag (`-pilot.<build>`); null for stable.
+  final int? buildNumber;
+}
+
+/// Splits `v0.2.4` or `v0.2.4-pilot.1794215665` into comparable parts.
+///
+/// Throws [FormatException] for tags that are not one of those two shapes.
+ReleaseVersion parseReleaseTag(String raw) {
+  final String text = raw.trim().replaceFirst(_tagPrefix, '');
+  if (text.isEmpty) {
+    throw const FormatException('版本号为空');
+  }
+  final RegExpMatch? preview = _previewTagPattern.firstMatch(text);
+  if (preview != null) {
+    return ReleaseVersion(
+      base: '${preview.group(1)}.${preview.group(2)}.${preview.group(3)}',
+      prerelease: true,
+      buildNumber: int.tryParse(preview.group(4)!),
+    );
+  }
+  return ReleaseVersion(base: normalizeVersion(text), prerelease: false);
+}
+
+/// True when [release] is strictly newer than the running build.
+///
+/// Base versions win first; for the same base a prerelease build must carry a
+/// higher build number than the installed one. A stable release with the same
+/// base never counts as an update, so switching back never downgrades.
+bool isNewerThanInstalled(
+  AppRelease release, {
+  required String version,
+  required int buildNumber,
+}) {
+  final int byVersion = compareVersions(release.version, version);
+  if (byVersion != 0) return byVersion > 0;
+  final int? candidate = release.buildNumber;
+  return candidate != null && candidate > buildNumber;
+}
 final RegExp _sha256Pattern = RegExp(r'^[0-9a-fA-F]{64}$');
 final RegExp _leadingZeros = RegExp(r'^0+(?=\d)');
 
@@ -65,10 +142,14 @@ class AppRelease {
     this.publishedAt,
     this.assets = const <ReleaseAsset>[],
     this.isPrerelease = false,
+    this.buildNumber,
   });
 
   /// Normalized `major.minor.patch` version used for comparisons.
   final String version;
+
+  /// Numeric build of a `-pilot.<build>` tag; null for stable releases.
+  final int? buildNumber;
   final String tagName;
   final String notes;
   final Uri pageUrl;
@@ -103,14 +184,22 @@ class AppRelease {
       }
     }
 
+    final ReleaseVersion parsed;
+    try {
+      parsed = parseReleaseTag(tagName);
+    } on FormatException {
+      throw const FormatException('发布版本标签无法识别');
+    }
+
     return AppRelease(
-      version: normalizeVersion(tagName),
+      version: parsed.base,
+      buildNumber: parsed.buildNumber,
       tagName: tagName,
       notes: _string(json['body']) ?? '',
       pageUrl: _releasePageUrl(json, tagName),
       publishedAt: _dateTime(_string(json['published_at'])),
       assets: List<ReleaseAsset>.unmodifiable(assets),
-      isPrerelease: json['prerelease'] == true,
+      isPrerelease: json['prerelease'] == true || parsed.prerelease,
     );
   }
 }
