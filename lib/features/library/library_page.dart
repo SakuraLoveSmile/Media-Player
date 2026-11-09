@@ -97,6 +97,12 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               : () => unawaited(controller.load(refresh: true)),
         ),
         GlassIconButton(
+          key: const Key('library-request'),
+          tooltip: '求片',
+          icon: const Icon(Icons.add_task),
+          onPressed: () => context.push(AppRoutes.request),
+        ),
+        GlassIconButton(
           key: const Key('library-settings'),
           tooltip: '设置',
           icon: const Icon(Icons.settings_outlined),

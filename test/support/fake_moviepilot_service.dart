@@ -176,6 +176,8 @@ MpSubscribe fakeSubscribe({
   String state = 'R',
   int submittedCount = 0,
   String error = '',
+  int totalEpisode = 0,
+  int completedEpisode = 0,
 }) {
   return MpSubscribe(
     id: id,
@@ -191,6 +193,8 @@ MpSubscribe fakeSubscribe({
     year: year,
     season: season,
     state: state,
+    totalEpisode: totalEpisode,
+    completedEpisode: completedEpisode,
     executionStatus: MpExecutionStatus(
       state: state,
       submittedCount: submittedCount,
