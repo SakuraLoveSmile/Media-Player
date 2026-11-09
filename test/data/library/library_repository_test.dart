@@ -175,6 +175,54 @@ void main() {
       expect(item!.id, 'new');
     });
 
+    test('searchByTitle refuses a different year (sequel trap)', () async {
+      // Observed on a real Emby 4.10.1: searching "流浪地球" answered with
+      // "流浪地球2 (2023)" and nothing else. Playing the sequel of the film the
+      // user asked for is worse than playing nothing, so a year mismatch must
+      // be rejected even when it is the only hit.
+      server.titleSearchItems = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'Id': 'sequel',
+          'Name': '流浪地球2',
+          'Type': 'Movie',
+          'ProductionYear': 2023,
+        },
+      ];
+
+      final item = await library.searchByTitle(
+        '流浪地球',
+        year: 2019,
+        isSeries: false,
+      );
+
+      expect(item, isNull);
+    });
+
+    test('searchByTitle takes the right year out of mixed hits', () async {
+      server.titleSearchItems = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'Id': 'sequel',
+          'Name': '流浪地球2',
+          'Type': 'Movie',
+          'ProductionYear': 2023,
+        },
+        <String, dynamic>{
+          'Id': 'original',
+          'Name': '流浪地球',
+          'Type': 'Movie',
+          'ProductionYear': 2019,
+        },
+      ];
+
+      final item = await library.searchByTitle(
+        '流浪地球',
+        year: 2019,
+        isSeries: false,
+      );
+
+      expect(item!.id, 'original');
+    });
+
     test('searchByTitle falls back to the only hit when years are unknown',
         () async {
       server.lookupItems = <Map<String, dynamic>>[

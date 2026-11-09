@@ -114,9 +114,13 @@ class LibraryRepository implements LibraryService {
         'Limit': '5',
       }),
     );
+    // An id match needs no year check: the id is exact. An empty answer means
+    // this server does not index that provider id, and the caller falls back to
+    // the title search.
     return _firstMatching(
       asMapList(json['Items']).map(MediaItem.fromJson),
       isSeries: isSeries,
+      year: null,
     );
   }
 
@@ -143,28 +147,32 @@ class LibraryRepository implements LibraryService {
     );
   }
 
-  /// Picks the first item of the right type, preferring an exact year.
+  /// Picks an item of the right type whose year agrees with [year].
   ///
-  /// A title search happily returns a remake, so an item whose year disagrees
-  /// is only accepted when nothing better exists.
+  /// Year agreement is required, not preferred. Emby's title search is not a
+  /// precision tool — searching "流浪地球" on a real library answered with
+  /// "流浪地球2 (2023)" and nothing else — so accepting a mismatched year is
+  /// how the app ends up playing the sequel of the film the user asked for.
+  /// When no year is known the first candidate of the right type is used,
+  /// because there is nothing better to go on.
   MediaItem? _firstMatching(
     Iterable<MediaItem> items, {
     required bool isSeries,
-    int? year,
+    required int? year,
   }) {
     final wanted = isSeries ? 'Series' : 'Movie';
-    MediaItem? fallback;
+    MediaItem? untyped;
     for (final item in items) {
       if (item.id.isEmpty) continue;
       if (item.type.isNotEmpty && item.type != wanted) continue;
-      if (year == null || item.productionYear == null) {
-        fallback ??= item;
-        continue;
+      if (year != null && item.productionYear != null) {
+        if (item.productionYear != year) continue;
+        return item;
       }
-      if (item.productionYear == year) return item;
-      fallback ??= item;
+      // Either side lacks a year: usable only when nothing carries one.
+      untyped ??= item;
     }
-    return fallback;
+    return untyped;
   }
 
   @override

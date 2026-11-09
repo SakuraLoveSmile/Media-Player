@@ -56,6 +56,10 @@ class FakeEmbyServer {
   /// When set, the lookup paths answer this status instead.
   int? lookupStatus;
 
+  /// Reply for a title search specifically, so a test can model the real
+  /// behaviour where Emby answers "流浪地球" with "流浪地球2 (2023)".
+  List<Map<String, dynamic>>? titleSearchItems;
+
   /// 130 movies so paging can be exercised with 60-item pages.
   final List<Map<String, dynamic>> movieItems = List<Map<String, dynamic>>.generate(
     130,
@@ -144,9 +148,13 @@ class FakeEmbyServer {
             await _json(response, status, <String, dynamic>{'error': 'lookup'});
             return;
           }
+          final byTitle = titleSearchItems;
+          final items = request.uri.queryParameters.containsKey('SearchTerm')
+              ? (byTitle ?? lookupItems)
+              : lookupItems;
           await _json(response, 200, <String, dynamic>{
-            'Items': lookupItems,
-            'TotalRecordCount': lookupItems.length,
+            'Items': items,
+            'TotalRecordCount': items.length,
           });
           return;
         }
