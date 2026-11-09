@@ -30,7 +30,10 @@ class _FakeUpdateService extends UpdateService {
   final List<String?> platforms = <String?>[];
 
   @override
-  Future<AppRelease?> checkForUpdate({String? platform}) {
+  Future<AppRelease?> checkForUpdate({
+    String? platform,
+    UpdateChannel channel = UpdateChannel.stable,
+  }) {
     checkCalls++;
     platforms.add(platform);
     return onCheck?.call() ?? Future<AppRelease?>.value();

@@ -7,7 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/feedback_config.dart';
 import '../../app/feedback_orb_settings.dart';
 import '../../app/update_providers.dart';
+import '../../app/update_channel_settings.dart';
 import '../../core/config/app_config.dart';
+import '../../data/update/update_models.dart';
 import 'update_dialog.dart';
 
 /// Settings: about, manual update check, and the optional feedback entries.
@@ -23,6 +25,8 @@ class SettingsPage extends ConsumerWidget {
       updateControllerProvider.select((state) => state.status),
     );
     final checking = updateStatus == UpdateStatus.checking;
+    final channel = ref.watch(updateChannelControllerProvider).value ??
+        UpdateChannel.stable;
     final packageInfo = ref.watch(appVersionProvider).value;
     final version = packageInfo == null
         ? AppConfig.appVersion
@@ -44,11 +48,39 @@ class SettingsPage extends ConsumerWidget {
             subtitle: Text('版本 $version'),
           ),
           const Divider(height: 1),
+          const ListTile(
+            leading: Icon(Icons.new_releases_outlined),
+            title: Text('更新渠道'),
+            subtitle: Text('正式版只接收正式发布；预览版还包含预发布构建'),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: SegmentedButton<UpdateChannel>(
+              segments: const <ButtonSegment<UpdateChannel>>[
+                ButtonSegment<UpdateChannel>(
+                  value: UpdateChannel.stable,
+                  label: Text('正式版'),
+                ),
+                ButtonSegment<UpdateChannel>(
+                  value: UpdateChannel.preview,
+                  label: Text('预览版'),
+                ),
+              ],
+              selected: <UpdateChannel>{channel},
+              onSelectionChanged: checking
+                  ? null
+                  : (Set<UpdateChannel> selection) => unawaited(
+                        _selectChannel(context, ref, selection.first),
+                      ),
+            ),
+          ),
           ListTile(
             enabled: !checking,
             leading: const Icon(Icons.system_update_outlined),
             title: const Text('检查更新'),
-            subtitle: checking ? const Text('检查中…') : null,
+            subtitle: checking
+                ? const Text('检查中…')
+                : Text('渠道：${channel.label}'),
             trailing: checking
                 ? const SizedBox(
                     width: 16,
@@ -105,6 +137,22 @@ class SettingsPage extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Persists the channel preference; failures keep the previous selection.
+  Future<void> _selectChannel(
+    BuildContext context,
+    WidgetRef ref,
+    UpdateChannel channel,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(updateChannelControllerProvider.notifier)
+          .setChannel(channel);
+    } on UpdateChannelSettingsException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   /// Runs one check, then reports the outcome. `check()` itself ignores

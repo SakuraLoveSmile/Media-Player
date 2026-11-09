@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../data/update/update_installer.dart';
 import '../data/update/update_models.dart';
 import '../data/update/update_service.dart';
+import 'update_channel_settings.dart';
 
 /// Lifecycle of the in-app update flow.
 enum UpdateStatus {
@@ -31,6 +32,7 @@ class UpdateState {
     this.receivedBytes = 0,
     this.totalBytes = 0,
     this.errorMessage,
+    this.channel = UpdateChannel.stable,
   });
 
   final UpdateStatus status;
@@ -44,6 +46,9 @@ class UpdateState {
   final int totalBytes;
   final String? errorMessage;
 
+  /// Channel the last check used, so the UI can label a prerelease offer.
+  final UpdateChannel channel;
+
   static const Object _unset = Object();
 
   UpdateState copyWith({
@@ -55,6 +60,7 @@ class UpdateState {
     int? receivedBytes,
     int? totalBytes,
     Object? errorMessage = _unset,
+    UpdateChannel? channel,
   }) {
     return UpdateState(
       status: status ?? this.status,
@@ -69,6 +75,7 @@ class UpdateState {
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
+      channel: channel ?? this.channel,
     );
   }
 }
@@ -138,9 +145,13 @@ class UpdateController extends Notifier<UpdateState> {
     state = const UpdateState(status: UpdateStatus.checking);
     try {
       final String platform = ref.read(updatePlatformProvider);
+      final UpdateChannel channel = ref
+              .read(updateChannelControllerProvider)
+              .value ??
+          UpdateChannel.stable;
       final AppRelease? release = await ref
           .read(updateServiceProvider)
-          .checkForUpdate(platform: platform);
+          .checkForUpdate(platform: platform, channel: channel);
       if (!_isCurrent(generation)) return;
       if (release == null) {
         state = const UpdateState();
@@ -150,6 +161,7 @@ class UpdateController extends Notifier<UpdateState> {
         status: UpdateStatus.available,
         release: release,
         asset: pickAsset(release.assets, platform: platform),
+        channel: channel,
       );
     } on UpdateException catch (error) {
       if (!_isCurrent(generation)) return;

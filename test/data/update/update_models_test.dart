@@ -293,4 +293,85 @@ void main() {
       expect(pickAsset(<ReleaseAsset>[], platform: 'macos'), isNull);
     });
   });
+
+  group('release tags and update channels', () {
+    test('parses stable and prerelease tags', () {
+      final ReleaseVersion stable = parseReleaseTag('v0.2.4');
+      expect(stable.base, '0.2.4');
+      expect(stable.prerelease, isFalse);
+      expect(stable.buildNumber, isNull);
+
+      final ReleaseVersion preview = parseReleaseTag('v0.2.4-pilot.1794215665');
+      expect(preview.base, '0.2.4');
+      expect(preview.prerelease, isTrue);
+      expect(preview.buildNumber, 1794215665);
+    });
+
+    test('rejects tags that are not version shaped', () {
+      for (final String raw in <String>['', 'latest', 'v0.2', 'v0.2.4-beta']) {
+        expect(
+          () => parseReleaseTag(raw),
+          throwsFormatException,
+          reason: raw,
+        );
+      }
+    });
+
+    test('channel ids round-trip and fall back to stable', () {
+      expect(UpdateChannel.fromId('preview'), UpdateChannel.preview);
+      expect(UpdateChannel.fromId('stable'), UpdateChannel.stable);
+      expect(UpdateChannel.fromId(null), UpdateChannel.stable);
+      expect(UpdateChannel.fromId('nightly'), UpdateChannel.stable);
+      expect(UpdateChannel.preview.label, '预览版');
+      expect(UpdateChannel.stable.label, '正式版');
+    });
+
+    test('a prerelease tag marks the release even without the flag', () {
+      final AppRelease release = AppRelease.fromGitHubJson(
+        releaseJson(
+          tagName: 'v0.2.4-pilot.1794215665',
+          htmlUrl:
+              'https://github.com/SakuraLoveSmile/Media-Player/releases/tag/'
+              'v0.2.4-pilot.1794215665',
+        ),
+      );
+      expect(release.version, '0.2.4');
+      expect(release.buildNumber, 1794215665);
+      expect(release.isPrerelease, isTrue);
+    });
+
+    test('newer comparison respects base version and build number', () {
+      final AppRelease preview = AppRelease.fromGitHubJson(
+        releaseJson(
+          tagName: 'v0.2.4-pilot.200',
+          htmlUrl:
+              'https://github.com/SakuraLoveSmile/Media-Player/releases/tag/'
+              'v0.2.4-pilot.200',
+        ),
+      );
+      final AppRelease stable = AppRelease.fromGitHubJson(
+        releaseJson(tagName: 'v0.2.4'),
+      );
+      expect(
+        isNewerThanInstalled(preview, version: '0.2.3', buildNumber: 5),
+        isTrue,
+      );
+      expect(
+        isNewerThanInstalled(preview, version: '0.2.4', buildNumber: 100),
+        isTrue,
+      );
+      expect(
+        isNewerThanInstalled(preview, version: '0.2.4', buildNumber: 200),
+        isFalse,
+      );
+      expect(
+        isNewerThanInstalled(stable, version: '0.2.4', buildNumber: 200),
+        isFalse,
+      );
+      expect(
+        isNewerThanInstalled(stable, version: '0.2.5', buildNumber: 0),
+        isFalse,
+      );
+    });
+  });
 }
