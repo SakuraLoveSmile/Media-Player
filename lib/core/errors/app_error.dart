@@ -16,7 +16,12 @@ enum AppErrorCode {
   directPlayDenied,
   playbackUnsupported,
   transcodeFailed,
-  subtitleFailed;
+  subtitleFailed,
+
+  /// The MoviePilot connection settings are missing entirely (求片 plan S4):
+  /// nothing was stored yet, or the user cleared them. Not retryable until the
+  /// user configures a connection.
+  notConfigured;
 
   /// Whether retrying the same operation can plausibly succeed.
   bool get retryable => switch (this) {
