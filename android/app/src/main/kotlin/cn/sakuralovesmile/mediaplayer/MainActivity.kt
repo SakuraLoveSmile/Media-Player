@@ -1,4 +1,4 @@
-package dev.mediaplayer.media_player
+package cn.sakuralovesmile.mediaplayer
 
 import io.flutter.embedding.android.FlutterActivity
 
