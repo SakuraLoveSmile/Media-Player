@@ -13,11 +13,13 @@ import '../../ui/glass/glass_shell.dart';
 import '../../ui/glass/glass_theme.dart';
 import '../../ui/glass/glass_tokens.dart';
 
-/// MoviePilot connection form (求片 plan S10).
+/// MoviePilot sign-in form (求片 plan S10, account login in S16).
 ///
-/// Saves through [moviePilotSettingsProvider], which verifies the token before
-/// persisting it. The dialog never logs or renders the token it holds, and the
-/// field is obscured while typing.
+/// Saves through [moviePilotSettingsProvider], which trades the password for a
+/// token and verifies it before persisting. The password never leaves this
+/// widget: the dialog holds it in a controller, sends it once, and the store
+/// keeps only the token. Neither the token nor the password is ever logged or
+/// rendered.
 class MoviePilotConfigDialog extends ConsumerStatefulWidget {
   const MoviePilotConfigDialog({super.key, this.initial});
 
@@ -32,9 +34,12 @@ class MoviePilotConfigDialog extends ConsumerStatefulWidget {
 class _MoviePilotConfigDialogState
     extends ConsumerState<MoviePilotConfigDialog> {
   late final TextEditingController _url;
-  late final TextEditingController _token;
+  late final TextEditingController _username;
+  late final TextEditingController _password;
+  late final TextEditingController _otp;
   bool _saving = false;
   bool _obscure = true;
+  bool _mfaRequired = false;
   String? _error;
   String? _notice;
 
@@ -42,13 +47,17 @@ class _MoviePilotConfigDialogState
   void initState() {
     super.initState();
     _url = TextEditingController(text: widget.initial?.baseUrl ?? '');
-    _token = TextEditingController(text: widget.initial?.apiToken ?? '');
+    _username = TextEditingController(text: widget.initial?.username ?? '');
+    _password = TextEditingController();
+    _otp = TextEditingController();
   }
 
   @override
   void dispose() {
     _url.dispose();
-    _token.dispose();
+    _username.dispose();
+    _password.dispose();
+    _otp.dispose();
     super.dispose();
   }
 
@@ -61,8 +70,8 @@ class _MoviePilotConfigDialogState
     return Material(
       type: MaterialType.transparency,
       child: GlassDialog(
-        title: 'MoviePilot 连接',
-        message: '填写 MoviePilot 地址与 API_TOKEN，用于搜索片源和跟踪求片进度。',
+        title: 'MoviePilot 登录',
+        message: '使用 MoviePilot 账号登录，用于搜索片源和跟踪求片进度。密码只用于换取登录令牌，不会保存。',
         maxWidth: 380,
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -85,8 +94,22 @@ class _MoviePilotConfigDialogState
             const SizedBox(height: GlassSpacing.md),
             FeedbackCaptureMask(
               child: TextField(
-                key: const Key('moviepilot-token'),
-                controller: _token,
+                key: const Key('moviepilot-username'),
+                controller: _username,
+                enabled: !_saving,
+                autocorrect: false,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: '用户名',
+                  hintText: 'MoviePilot 登录用户名',
+                ),
+              ),
+            ),
+            const SizedBox(height: GlassSpacing.md),
+            FeedbackCaptureMask(
+              child: TextField(
+                key: const Key('moviepilot-password'),
+                controller: _password,
                 enabled: !_saving,
                 autocorrect: false,
                 obscureText: _obscure,
@@ -94,10 +117,10 @@ class _MoviePilotConfigDialogState
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => unawaited(_save()),
                 decoration: InputDecoration(
-                  labelText: 'API_TOKEN',
-                  helperText: 'MoviePilot 设置 → 服务 → API_TOKEN',
+                  labelText: '密码',
+                  helperText: '仅用于换取登录令牌，不会保存',
                   suffixIcon: IconButton(
-                    key: const Key('moviepilot-token-visibility'),
+                    key: const Key('moviepilot-password-visibility'),
                     tooltip: _obscure ? '显示' : '隐藏',
                     icon: Icon(
                       _obscure
@@ -109,6 +132,25 @@ class _MoviePilotConfigDialogState
                 ),
               ),
             ),
+            if (_mfaRequired) ...<Widget>[
+              const SizedBox(height: GlassSpacing.md),
+              FeedbackCaptureMask(
+                child: TextField(
+                  key: const Key('moviepilot-otp'),
+                  controller: _otp,
+                  enabled: !_saving,
+                  keyboardType: TextInputType.number,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => unawaited(_save()),
+                  decoration: const InputDecoration(
+                    labelText: '验证码',
+                    helperText: '该账号已开启二次验证，填写 6 位动态码',
+                  ),
+                ),
+              ),
+            ],
             if (_error != null) ...<Widget>[
               const SizedBox(height: GlassSpacing.md),
               Text(
@@ -130,7 +172,7 @@ class _MoviePilotConfigDialogState
         actions: <Widget>[
           GlassButton(
             key: const Key('moviepilot-save'),
-            label: '保存并测试',
+            label: _mfaRequired ? '验证并登录' : '登录并保存',
             loading: _saving,
             onPressed: _saving ? null : () => unawaited(_save()),
           ),
@@ -154,15 +196,35 @@ class _MoviePilotConfigDialogState
 
   Future<void> _save() async {
     if (_saving) return;
-    final config = MoviePilotConfig.fromInput(
-      rawBaseUrl: _url.text,
-      rawApiToken: _token.text,
-    );
-    if (config == null) {
+    final baseUrl = UrlNormalizer.normalize(_url.text);
+    final username = _username.text.trim();
+    final password = _password.text;
+    final otp = _otp.text.trim();
+
+    if (baseUrl == null) {
       setState(() {
-        _error = UrlNormalizer.normalize(_url.text) == null
-            ? '地址无效，请填写 http:// 或 https:// 开头的地址'
-            : 'API_TOKEN 不能为空';
+        _error = '地址无效，请填写 http:// 或 https:// 开头的地址';
+        _notice = null;
+      });
+      return;
+    }
+    if (username.isEmpty) {
+      setState(() {
+        _error = '用户名不能为空';
+        _notice = null;
+      });
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() {
+        _error = '密码不能为空';
+        _notice = null;
+      });
+      return;
+    }
+    if (_mfaRequired && otp.isEmpty) {
+      setState(() {
+        _error = '请输入二次验证码';
         _notice = null;
       });
       return;
@@ -177,17 +239,32 @@ class _MoviePilotConfigDialogState
     try {
       final saved = await ref
           .read(moviePilotSettingsProvider.notifier)
-          .save(config);
+          .login(
+            baseUrl: baseUrl,
+            username: username,
+            password: password,
+            otp: otp.isEmpty ? null : otp,
+          );
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _notice = '连接成功：${saved.baseUrl}';
+        _notice = '登录成功：${saved.username} @ ${saved.baseUrl}';
       });
       // The saved state already updates the settings page; close on success so
       // the user is not left in a dialog that has done its job.
       Navigator.of(context).pop(saved);
     } on MoviePilotException catch (error) {
       if (!mounted) return;
+      if (error.code == AppErrorCode.unauthorized && error.mfaRequired) {
+        // The password was accepted; the account just needs its one-time code.
+        setState(() {
+          _saving = false;
+          _mfaRequired = true;
+          _error = null;
+          _notice = '该账号已开启二次验证，请输入验证码后重试。';
+        });
+        return;
+      }
       setState(() {
         _saving = false;
         _error = _describe(error.code);
@@ -196,7 +273,7 @@ class _MoviePilotConfigDialogState
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = '连接失败，请检查地址与网络';
+        _error = '登录失败，请检查地址、用户名与密码';
       });
     }
   }
@@ -218,12 +295,13 @@ class _MoviePilotConfigDialogState
 
   static String _describe(AppErrorCode code) {
     return switch (code) {
-      AppErrorCode.unauthorized => 'API_TOKEN 无效或权限不足，请检查后重试',
+      AppErrorCode.unauthorized => '用户名或密码错误，或登录已失效',
+      AppErrorCode.forbidden => '该账号没有使用 MoviePilot API 的权限',
       AppErrorCode.notFound => '地址不正确：该路径下没有 MoviePilot 接口',
       AppErrorCode.networkUnreachable => '无法连接 MoviePilot，请检查地址与网络',
       AppErrorCode.tlsUntrusted => 'MoviePilot 证书不受信任',
       AppErrorCode.serverError => 'MoviePilot 返回异常，请稍后重试',
-      _ => '连接失败，请检查地址与 API_TOKEN',
+      _ => '登录失败，请检查地址、用户名与密码',
     };
   }
 }
@@ -262,8 +340,10 @@ class MoviePilotSettingsTile extends ConsumerWidget {
         connecting
             ? '读取中…'
             : config == null
-            ? '未连接：求片前需要填写地址与 API_TOKEN'
-            : '已连接 ${config.baseUrl}',
+            ? '未登录：求片前需要登录 MoviePilot 账号'
+            : config.isExpired
+            ? '登录已过期：请重新登录 ${config.username}'
+            : '已登录 ${config.username}（${config.baseUrl}）',
       ),
       trailing: Icon(
         Icons.chevron_right,

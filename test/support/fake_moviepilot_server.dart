@@ -2,6 +2,25 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+/// Builds an unsigned JWT-shaped token with the claims the app reads.
+///
+/// The signature is intentionally garbage: the client only parses `exp` to know
+/// when to ask for a new login, and a fake server should not pretend to be one.
+String fakeAccessToken({DateTime? expiresAt, Map<String, dynamic>? claims}) {
+  final exp = expiresAt ?? DateTime.now().add(const Duration(days: 8));
+  final header = <String, dynamic>{'alg': 'HS256', 'typ': 'JWT'};
+  final payload = <String, dynamic>{
+    'sub': '1',
+    'username': 'admin',
+    'super_user': true,
+    'exp': exp.millisecondsSinceEpoch ~/ 1000,
+    ...?claims,
+  };
+  String encode(Map<String, dynamic> value) =>
+      base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+  return '${encode(header)}.${encode(payload)}.fake-signature';
+}
+
 /// Programmable MoviePilot v3 surface for the 求片 tests (plan S2).
 ///
 /// A real loopback server rather than a mocked client: the repository and the
@@ -9,11 +28,24 @@ import 'dart:io';
 /// query string and body the app produced. Every endpoint the feature uses is
 /// here, plus the knobs needed to break it on purpose.
 class FakeMoviePilotServer {
-  FakeMoviePilotServer({this.apiKey = 'test-api-key'});
+  FakeMoviePilotServer({
+    this.loginUsername = 'admin',
+    this.loginPassword = 'secret',
+  });
 
-  final String apiKey;
+  /// The credentials `POST /login/access-token` accepts.
+  final String loginUsername;
+  final String loginPassword;
 
   late HttpServer _server;
+
+  /// Token this instance hands out at login, and the one it accepts as
+  /// `Authorization: Bearer`. Override to control the expiry a test sees.
+  String? accessTokenOverride;
+
+  String get accessToken => accessTokenOverride ?? _defaultAccessToken;
+
+  late final String _defaultAccessToken = fakeAccessToken();
 
   /// `METHOD /path` for every request, in arrival order.
   final List<String> requestLog = <String>[];
@@ -23,12 +55,19 @@ class FakeMoviePilotServer {
   final Map<String, Map<String, String>> lastQuery =
       <String, Map<String, String>>{};
 
-  /// Last seen raw body per path.
+  /// Last seen JSON body per path.
   final Map<String, Map<String, dynamic>> lastBody =
       <String, Map<String, dynamic>>{};
 
-  /// `X-API-KEY` of the most recent request.
-  String? lastApiKey;
+  /// Last seen form body per path (the login endpoint sends one).
+  final Map<String, Map<String, String>> lastForm = <String, Map<String, String>>{};
+
+  /// `Authorization` header of the most recent request.
+  String? lastAuthorization;
+
+  /// When true, endpoints answer 401 unless the caller presents the issued
+  /// token, so a client that still sends the old API key fails loudly.
+  bool requireBearer = true;
 
   /// When false, endpoints answer with the bare payload instead of the
   /// `{success, data}` envelope, so both shapes stay covered.
@@ -40,8 +79,21 @@ class FakeMoviePilotServer {
   /// Status override per path, checked before [failingPaths].
   final Map<String, int> statusOverrides = <String, int>{};
 
-  /// Reject every request with 401, like a rotated or revoked token.
+  /// Reject every request with 401, like an expired or revoked token.
   bool revokeToken = false;
+
+  /// Answer login with 401 plus `X-MFA-Required` until [loginUsername]'s
+  /// one-time code is provided.
+  bool mfaRequired = false;
+
+  /// The one-time code [mfaRequired] accepts.
+  String validOtp = '123456';
+
+  /// Answer login with 200 but no `access_token`.
+  bool omitAccessToken = false;
+
+  /// `token_type` returned by login; a non-bearer value must be rejected.
+  String tokenType = 'bearer';
 
   /// When set, requests to this path wait for it before replying, so a test
   /// can prove polling is serialized.
@@ -84,7 +136,8 @@ class FakeMoviePilotServer {
 
   String get apiBase => '$base/api/v1';
 
-  int requestsTo(String path) => requestLog.where((line) => line.endsWith(' $path')).length;
+  int requestsTo(String path) =>
+      requestLog.where((line) => line.endsWith(' $path')).length;
 
   Future<void> start() async {
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -99,7 +152,7 @@ class FakeMoviePilotServer {
     final method = request.method;
     requestLog.add('$method $path');
     lastQuery[path] = request.uri.queryParameters;
-    lastApiKey = request.headers.value('X-API-KEY');
+    lastAuthorization = request.headers.value('Authorization');
 
     try {
       if (hold != null && holdPath != null && path.startsWith(holdPath!)) {
@@ -121,10 +174,30 @@ class FakeMoviePilotServer {
 
       final raw = await utf8.decoder.bind(request).join();
       if (raw.isNotEmpty) {
-        final decoded = jsonDecode(raw);
-        if (decoded is Map) {
-          lastBody[path] = Map<String, dynamic>.from(decoded);
+        final mime = request.headers.contentType?.mimeType;
+        if (mime == 'application/x-www-form-urlencoded') {
+          lastForm[path] = Uri.splitQueryString(raw);
+        } else {
+          try {
+            final decoded = jsonDecode(raw);
+            if (decoded is Map) {
+              lastBody[path] = Map<String, dynamic>.from(decoded);
+            }
+          } on FormatException {
+            // Leave the body unrecorded; the request itself is still logged.
+          }
         }
+      }
+
+      if (method == 'POST' && path == '/api/v1/login/access-token') {
+        await _login(response, lastForm[path] ?? const <String, String>{});
+        return;
+      }
+
+      if (requireBearer &&
+          request.headers.value('Authorization') != 'Bearer $accessToken') {
+        await _reply(response, 401, <String, dynamic>{'detail': 'bad token'});
+        return;
       }
 
       if (method == 'GET' && path == '/api/v1/media/search') {
@@ -188,6 +261,42 @@ class FakeMoviePilotServer {
       response.write('{"detail":"fake server failure"}');
       await response.close();
     }
+  }
+
+  Future<void> _login(
+    HttpResponse response,
+    Map<String, String> form,
+  ) async {
+    final otp = form['otp_password'] ?? '';
+    if (mfaRequired && otp != validOtp) {
+      response.statusCode = 401;
+      response.headers.set('X-MFA-Required', 'true');
+      response.headers.contentType = ContentType.json;
+      response.write(jsonEncode(<String, dynamic>{
+        'success': false,
+        'message': '需要二次验证',
+        'data': <String, dynamic>{
+          'mfa_methods': <String>['otp'],
+        },
+      }));
+      await response.close();
+      return;
+    }
+    if (form['username'] != loginUsername || form['password'] != loginPassword) {
+      await _reply(response, 401, <String, dynamic>{
+        'detail': '用户名或密码错误',
+      });
+      return;
+    }
+    await _reply(response, 200, <String, dynamic>{
+      if (!omitAccessToken) 'access_token': accessToken,
+      'token_type': tokenType,
+      'super_user': true,
+      'user_id': 1,
+      'user_name': loginUsername,
+      'level': 1,
+      'permissions': <String, dynamic>{},
+    });
   }
 
   int? _statusFor(String path) {

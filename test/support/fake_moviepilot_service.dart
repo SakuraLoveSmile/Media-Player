@@ -38,6 +38,7 @@ class FakeMoviePilotService implements MoviePilotService {
   Object? pollFailure;
   Object? createFailure;
   Object? testFailure;
+  Object? loginFailure;
   Object? searchNowFailure;
   Object? cancelFailure;
 
@@ -51,6 +52,8 @@ class FakeMoviePilotService implements MoviePilotService {
   final List<int> searchNowRequests = <int>[];
   final List<int> cancelRequests = <int>[];
   final List<MoviePilotConfig> connectionTests = <MoviePilotConfig>[];
+  final List<({String baseUrl, String username, String password, String? otp})>
+  logins = <({String baseUrl, String username, String password, String? otp})>[];
   int pollCalls = 0;
   final List<bool> pollNeedsTasks = <bool>[];
   final List<Set<MpMediaType>> pollHistoryTypes = <Set<MpMediaType>>[];
@@ -61,6 +64,29 @@ class FakeMoviePilotService implements MoviePilotService {
 
   /// Called on every poll so a test can advance the scripted snapshot.
   void Function(int call)? onPoll;
+
+  @override
+  Future<MoviePilotConfig> login({
+    required String baseUrl,
+    required String username,
+    required String password,
+    String? otp,
+  }) async {
+    logins.add((
+      baseUrl: baseUrl,
+      username: username,
+      password: password,
+      otp: otp,
+    ));
+    final failure = loginFailure;
+    if (failure != null) throw failure;
+    return MoviePilotConfig(
+      baseUrl: baseUrl,
+      username: username,
+      accessToken: 'token-$username',
+      expiresAt: DateTime.now().add(const Duration(days: 8)),
+    );
+  }
 
   @override
   Future<MoviePilotConfig> testConnection(MoviePilotConfig config) async {

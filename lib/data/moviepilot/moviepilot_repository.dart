@@ -17,17 +17,65 @@ import 'progress/poll_snapshot.dart';
 /// MoviePilot v3 repository (plan S4).
 ///
 /// Reads the connection from [MoviePilotConfigStore] on every call rather than
-/// caching it, so saving new settings in the dialog takes effect on the next
-/// poll without rebuilding the service graph. Every request goes to the one
+/// caching it, so signing in again in the dialog takes effect on the next poll
+/// without rebuilding the service graph. Every request goes to the one
 /// configured origin; there is no LAN/WAN resolver for MoviePilot.
 class MoviePilotRepository implements MoviePilotService {
   MoviePilotRepository(this._configStore, this._client);
 
   static const String _basePath = '/api/v1';
 
+  /// The one anonymous endpoint: it exchanges the account password for a
+  /// bearer token, so it must not carry a stale one.
+  static const String _loginPath = '$_basePath/login/access-token';
+
   final MoviePilotConfigStore _configStore;
   final MoviePilotHttpClient _client;
 
+  @override
+  Future<MoviePilotConfig> login({
+    required String baseUrl,
+    required String username,
+    required String password,
+    String? otp,
+  }) async {
+    final origin = MoviePilotConfig(
+      baseUrl: baseUrl,
+      username: username,
+      accessToken: '',
+    );
+    final json = await _client.postForm(
+      origin.resolve(_loginPath),
+      fields: <String, String>{
+        'username': username,
+        'password': password,
+        if (otp != null && otp.isNotEmpty) 'otp_password': otp,
+      },
+    );
+    final payload = MpEnvelope.object(json, what: 'login');
+    final token = asString(payload['access_token']);
+    if (token == null) {
+      // A 200 without a token would otherwise be stored as a signed-in
+      // connection that can never make a request.
+      throw MoviePilotException(
+        AppErrorCode.serverError,
+        message: 'login token missing',
+      );
+    }
+    final tokenType = asString(payload['token_type']);
+    if (tokenType != null && tokenType.toLowerCase() != 'bearer') {
+      throw MoviePilotException(
+        AppErrorCode.serverError,
+        message: 'unsupported token type',
+      );
+    }
+    return MoviePilotConfig(
+      baseUrl: baseUrl,
+      username: username,
+      accessToken: token,
+      expiresAt: MoviePilotConfig.expiryFromAccessToken(token),
+    );
+  }
 
   @override
   Future<MoviePilotConfig> testConnection(MoviePilotConfig config) async {
@@ -37,7 +85,7 @@ class MoviePilotRepository implements MoviePilotService {
         'page': '1',
         'count': '1',
       }),
-      apiToken: config.apiToken,
+      accessToken: config.accessToken,
     );
     return config;
   }
@@ -54,7 +102,7 @@ class MoviePilotRepository implements MoviePilotService {
         // Ask for TMDB first: its id is what the Emby lookup can use later.
         'media_source': MpMediaSource.tmdb.wire,
       }),
-      apiToken: config.apiToken,
+      accessToken: config.accessToken,
     );
     return <MpMediaInfo>[
       for (final raw in MpEnvelope.list(json, what: 'search'))
@@ -72,7 +120,7 @@ class MoviePilotRepository implements MoviePilotService {
         if (media.title.isNotEmpty) 'title': media.title,
         if (media.year.isNotEmpty) 'year': media.year,
       }),
-      apiToken: config.apiToken,
+      accessToken: config.accessToken,
     );
     return <MpSeason>[
       for (final raw in MpEnvelope.list(json, what: 'seasons'))
@@ -95,7 +143,7 @@ class MoviePilotRepository implements MoviePilotService {
         'media_id': ref.mediaId,
         if (season > 0) 'season': '$season',
       }),
-      apiToken: config.apiToken,
+      accessToken: config.accessToken,
     );
     final payload = MpEnvelope.object(json, what: 'exists');
     final item = asMap(payload['item']);
@@ -108,7 +156,7 @@ class MoviePilotRepository implements MoviePilotService {
     final config = await _requireConfig();
     final json = await _client.postJson(
       config.resolve('$_basePath/subscribe/'),
-      apiToken: config.apiToken,
+      accessToken: config.accessToken,
       body: draft.toJson(),
     );
     final payload = MpEnvelope.object(json, what: 'subscribe');
@@ -130,7 +178,7 @@ class MoviePilotRepository implements MoviePilotService {
     // v3 made this a POST; the GET form is deprecated.
     await _client.postJson(
       config.resolve('$_basePath/subscribe/search/$subscribeId'),
-      apiToken: config.apiToken,
+      accessToken: config.accessToken,
     );
   }
 
@@ -140,7 +188,7 @@ class MoviePilotRepository implements MoviePilotService {
     try {
       await _client.deleteJson(
         config.resolve('$_basePath/subscribe/$subscribeId'),
-        apiToken: config.apiToken,
+        accessToken: config.accessToken,
       );
     } on MoviePilotException catch (error) {
       // A subscription that already finished moved to history, so deleting it
@@ -157,7 +205,7 @@ class MoviePilotRepository implements MoviePilotService {
     Set<MpMediaType> historyTypes = const <MpMediaType>{},
   }) async {
     final config = await _requireConfig();
-    final token = config.apiToken;
+    final token = config.accessToken;
 
     final subscribes = _subscribes(
       await _client.getJson(
@@ -165,7 +213,7 @@ class MoviePilotRepository implements MoviePilotService {
           'page': '1',
           'count': '100',
         }),
-        apiToken: token,
+        accessToken: token,
       ),
       what: 'subscribe',
     );
@@ -193,18 +241,18 @@ class MoviePilotRepository implements MoviePilotService {
     final results = await Future.wait(<Future<Object?>>[
       _client.getJson(
         config.resolve('$_basePath/download/'),
-        apiToken: token,
+        accessToken: token,
       ),
       _client.getJson(
         config.resolve('$_basePath/transfer/queue'),
-        apiToken: token,
+        accessToken: token,
       ),
       _client.getJson(
         config.resolve('$_basePath/history/transfer', <String, String>{
           'page': '1',
           'count': '50',
         }),
-        apiToken: token,
+        accessToken: token,
       ),
     ]);
 
@@ -235,7 +283,7 @@ class MoviePilotRepository implements MoviePilotService {
     return _subscribes(
       await _client.getJson(
         config.resolve('$_basePath/subscribe/history/${type.wire}'),
-        apiToken: config.apiToken,
+        accessToken: config.accessToken,
       ),
       what: 'history',
     );
@@ -252,6 +300,13 @@ class MoviePilotRepository implements MoviePilotService {
     final config = await _configStore.read();
     if (config == null) {
       throw MoviePilotException(AppErrorCode.notConfigured);
+    }
+    if (config.isExpired) {
+      // Asking for a new login beats a guaranteed 401 on every round.
+      throw MoviePilotException(
+        AppErrorCode.unauthorized,
+        message: 'access token expired',
+      );
     }
     return config;
   }

@@ -392,13 +392,23 @@ class RequestController extends ChangeNotifier {
         unawaited(_ticks?.cancel().then((_) => _ticks = null));
         _started = false;
       case AppErrorCode.unauthorized:
-        // A revoked key will never work again: stop the heartbeat and send the
-        // user to the settings dialog.
+        // The session will never work again without a new login: stop the
+        // heartbeat and send the user to the settings dialog.
         _set(_state.copyWith(
           polling: false,
           configInvalid: true,
           unauthorizedToken: true,
-          pollError: 'MoviePilot API_TOKEN 无效，请重新填写',
+          pollError: 'MoviePilot 登录已失效，请重新登录',
+        ));
+        _stopBeat();
+      case AppErrorCode.forbidden:
+        // The account signed in, but the instance will not hand over the
+        // download and transfer data the progress needs. Retrying cannot grant
+        // a role, so stop and say what is missing.
+        _set(_state.copyWith(
+          polling: false,
+          unauthorizedToken: false,
+          pollError: 'MoviePilot 账号权限不足，无法读取下载与整理进度',
         ));
         _stopBeat();
       default:
@@ -628,13 +638,15 @@ class RequestController extends ChangeNotifier {
   /// Re-runs one round on demand (pull to refresh).
   Future<void> refresh() => pollRound();
 
-  /// Saves a connection and restarts polling (plan S10).
+  /// Persists an already-authenticated connection and restarts polling
+  /// (plan S10). Signing in is the settings dialog's job; this only re-verifies
+  /// the token before storing it.
   Future<MoviePilotConnectionResult> saveConnection({
     required MoviePilotConfig config,
   }) async {
     try {
-      // Verify before persisting: a wrong token would otherwise stop the poll
-      // on the next round with the same message, just later.
+      // Verify before persisting: a token the instance rejects would otherwise
+      // stop the poll on the next round with the same message, just later.
       final verified = await _service.testConnection(config);
       await _configStore.write(verified);
       _set(_state.copyWith(
@@ -791,8 +803,8 @@ String requestErrorMessage(AppErrorCode code) {
   return switch (code) {
     AppErrorCode.networkUnreachable => '无法连接 MoviePilot，请检查网络',
     AppErrorCode.tlsUntrusted => 'MoviePilot 证书不受信任',
-    AppErrorCode.unauthorized => 'MoviePilot API_TOKEN 无效，请在设置中重新填写',
-    AppErrorCode.forbidden => 'MoviePilot 拒绝了该操作',
+    AppErrorCode.unauthorized => 'MoviePilot 登录已失效，请在设置中重新登录',
+    AppErrorCode.forbidden => 'MoviePilot 账号权限不足，请在设置中更换账号',
     AppErrorCode.notFound => 'MoviePilot 中找不到该条目',
     AppErrorCode.notConfigured => '请先在设置中连接 MoviePilot',
     AppErrorCode.serverError => 'MoviePilot 返回异常，请稍后重试',

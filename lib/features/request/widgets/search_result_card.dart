@@ -161,8 +161,9 @@ class _Poster extends StatelessWidget {
 /// Copy for a failed search or subscribe action (求片 plan §6).
 String requestFailureText(AppErrorCode code) {
   return switch (code) {
-    AppErrorCode.unauthorized => 'API_TOKEN 失效，请在设置中重新填写',
-    AppErrorCode.notConfigured => '尚未连接 MoviePilot',
+    AppErrorCode.unauthorized => '登录已失效，请在设置中重新登录',
+    AppErrorCode.forbidden => '账号权限不足，无法操作',
+    AppErrorCode.notConfigured => '尚未登录 MoviePilot',
     AppErrorCode.networkUnreachable => '无法连接 MoviePilot，请检查网络',
     AppErrorCode.notFound => 'MoviePilot 中找不到该条目',
     _ => '操作失败，请稍后重试',

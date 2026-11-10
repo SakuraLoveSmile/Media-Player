@@ -27,17 +27,31 @@ void main() {
   });
 
   group('MoviePilotHttpClient', () {
-    test('sends X-API-KEY and accepts an enveloped reply', () async {
+    test('sends the bearer token and accepts an enveloped reply', () async {
       final body = await client.getJson(
         uri('/media/search', <String, String>{'title': 'dune'}),
-        apiToken: FakeMoviePilotServer().apiKey,
+        accessToken: server.accessToken,
       );
 
-      expect(server.lastApiKey, 'test-api-key');
+      expect(server.lastAuthorization, 'Bearer ${server.accessToken}');
       expect(server.lastQuery['/api/v1/media/search'], <String, String>{
         'title': 'dune',
       });
       expect(MpEnvelope.list(body), isEmpty);
+    });
+
+    test('the login call posts a form and carries no token', () async {
+      final body = await client.postForm(
+        uri('/login/access-token'),
+        fields: <String, String>{'username': 'admin', 'password': 'secret'},
+      );
+
+      expect(server.lastAuthorization, isNull);
+      expect(server.lastForm['/api/v1/login/access-token'], <String, String>{
+        'username': 'admin',
+        'password': 'secret',
+      });
+      expect(MpEnvelope.object(body)['access_token'], server.accessToken);
     });
 
     test('accepts a bare list reply', () async {
@@ -48,7 +62,7 @@ void main() {
 
       final body = await client.getJson(
         uri('/media/search'),
-        apiToken: 'test-api-key',
+        accessToken: server.accessToken,
       );
 
       expect(MpEnvelope.list(body), hasLength(1));
@@ -57,7 +71,7 @@ void main() {
     test('posts a JSON body and unwraps the created id', () async {
       final body = await client.postJson(
         uri('/subscribe/'),
-        apiToken: 'test-api-key',
+        accessToken: server.accessToken,
         body: <String, dynamic>{'name': 'Dune', 'season': null},
       );
 
@@ -71,7 +85,7 @@ void main() {
     test('deletes without a body', () async {
       final body = await client.deleteJson(
         uri('/subscribe/7'),
-        apiToken: 'test-api-key',
+        accessToken: server.accessToken,
       );
 
       expect(server.requestLog, contains('DELETE /api/v1/subscribe/7'));
@@ -83,7 +97,7 @@ void main() {
       server.revokeToken = true;
 
       await expectLater(
-        client.getJson(uri('/subscribe/'), apiToken: 'wrong'),
+        client.getJson(uri('/subscribe/'), accessToken: 'expired'),
         throwsA(
           isA<MoviePilotException>().having(
             (e) => e.code,
@@ -94,16 +108,48 @@ void main() {
       );
     });
 
-    test('a 403 (token without the admin role) is unauthorized too', () async {
-      server.statusOverrides['/api/v1/subscribe/'] = 403;
+    test('a 403 (account without the manage role) is forbidden', () async {
+      server.statusOverrides['/api/v1/download/'] = 403;
 
       await expectLater(
-        client.getJson(uri('/subscribe/'), apiToken: 'test-api-key'),
+        client.getJson(uri('/download/'), accessToken: server.accessToken),
         throwsA(
           isA<MoviePilotException>().having(
             (e) => e.code,
             'code',
-            AppErrorCode.unauthorized,
+            AppErrorCode.forbidden,
+          ),
+        ),
+      );
+    });
+
+    test('a login 401 with X-MFA-Required is flagged', () async {
+      server.mfaRequired = true;
+
+      await expectLater(
+        client.postForm(
+          uri('/login/access-token'),
+          fields: <String, String>{'username': 'admin', 'password': 'secret'},
+        ),
+        throwsA(
+          isA<MoviePilotException>()
+              .having((e) => e.code, 'code', AppErrorCode.unauthorized)
+              .having((e) => e.mfaRequired, 'mfaRequired', isTrue),
+        ),
+      );
+    });
+
+    test('a plain login 401 is not flagged as MFA', () async {
+      await expectLater(
+        client.postForm(
+          uri('/login/access-token'),
+          fields: <String, String>{'username': 'admin', 'password': 'wrong'},
+        ),
+        throwsA(
+          isA<MoviePilotException>().having(
+            (e) => e.mfaRequired,
+            'mfaRequired',
+            isFalse,
           ),
         ),
       );
@@ -113,7 +159,7 @@ void main() {
       server.failingPaths.add('/api/v1/subscribe/');
 
       await expectLater(
-        client.getJson(uri('/subscribe/'), apiToken: 'test-api-key'),
+        client.getJson(uri('/subscribe/'), accessToken: server.accessToken),
         throwsA(
           isA<MoviePilotException>()
               .having((e) => e.code, 'code', AppErrorCode.serverError)
@@ -123,9 +169,14 @@ void main() {
     });
 
     test('logs the path but never the token or the query', () async {
-      await client.getJson(
-        uri('/media/search', <String, String>{'title': 'dune'}),
-        apiToken: 'super-secret',
+      // A token the instance does not know is rejected; the point of the test
+      // is that the log line written before the request never carries it.
+      await expectLater(
+        client.getJson(
+          uri('/media/search', <String, String>{'title': 'dune'}),
+          accessToken: 'super-secret',
+        ),
+        throwsA(isA<MoviePilotException>()),
       );
 
       expect(logs, hasLength(1));
@@ -141,7 +192,7 @@ void main() {
       await expectLater(
         closed.getJson(
           Uri.parse('http://127.0.0.1:1/api/v1/subscribe/'),
-          apiToken: 't',
+          accessToken: 't',
         ),
         throwsA(
           isA<MoviePilotException>().having(
@@ -162,7 +213,7 @@ void main() {
       await expectLater(
         closed.getJson(
           Uri.parse('${server.base}/api/v1/not-json'),
-          apiToken: 't',
+          accessToken: 't',
         ),
         throwsA(isA<MoviePilotException>()),
       );
@@ -174,7 +225,7 @@ void main() {
 
       final body = await client.getJson(
         uri('/download/'),
-        apiToken: 'test-api-key',
+        accessToken: server.accessToken,
       );
 
       expect(body, isA<List<Object?>>());

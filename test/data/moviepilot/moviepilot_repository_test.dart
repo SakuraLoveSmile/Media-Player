@@ -31,9 +31,13 @@ void main() {
     await server.stop();
   });
 
-  Future<void> configure() => MoviePilotConfigStore(
-    kv,
-  ).write(MoviePilotConfig(baseUrl: server.base, apiToken: server.apiKey));
+  Future<void> configure() => MoviePilotConfigStore(kv).write(
+    MoviePilotConfig(
+      baseUrl: server.base,
+      username: server.loginUsername,
+      accessToken: server.accessToken,
+    ),
+  );
 
   group('not configured', () {
     test('every call reports notConfigured before anything is saved', () async {
@@ -56,12 +60,154 @@ void main() {
     test('testConnection still uses the passed config', () async {
       final config = MoviePilotConfig(
         baseUrl: server.base,
-        apiToken: server.apiKey,
+        username: server.loginUsername,
+        accessToken: server.accessToken,
       );
 
       await repository.testConnection(config);
 
-      expect(server.lastApiKey, server.apiKey);
+      expect(server.lastAuthorization, 'Bearer ${server.accessToken}');
+    });
+  });
+
+  group('login', () {
+    test('trades the password for a token and reads its expiry', () async {
+      final expiry = DateTime.now().add(const Duration(days: 8));
+      server.accessTokenOverride = fakeAccessToken(expiresAt: expiry);
+
+      final config = await repository.login(
+        baseUrl: server.base,
+        username: 'admin',
+        password: 'secret',
+      );
+
+      final form = server.lastForm['/api/v1/login/access-token']!;
+      expect(form['username'], 'admin');
+      expect(form['password'], 'secret');
+      expect(form.containsKey('otp_password'), isFalse);
+      // The login call itself must not carry a bearer token.
+      expect(server.lastAuthorization, isNull);
+      expect(config.accessToken, server.accessTokenOverride);
+      expect(config.username, 'admin');
+      expect(config.baseUrl, server.base);
+      expect(
+        config.expiresAt!.millisecondsSinceEpoch,
+        (expiry.millisecondsSinceEpoch ~/ 1000) * 1000,
+      );
+    });
+
+    test('a wrong password is unauthorized', () async {
+      await expectLater(
+        repository.login(
+          baseUrl: server.base,
+          username: 'admin',
+          password: 'wrong',
+        ),
+        throwsA(
+          isA<MoviePilotException>()
+              .having((e) => e.code, 'code', AppErrorCode.unauthorized)
+              .having((e) => e.mfaRequired, 'mfaRequired', isFalse),
+        ),
+      );
+    });
+
+    test('an account with MFA can finish with the one-time code', () async {
+      server.mfaRequired = true;
+
+      await expectLater(
+        repository.login(
+          baseUrl: server.base,
+          username: 'admin',
+          password: 'secret',
+        ),
+        throwsA(
+          isA<MoviePilotException>().having(
+            (e) => e.mfaRequired,
+            'mfaRequired',
+            isTrue,
+          ),
+        ),
+      );
+
+      final config = await repository.login(
+        baseUrl: server.base,
+        username: 'admin',
+        password: 'secret',
+        otp: '123456',
+      );
+
+      expect(
+        server.lastForm['/api/v1/login/access-token']!['otp_password'],
+        '123456',
+      );
+      expect(config.accessToken, server.accessToken);
+    });
+
+    test('a 200 without a token is a server error', () async {
+      server.omitAccessToken = true;
+
+      await expectLater(
+        repository.login(
+          baseUrl: server.base,
+          username: 'admin',
+          password: 'secret',
+        ),
+        throwsA(
+          isA<MoviePilotException>()
+              .having((e) => e.code, 'code', AppErrorCode.serverError)
+              .having((e) => e.message, 'message', 'login token missing'),
+        ),
+      );
+    });
+
+    test('a non-bearer token type is rejected', () async {
+      server.tokenType = 'mac';
+
+      await expectLater(
+        repository.login(
+          baseUrl: server.base,
+          username: 'admin',
+          password: 'secret',
+        ),
+        throwsA(
+          isA<MoviePilotException>().having(
+            (e) => e.message,
+            'message',
+            'unsupported token type',
+          ),
+        ),
+      );
+    });
+
+    test('every authenticated call carries the bearer token', () async {
+      await configure();
+
+      await repository.search('dune');
+
+      expect(server.lastAuthorization, 'Bearer ${server.accessToken}');
+    });
+
+    test('an expired token is reported without a request', () async {
+      await MoviePilotConfigStore(kv).write(
+        MoviePilotConfig(
+          baseUrl: server.base,
+          username: 'admin',
+          accessToken: server.accessToken,
+          expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
+        ),
+      );
+
+      await expectLater(
+        repository.search('dune'),
+        throwsA(
+          isA<MoviePilotException>().having(
+            (e) => e.code,
+            'code',
+            AppErrorCode.unauthorized,
+          ),
+        ),
+      );
+      expect(server.requestLog, isEmpty);
     });
   });
 

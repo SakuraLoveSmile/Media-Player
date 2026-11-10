@@ -68,10 +68,11 @@ final FutureProvider<MoviePilotConfig?> moviePilotConfigProvider =
       return settings;
     });
 
-/// Reads, verifies and clears the connection settings.
+/// Signs in, verifies and clears the connection settings.
 ///
-/// Saving verifies against the server first: a wrong token would otherwise stop
-/// the poll on its next round with the same message, only later.
+/// A new login verifies against the server before it is persisted: a token that
+/// the instance rejects would otherwise stop the poll on its next round with
+/// the same message, only later.
 class MoviePilotSettings extends AsyncNotifier<MoviePilotConfig?> {
   @override
   Future<MoviePilotConfig?> build() async {
@@ -80,17 +81,30 @@ class MoviePilotSettings extends AsyncNotifier<MoviePilotConfig?> {
     return store.read();
   }
 
-  /// Verifies [config] against the server, then persists it.
+  /// Exchanges the account password for a token, verifies it, then persists
+  /// the connection.
   ///
   /// Throws [MoviePilotException] so the dialog can show the mapped reason; a
-  /// rejected token is never stored.
-  Future<MoviePilotConfig> save(MoviePilotConfig config) async {
+  /// rejected login is never stored, and the password itself is not stored at
+  /// all.
+  Future<MoviePilotConfig> login({
+    required String baseUrl,
+    required String username,
+    required String password,
+    String? otp,
+  }) async {
     final store = await ref.read(moviePilotConfigStoreProvider.future);
     final service = await ref.read(moviePilotServiceProvider.future);
     if (store == null || service == null) {
       throw StateError('MoviePilot storage unavailable');
     }
-    final verified = await service.testConnection(config);
+    final pending = await service.login(
+      baseUrl: baseUrl,
+      username: username,
+      password: password,
+      otp: otp,
+    );
+    final verified = await service.testConnection(pending);
     await store.write(verified);
     state = AsyncData(verified);
     return verified;

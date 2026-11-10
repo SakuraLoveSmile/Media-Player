@@ -98,7 +98,11 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await MoviePilotConfigStore(store).write(
-      const MoviePilotConfig(baseUrl: 'http://nas:3002', apiToken: 'token'),
+      const MoviePilotConfig(
+        baseUrl: 'http://nas:3002',
+        username: 'admin',
+        accessToken: 'token',
+      ),
     );
     await RequestStore(store).write(requests);
 

@@ -5,14 +5,18 @@ import 'key_value_store.dart';
 
 /// Persists the single MoviePilot connection (plan S1).
 ///
-/// The API token is an administrator key, so it lives in the same key/value
-/// backend as the Emby token (keystore on Android/Windows, `0600` file on
-/// ad-hoc macOS builds) and never in plain preferences.
+/// Holds the bearer token plus the account name, in the same key/value backend
+/// as the Emby token (keystore on Android/Windows, `0600` file on ad-hoc macOS
+/// builds) and never in plain preferences. The password is never written here.
 class MoviePilotConfigStore {
   MoviePilotConfigStore(this._store);
 
   static const String key = 'mp.moviepilot.v1';
-  static const int schemaVersion = 1;
+
+  /// v2 replaced the instance API key with a per-user bearer token (求片 S16).
+  /// Records of any other version are dropped on read instead of being kept
+  /// around: a stale administrator key must not survive the upgrade.
+  static const int schemaVersion = 2;
 
   final KeyValueStore _store;
 
@@ -23,7 +27,10 @@ class MoviePilotConfigStore {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
       final map = Map<String, dynamic>.from(decoded);
-      if (map['schemaVersion'] != schemaVersion) return null;
+      if (map['schemaVersion'] != schemaVersion) {
+        await _store.delete(key);
+        return null;
+      }
       final config = map['config'];
       if (config is! Map) return null;
       return MoviePilotConfig.fromJson(Map<String, dynamic>.from(config));
