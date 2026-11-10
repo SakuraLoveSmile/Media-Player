@@ -38,7 +38,12 @@ class MediaKitEngine implements PlaybackEngine {
       // The raw mpv line can embed the media URL, `api_key` included, and mpv
       // reaches this stream from `stream`/`tcp:`/`file` log prefixes. Only the
       // failure class crosses the boundary (contract §10.6).
+      //
+      // The line is an event, not a state: mpv logs errors for trouble it
+      // recovers from (a retried range request, a skipped frame) and keeps
+      // playing, so it must not stick to every later snapshot (contract §6).
       (s, _) => s.copyWith(error: const _PlaybackFailure()),
+      transient: true,
     );
   }
 
@@ -127,17 +132,27 @@ class MediaKitEngine implements PlaybackEngine {
 
   void _bind<T>(
     Stream<T> source,
-    PlaybackSnapshot Function(PlaybackSnapshot snapshot, T value) update,
-  ) {
-    _subscriptions.add(source.listen((value) {
-      _snapshot = update(_snapshot, value);
-      _emit();
-    }));
+    PlaybackSnapshot Function(PlaybackSnapshot snapshot, T value) update, {
+    /// Emit the updated snapshot without folding it into [_snapshot]: the
+    /// value is a one-off event (an mpv error line), not a player state.
+    bool transient = false,
+  }) {
+    _subscriptions.add(
+      source.listen((value) {
+        final next = update(_snapshot, value);
+        if (transient) {
+          _emit(next);
+          return;
+        }
+        _snapshot = next;
+        _emit();
+      }),
+    );
   }
 
-  void _emit() {
+  void _emit([PlaybackSnapshot? snapshot]) {
     if (_states.isClosed) return;
-    _states.add(_snapshot);
+    _states.add(snapshot ?? _snapshot);
   }
 }
 

@@ -128,6 +128,16 @@ class PlayerController extends ChangeNotifier {
   /// Contract §10.9 d: resume only past this much playback.
   static const Duration _resumeThreshold = Duration(seconds: 10);
 
+  /// How long playback may stay stuck before an engine error line becomes the
+  /// visible "播放失败" copy. mpv logs errors for trouble it recovers from
+  /// (retried range requests, skipped frames), so the line alone proves
+  /// nothing; a frozen position is the evidence.
+  static const Duration _failureGrace = Duration(seconds: 2);
+
+  /// The same window while the engine is filling its buffer. A network stall
+  /// is expected to recover, so it only becomes copy once it looks permanent.
+  static const Duration _bufferingFailureGrace = Duration(seconds: 20);
+
   final String _itemId;
   final LibraryService _library;
   final PlaybackService _playback;
@@ -139,6 +149,10 @@ class PlayerController extends ChangeNotifier {
   PlayerState _state = const PlayerState();
   PlaybackPlan? _plan;
   StreamSubscription<PlaybackSnapshot>? _ticks;
+  Timer? _failureWatch;
+  Duration? _failurePosition;
+  bool _failureWaitedBuffer = false;
+  bool _userPaused = false;
   Widget? _surface;
   Duration _lastTrustedPosition = Duration.zero;
   Future<void>? _stopFuture;
@@ -156,6 +170,9 @@ class PlayerController extends ChangeNotifier {
   Future<void> load() async {
     if (_disposed || _stopped || _state.loading) return;
 
+    _cancelFailureWatch();
+    _failurePosition = null;
+    _userPaused = false;
     _set(
       _state.copyWith(
         loading: true,
@@ -230,6 +247,10 @@ class PlayerController extends ChangeNotifier {
     if (_disposed || _stopped || !_state.ready || plan == null) return;
 
     final wasPlaying = _state.playing;
+    // The engine reporting `playing: false` also means "stopped by a dead
+    // stream", so only this flag tells the failure check that the user asked
+    // for the pause.
+    _userPaused = wasPlaying;
     if (wasPlaying) {
       await _engine.pause();
     } else {
@@ -268,9 +289,18 @@ class PlayerController extends ChangeNotifier {
 
   void _onSnapshot(PlaybackSnapshot snapshot) {
     if (_disposed || _stopped) return;
+    // Captured on every snapshot, never throttled: stop() reports this value
+    // and Android tears the surface down before the page can read it again.
     if (snapshot.position > Duration.zero) {
       _lastTrustedPosition = snapshot.position;
     }
+    final previous = _state;
+    final progressed = snapshot.position > previous.position;
+
+    // A moved position proves the player survived whatever it logged, so a
+    // banner left over from an earlier stall must not outlive the recovery.
+    if (progressed) _dismissFailure();
+
     _set(
       _state.copyWith(
         position: snapshot.position,
@@ -278,14 +308,99 @@ class PlayerController extends ChangeNotifier {
         // the runtime from the detail response until then.
         duration: snapshot.duration > Duration.zero
             ? snapshot.duration
-            : _state.duration,
+            : previous.duration,
         buffering: snapshot.buffering,
         playing: snapshot.playing,
-        // Engine errors are opaque objects; the UI gets fixed copy, never a
-        // toString (contract §6).
-        error: snapshot.error == null ? _state.error : '播放失败，请重试',
       ),
     );
+
+    // Engine errors are opaque objects, so they never reach the UI as text;
+    // the copy below is fixed (contract §6). The line is only a hint though:
+    // mpv keeps playing after most of them, so a stall has to confirm it.
+    if (snapshot.error != null) {
+      _noteFailure();
+    } else if (!progressed &&
+        _failurePosition != null &&
+        _failureWatch == null) {
+      // A paused claim gets its window re-armed by the next snapshot, once
+      // the player is expected to move again.
+      _armFailureWatch();
+    }
+  }
+
+  /// Starts (or reuses) the claim that an engine error line broke playback.
+  void _noteFailure() {
+    // Claimed before `ready` too: a source that cannot be opened often only
+    // shows up as an error line, and [_confirmFailure] waits for the load to
+    // finish before it says anything.
+    if (_failurePosition != null) return;
+    _failurePosition = _lastTrustedPosition;
+    _failureWaitedBuffer = false;
+    _armFailureWatch();
+  }
+
+  void _armFailureWatch([Duration window = _failureGrace]) {
+    _failureWatch?.cancel();
+    _failureWatch = Timer(window, _confirmFailure);
+  }
+
+  void _cancelFailureWatch() {
+    _failureWatch?.cancel();
+    _failureWatch = null;
+  }
+
+  void _confirmFailure() {
+    _failureWatch = null;
+    final claim = _failurePosition;
+    if (_disposed || _stopped || claim == null) return;
+
+    // Frames arrived between the error line and this check: mpv recovered, so
+    // the user must not be told playback failed.
+    if (_lastTrustedPosition != claim) {
+      if (_dismissFailure()) notifyListeners();
+      return;
+    }
+    // Negotiation is still running, so there is nothing to say yet.
+    if (_state.loading) {
+      _armFailureWatch();
+      return;
+    }
+    // The load path already owns the copy on screen.
+    if (_state.error != null) {
+      _failurePosition = null;
+      return;
+    }
+    // The user asked for the pause; it waits for the resume snapshot instead
+    // of polling.
+    if (_userPaused) return;
+    // Reaching the end of the runtime is not a failure either.
+    final total = _state.duration;
+    if (total > Duration.zero &&
+        _state.position >= total - const Duration(seconds: 1)) {
+      _failurePosition = null;
+      return;
+    }
+    if (_state.buffering && !_failureWaitedBuffer) {
+      // Filling the buffer is normal; only a buffer that never fills is a
+      // failure, and that one gets the longer window.
+      _failureWaitedBuffer = true;
+      _armFailureWatch(_bufferingFailureGrace);
+      return;
+    }
+
+    _failurePosition = null;
+    _set(_state.copyWith(error: '播放失败，请重试'));
+  }
+
+  /// Drops the pending claim and any banner it produced; true when the screen
+  /// actually showed one.
+  bool _dismissFailure() {
+    _cancelFailureWatch();
+    _failurePosition = null;
+    _failureWaitedBuffer = false;
+    if (_state.error == null || !_state.ready) return false;
+    _state = _state.copyWith(error: null);
+    return true;
   }
 
   Future<void> _confirmDirect(PlaybackPlan plan) async {
@@ -328,6 +443,8 @@ class PlayerController extends ChangeNotifier {
   Future<void> stop() {
     if (_stopped) return _stopFuture ?? Future<void>.value();
 
+    _cancelFailureWatch();
+    _failurePosition = null;
     final plan = _plan;
     _stopFuture = plan == null
         ? Future<void>.value()
@@ -343,6 +460,7 @@ class PlayerController extends ChangeNotifier {
 
     // Fallback for teardown without the page's awaited exit path.
     unawaited(stop());
+    _cancelFailureWatch();
     unawaited(_ticks?.cancel());
     _ticks = null;
     unawaited(_engine.dispose());
