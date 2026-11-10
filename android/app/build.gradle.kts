@@ -8,13 +8,18 @@ plugins {
 
 android {
     namespace = "dev.mediaplayer.media_player"
-    // Keep Flutter's default compileSdk: the existing dependency set (including
-    // flutter_secure_storage 11.2.0) builds on Flutter 3.47.7, and CI's Android
-    // SDK does not pre-install newer platforms.
-    compileSdk = flutter.compileSdkVersion
+    // flutter_local_notifications 23 compiles against API 37 and refuses to be
+    // consumed by an app built against an older platform (AAR metadata check),
+    // so this is pinned above Flutter's default of 36. targetSdk stays on
+    // Flutter's value: only the compile-time API surface moves.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // flutter_local_notifications 23 uses java.time behind a compatibility
+        // wrapper, so its AAR refuses to be consumed without desugaring even
+        // when no notification is ever scheduled.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -70,6 +75,10 @@ android {
             }
         }
     }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 kotlin {

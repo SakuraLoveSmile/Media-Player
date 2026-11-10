@@ -10,6 +10,7 @@ class MediaItem {
     this.seriesId,
     this.seasonId,
     this.indexNumber,
+    this.productionYear,
     this.runTimeTicks = 0,
     this.imageTag,
     this.overview,
@@ -25,6 +26,7 @@ class MediaItem {
       seriesId: asString(json['SeriesId']),
       seasonId: asString(json['SeasonId']),
       indexNumber: asIntOrNull(json['IndexNumber']),
+      productionYear: asIntOrNull(json['ProductionYear']),
       runTimeTicks: asInt(json['RunTimeTicks']),
       imageTag: asString(asMap(json['ImageTags'])['Primary']),
       overview: asString(json['Overview']),
@@ -41,6 +43,10 @@ class MediaItem {
   final String? seriesId;
   final String? seasonId;
   final int? indexNumber;
+
+  /// Release year; requested via [LibraryRepository.listFields] and used by the
+  /// 求片 lookup to tell a remake from the original.
+  final int? productionYear;
   final int runTimeTicks;
   final String? imageTag;
   final String? overview;

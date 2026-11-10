@@ -6,6 +6,7 @@ import '../data/playback/playback_engine.dart';
 import '../data/playback/playback_service.dart';
 import '../data/playback/session_reporter.dart';
 import '../data/storage/key_value_store.dart';
+import '../data/storage/moviepilot_config_store.dart';
 
 /// Everything the app needs once storage, HTTP and auth are wired.
 class AppServices {
@@ -19,6 +20,7 @@ class AppServices {
     this.resolver,
     this.deviceId = '',
     this.store,
+    this.moviePilotConfigStore,
   });
 
   final AuthService auth;
@@ -40,4 +42,8 @@ class AppServices {
   /// The app-wide key/value store (contract §7). Non-sensitive host
   /// preferences such as the feedback orb style live here.
   final KeyValueStore? store;
+
+  /// MoviePilot connection settings (plan S1). Null only in test harnesses that
+  /// never open 求片; the production graph always provides it.
+  final MoviePilotConfigStore? moviePilotConfigStore;
 }

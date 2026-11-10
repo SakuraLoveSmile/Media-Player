@@ -36,6 +36,7 @@ class FakeEmbyServer {
   /// `GET /Sessions` reply (contract §3.5): the sessions to return.
   List<Map<String, dynamic>> sessionsResponse = <Map<String, dynamic>>[];
   int sessionsStatus = 200;
+  int lookupRequests = 0;
 
   /// Session reports in arrival order, with their bodies (contract §3.6).
   final List<String> sessionReportPaths = <String>[];
@@ -47,6 +48,17 @@ class FakeEmbyServer {
   /// When set, `/Sessions/Playing/Progress` waits for it before replying, so
   /// tests can prove reports are serialized (contract §10.9 c).
   Future<void>? progressHold;
+
+  /// Replies for a library lookup (`SearchTerm` / `AnyProviderIdEquals`), used
+  /// by the 求片 "is it in the library?" check.
+  List<Map<String, dynamic>> lookupItems = <Map<String, dynamic>>[];
+
+  /// When set, the lookup paths answer this status instead.
+  int? lookupStatus;
+
+  /// Reply for a title search specifically, so a test can model the real
+  /// behaviour where Emby answers "流浪地球" with "流浪地球2 (2023)".
+  List<Map<String, dynamic>>? titleSearchItems;
 
   /// 130 movies so paging can be exercised with 60-item pages.
   final List<Map<String, dynamic>> movieItems = List<Map<String, dynamic>>.generate(
@@ -127,6 +139,25 @@ class FakeEmbyServer {
 
       if (request.method == 'GET' && path == '/Users/user-1/Items') {
         lastItemsQuery = request.uri.queryParameters;
+        final isLookup = request.uri.queryParameters.containsKey('SearchTerm') ||
+            request.uri.queryParameters.containsKey('AnyProviderIdEquals');
+        if (isLookup) {
+          lookupRequests++;
+          final status = lookupStatus;
+          if (status != null) {
+            await _json(response, status, <String, dynamic>{'error': 'lookup'});
+            return;
+          }
+          final byTitle = titleSearchItems;
+          final items = request.uri.queryParameters.containsKey('SearchTerm')
+              ? (byTitle ?? lookupItems)
+              : lookupItems;
+          await _json(response, 200, <String, dynamic>{
+            'Items': items,
+            'TotalRecordCount': items.length,
+          });
+          return;
+        }
         final parentId = request.uri.queryParameters['ParentId'];
         final start = int.tryParse(request.uri.queryParameters['StartIndex'] ?? '') ?? 0;
         final limit = int.tryParse(request.uri.queryParameters['Limit'] ?? '') ?? 60;

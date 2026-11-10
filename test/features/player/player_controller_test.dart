@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/core/errors/app_error.dart';
 import 'package:media_player/core/errors/emby_exception.dart';
@@ -12,6 +13,16 @@ import '../../support/fake_library_service.dart';
 import '../../support/fake_playback_engine.dart';
 import '../../support/fake_playback_reporter.dart';
 import '../../support/fake_playback_service.dart';
+
+/// Reports an mpv error while the source is still opening, which is where an
+/// unopenable URL shows up.
+class OpeningErrorEngine extends FakePlaybackEngine {
+  @override
+  Future<void> open(PlaybackPlan plan) async {
+    emit(PlaybackSnapshot(error: Exception('mpv: cannot open')));
+    await super.open(plan);
+  }
+}
 
 class PendingStopReporter extends FakePlaybackReporter {
   final completion = Completer<void>();
@@ -431,13 +442,251 @@ void main() {
     expect(engine.volumes, <double>[40, 100]);
   });
 
-  test('an engine error becomes copy, never a toString', () async {
+  test('an engine error line alone is not a failure', () async {
     final player = build(testItem());
     await player.load();
 
-    engine.emit(PlaybackSnapshot(error: Exception('mpv: boom')));
+    // mpv logs errors for trouble it recovers from; playback keeps going, so
+    // the screen must not claim it failed.
+    engine.emit(PlaybackSnapshot(playing: true, error: Exception('mpv: boom')));
     await pumpEventQueue();
 
-    expect(player.state.error, '播放失败，请重试');
+    expect(player.state.error, isNull);
+  });
+
+  test('a stalled playback turns the engine error into copy, never a string',
+      () {
+    fakeAsync((async) {
+      final player = build(testItem());
+      player.load();
+      async.flushMicrotasks();
+      engine.emit(
+        const PlaybackSnapshot(
+          position: Duration(seconds: 30),
+          playing: true,
+        ),
+      );
+      async.flushMicrotasks();
+
+      engine.emit(
+        PlaybackSnapshot(
+          position: const Duration(seconds: 30),
+          playing: true,
+          error: Exception('mpv: boom'),
+        ),
+      );
+      async.flushMicrotasks();
+      expect(player.state.error, isNull);
+
+      // No frame for longer than the confirmation window: the line was real.
+      async.elapse(const Duration(seconds: 3));
+      expect(player.state.error, '播放失败，请重试');
+    });
+  });
+
+  test('a recovered error never reaches the screen and clears a banner', () {
+    fakeAsync((async) {
+      final player = build(testItem());
+      player.load();
+      async.flushMicrotasks();
+
+      engine.emit(
+        PlaybackSnapshot(
+          position: const Duration(seconds: 10),
+          playing: true,
+          error: Exception('mpv: boom'),
+        ),
+      );
+      async.flushMicrotasks();
+      async.elapse(const Duration(milliseconds: 500));
+      // Frames resumed before the window closed, so nothing is shown.
+      engine.emit(
+        const PlaybackSnapshot(
+          position: Duration(seconds: 11),
+          playing: true,
+        ),
+      );
+      async.flushMicrotasks();
+      async.elapse(const Duration(seconds: 3));
+      expect(player.state.error, isNull);
+
+      // A stall that does surface must disappear again once playback recovers.
+      engine.emit(
+        PlaybackSnapshot(
+          position: const Duration(seconds: 11),
+          playing: true,
+          error: Exception('mpv: boom'),
+        ),
+      );
+      async.flushMicrotasks();
+      async.elapse(const Duration(seconds: 3));
+      expect(player.state.error, '播放失败，请重试');
+
+      engine.emit(
+        const PlaybackSnapshot(
+          position: Duration(seconds: 12),
+          playing: true,
+        ),
+      );
+      async.flushMicrotasks();
+      expect(player.state.error, isNull);
+    });
+  });
+
+  test('a user pause delays the failure claim instead of faking one', () {
+    fakeAsync((async) {
+      final player = build(testItem());
+      player.load();
+      async.flushMicrotasks();
+
+      engine.emit(
+        const PlaybackSnapshot(position: Duration(seconds: 20), playing: true),
+      );
+      async.flushMicrotasks();
+      player.togglePlayPause();
+      async.flushMicrotasks();
+
+      engine.emit(
+        PlaybackSnapshot(
+          position: const Duration(seconds: 20),
+          error: Exception('mpv: boom'),
+        ),
+      );
+      async.flushMicrotasks();
+      // Paused is not stuck.
+      async.elapse(const Duration(seconds: 5));
+      expect(player.state.error, isNull);
+
+      // Resumed but still frozen: now the claim can be confirmed.
+      player.togglePlayPause();
+      async.flushMicrotasks();
+      engine.emit(
+        const PlaybackSnapshot(position: Duration(seconds: 20), playing: true),
+      );
+      async.flushMicrotasks();
+      async.elapse(const Duration(seconds: 3));
+      expect(player.state.error, '播放失败，请重试');
+    });
+  });
+
+  test('a buffer fill only fails once it stops recovering', () {
+    fakeAsync((async) {
+      final player = build(testItem());
+      player.load();
+      async.flushMicrotasks();
+
+      engine.emit(
+        const PlaybackSnapshot(position: Duration(seconds: 40), playing: true),
+      );
+      async.flushMicrotasks();
+      engine.emit(
+        PlaybackSnapshot(
+          position: const Duration(seconds: 40),
+          playing: true,
+          buffering: true,
+          error: Exception('mpv: boom'),
+        ),
+      );
+      async.flushMicrotasks();
+
+      // A normal stall recovers and must not be called a failure.
+      async.elapse(const Duration(seconds: 10));
+      expect(player.state.error, isNull);
+
+      // A buffer that never fills does become copy, on the longer window.
+      async.elapse(const Duration(seconds: 15));
+      expect(player.state.error, '播放失败，请重试');
+    });
+  });
+
+  test('an engine that stopped without a user pause is a failure', () {
+    fakeAsync((async) {
+      final player = build(testItem());
+      player.load();
+      async.flushMicrotasks();
+
+      engine.emit(
+        const PlaybackSnapshot(
+          position: Duration(seconds: 50),
+          duration: Duration(minutes: 90),
+          playing: true,
+        ),
+      );
+      async.flushMicrotasks();
+
+      // A dead stream drops out of `playing` on its own; only the user's own
+      // pause may excuse a frozen position.
+      engine.emit(
+        PlaybackSnapshot(
+          position: const Duration(seconds: 50),
+          duration: const Duration(minutes: 90),
+          error: Exception('mpv: boom'),
+        ),
+      );
+      async.flushMicrotasks();
+      async.elapse(const Duration(seconds: 3));
+      expect(player.state.error, '播放失败，请重试');
+    });
+  });
+
+  test('the end of the runtime is not a failure', () {
+    fakeAsync((async) {
+      final player = build(testItem());
+      player.load();
+      async.flushMicrotasks();
+
+      engine.emit(
+        PlaybackSnapshot(
+          position: const Duration(minutes: 90),
+          duration: const Duration(minutes: 90),
+          error: Exception('mpv: boom'),
+        ),
+      );
+      async.flushMicrotasks();
+      async.elapse(const Duration(seconds: 3));
+
+      expect(player.state.error, isNull);
+    });
+  });
+
+  test('an error line emitted while the source opens is not lost', () {
+    fakeAsync((async) {
+      // mpv reports an unopenable source before `open` even returns.
+      engine = OpeningErrorEngine();
+      final player = build(testItem());
+      player.load();
+      async.flushMicrotasks();
+
+      expect(player.state.ready, isTrue);
+      expect(player.state.error, isNull);
+
+      // The source produced no frames and the position never moved.
+      async.elapse(const Duration(seconds: 3));
+      expect(player.state.error, '播放失败，请重试');
+    });
+  });
+
+  test('leaving playback cancels the pending failure claim', () {
+    fakeAsync((async) {
+      final player = build(testItem());
+      player.load();
+      async.flushMicrotasks();
+
+      engine.emit(
+        PlaybackSnapshot(
+          position: const Duration(seconds: 30),
+          playing: true,
+          error: Exception('mpv: boom'),
+        ),
+      );
+      async.flushMicrotasks();
+      expect(async.pendingTimers, hasLength(1));
+
+      player.stop();
+      async.flushMicrotasks();
+
+      expect(async.pendingTimers, isEmpty);
+      expect(player.state.error, isNull);
+    });
   });
 }

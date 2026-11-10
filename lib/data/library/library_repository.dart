@@ -100,6 +100,82 @@ class LibraryRepository implements LibraryService {
   }
 
   @override
+  Future<MediaItem?> findByTmdb(int tmdbId, {required bool isSeries}) async {
+    // `AnyProviderIdEquals` takes `<provider>.<id>`; Emby stores TMDB ids under
+    // the `tmdbid` provider. Versions that do not know the parameter ignore it
+    // and answer the whole library, so the result is filtered by year and type
+    // on the client before it is trusted.
+    final json = await _session.authorizedGet(
+      _uri('/Users/$_userId/Items', <String, String>{
+        'Recursive': 'true',
+        'IncludeItemTypes': isSeries ? 'Series' : 'Movie',
+        'AnyProviderIdEquals': 'tmdbid.$tmdbId',
+        'Fields': listFields,
+        'Limit': '5',
+      }),
+    );
+    // An id match needs no year check: the id is exact. An empty answer means
+    // this server does not index that provider id, and the caller falls back to
+    // the title search.
+    return _firstMatching(
+      asMapList(json['Items']).map(MediaItem.fromJson),
+      isSeries: isSeries,
+      year: null,
+    );
+  }
+
+  @override
+  Future<MediaItem?> searchByTitle(
+    String title, {
+    int? year,
+    required bool isSeries,
+  }) async {
+    if (title.trim().isEmpty) return null;
+    final json = await _session.authorizedGet(
+      _uri('/Users/$_userId/Items', <String, String>{
+        'Recursive': 'true',
+        'IncludeItemTypes': isSeries ? 'Series' : 'Movie',
+        'SearchTerm': title,
+        'Fields': listFields,
+        'Limit': '10',
+      }),
+    );
+    return _firstMatching(
+      asMapList(json['Items']).map(MediaItem.fromJson),
+      isSeries: isSeries,
+      year: year,
+    );
+  }
+
+  /// Picks an item of the right type whose year agrees with [year].
+  ///
+  /// Year agreement is required, not preferred. Emby's title search is not a
+  /// precision tool — searching "流浪地球" on a real library answered with
+  /// "流浪地球2 (2023)" and nothing else — so accepting a mismatched year is
+  /// how the app ends up playing the sequel of the film the user asked for.
+  /// When no year is known the first candidate of the right type is used,
+  /// because there is nothing better to go on.
+  MediaItem? _firstMatching(
+    Iterable<MediaItem> items, {
+    required bool isSeries,
+    required int? year,
+  }) {
+    final wanted = isSeries ? 'Series' : 'Movie';
+    MediaItem? untyped;
+    for (final item in items) {
+      if (item.id.isEmpty) continue;
+      if (item.type.isNotEmpty && item.type != wanted) continue;
+      if (year != null && item.productionYear != null) {
+        if (item.productionYear != year) continue;
+        return item;
+      }
+      // Either side lacks a year: usable only when nothing carries one.
+      untyped ??= item;
+    }
+    return untyped;
+  }
+
+  @override
   Uri? imageUrl(String itemId, {String? tag, int? maxWidth}) {
     final endpoint = _session.endpoint;
     final token = _session.accessToken;

@@ -6,6 +6,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
 import '../../core/router/app_routes.dart';
+import '../../ui/glass/glass_controls.dart';
+import '../../ui/glass/glass_surface.dart';
+import '../../ui/glass/glass_theme.dart';
+import '../../ui/glass/glass_tokens.dart';
 import 'player_controller.dart';
 
 /// Playback screen: engine surface plus the §5 control set.
@@ -111,6 +115,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     }
   }
 
+  /// A series id has no playable source: stop reporting first, then hand the
+  /// route over to the episode picker.
   Future<void> _selectEpisodes(String seriesId) async {
     if (_leaving || _redirecting) return;
     _leaving = true;
@@ -159,7 +165,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     }
     final error = state.error;
     if (error != null && !state.ready) {
-      return _NoticeView(message: error, onBack: _leave, onRetry: _reload);
+      return _NoticeView(
+        message: error,
+        onBack: _leave,
+        onRetry: _reload,
+      );
     }
 
     return Stack(
@@ -191,158 +201,214 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   }
 
   Widget _topBar(PlayerState state) {
-    final theme = Theme.of(context);
-
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: <Color>[Colors.black87, Colors.transparent],
-        ),
+    final GlassPalette palette = context.glass;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        GlassSpacing.sm,
+        GlassSpacing.sm,
+        GlassSpacing.sm,
+        0,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 4, 12, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          GlassSurface(
+            radius: GlassRadii.cardLarge,
+            blur: 28,
+            padding: const EdgeInsets.fromLTRB(
+              GlassSpacing.xs,
+              GlassSpacing.xs,
+              GlassSpacing.md,
+              GlassSpacing.xs,
+            ),
+            child: Row(
               children: <Widget>[
                 IconButton(
                   key: const Key('player-back'),
-                  tooltip: '返回',
-                  color: Colors.white,
+                  tooltip: '返回媒体库',
+                  color: palette.label,
                   onPressed: _leave,
-                  icon: const Icon(Icons.arrow_back),
+                  icon: const Icon(Icons.chevron_left),
                 ),
                 Expanded(
                   child: Text(
                     state.itemName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: Colors.white,
-                    ),
+                    style: GlassType.headline.copyWith(color: palette.label),
                   ),
                 ),
-                const SizedBox(width: 8),
-                if (state.ready)
+                if (state.ready) ...<Widget>[
+                  const SizedBox(width: GlassSpacing.sm),
                   _DirectStatus(
                     videoDirect: state.videoDirect,
                     audioTranscoded: state.audioTranscoded,
                   ),
+                ],
               ],
             ),
-            if (state.resumedFrom != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 12, top: 4),
+          ),
+          if (state.resumedFrom != null)
+            Padding(
+              padding: const EdgeInsets.only(
+                left: GlassSpacing.lg,
+                top: GlassSpacing.sm,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
                 child: _Banner(
                   key: const Key('player-resume-hint'),
                   message: '已从 ${formatPlaybackTime(state.resumedFrom!)} 继续播放',
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
 
   Widget _controlBar(PlayerController controller, PlayerState state) {
-    final theme = Theme.of(context);
-    final total = state.duration;
-    final max = total > Duration.zero ? total.inMilliseconds.toDouble() : 1.0;
-    final value = (_dragMillis ?? state.position.inMilliseconds.toDouble())
-        .clamp(0.0, max);
-    final shown = _dragMillis == null
+    final Duration total = state.duration;
+    final double max =
+        total > Duration.zero ? total.inMilliseconds.toDouble() : 1.0;
+    final double value =
+        (_dragMillis ?? state.position.inMilliseconds.toDouble())
+            .clamp(0.0, max);
+    final Duration shown = _dragMillis == null
         ? state.position
         : Duration(milliseconds: _dragMillis!.round());
 
-    final progress = Slider(
-      key: const Key('player-progress'),
-      value: value,
-      max: max,
-      label: formatPlaybackTime(shown),
-      onChanged: total > Duration.zero
-          ? (next) => setState(() => _dragMillis = next)
-          : null,
-      onChangeEnd: total > Duration.zero
-          ? (next) {
-              setState(() => _dragMillis = null);
-              unawaited(
-                controller.seekTo(Duration(milliseconds: next.round())),
-              );
-            }
-          : null,
+    final SliderThemeData sliderTheme = SliderTheme.of(context).copyWith(
+      activeTrackColor: Colors.white.withValues(alpha: 0.92),
+      inactiveTrackColor: Colors.white.withValues(alpha: 0.22),
+      thumbColor: Colors.white,
+      overlayColor: Colors.white.withValues(alpha: 0.12),
+      trackHeight: 4.5,
+      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 9),
     );
 
-    final volume = Row(
+    final Widget progress = SliderTheme(
+      data: sliderTheme,
+      child: Slider(
+        key: const Key('player-progress'),
+        value: value,
+        max: max,
+        label: formatPlaybackTime(shown),
+        onChanged: total > Duration.zero
+            ? (double next) => setState(() => _dragMillis = next)
+            : null,
+        onChangeEnd: total > Duration.zero
+            ? (double next) {
+                setState(() => _dragMillis = null);
+                unawaited(
+                  controller.seekTo(Duration(milliseconds: next.round())),
+                );
+              }
+            : null,
+      ),
+    );
+
+    final Widget volume = Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Icon(
           _volume == 0 ? Icons.volume_off : Icons.volume_up,
-          color: Colors.white70,
-          size: 20,
+          color: Colors.white.withValues(alpha: 0.75),
+          size: 18,
         ),
         SizedBox(
-          width: 120,
-          child: Slider(
-            key: const Key('player-volume'),
-            value: _volume,
-            label: '音量 ${(_volume * 100).round()}%',
-            onChanged: (next) {
-              setState(() => _volume = next);
-              unawaited(controller.setVolume(next));
-            },
+          width: 116,
+          child: SliderTheme(
+            data: sliderTheme,
+            child: Slider(
+              key: const Key('player-volume'),
+              value: _volume,
+              label: '音量 ${(_volume * 100).round()}%',
+              onChanged: (double next) {
+                setState(() => _volume = next);
+                unawaited(controller.setVolume(next));
+              },
+            ),
           ),
         ),
       ],
     );
 
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: <Color>[Colors.transparent, Colors.black87],
-        ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        GlassSpacing.sm,
+        0,
+        GlassSpacing.sm,
+        GlassSpacing.sm,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 24, 12, 8),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final time = Text(
-              '${formatPlaybackTime(shown)} / ${formatPlaybackTime(total)}',
-              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white),
-            );
-            final toggle = IconButton(
-              key: const Key('player-play-toggle'),
-              tooltip: state.playing ? '暂停' : '播放',
-              color: Colors.white,
-              iconSize: 32,
-              onPressed: () => unawaited(controller.togglePlayPause()),
-              icon: Icon(state.playing ? Icons.pause : Icons.play_arrow),
-            );
+      child: GlassSurface(
+        radius: GlassRadii.sheet,
+        blur: 30,
+        tintColor: const Color(0xFF1C1C1E),
+        tintOpacity: 0.42,
+        padding: const EdgeInsets.fromLTRB(
+          GlassSpacing.lg,
+          GlassSpacing.xs,
+          GlassSpacing.lg,
+          GlassSpacing.md,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            progress,
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final Widget time = Text(
+                  '${formatPlaybackTime(shown)} / ${formatPlaybackTime(total)}',
+                  style: GlassType.caption1.copyWith(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontFeatures: const <FontFeature>[
+                      FontFeature.tabularFigures(),
+                    ],
+                  ),
+                );
+                final Widget toggle = IconButton(
+                  key: const Key('player-play-toggle'),
+                  tooltip: state.playing ? '暂停' : '播放',
+                  color: Colors.white,
+                  iconSize: 34,
+                  onPressed: () => unawaited(controller.togglePlayPause()),
+                  icon: Icon(state.playing ? Icons.pause : Icons.play_arrow),
+                );
 
-            // Narrow windows and phones get the volume on its own line.
-            if (constraints.maxWidth < 520) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  progress,
-                  Row(children: <Widget>[toggle, time, const Spacer(), volume]),
-                ],
-              );
-            }
+                // Narrow windows and phones get the volume on its own line.
+                if (constraints.maxWidth < 520) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          toggle,
+                          const SizedBox(width: GlassSpacing.sm),
+                          time,
+                          const Spacer(),
+                        ],
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: volume,
+                      ),
+                    ],
+                  );
+                }
 
-            return Row(
-              children: <Widget>[
-                toggle,
-                time,
-                Expanded(child: progress),
-                volume,
-              ],
-            );
-          },
+                return Row(
+                  children: <Widget>[
+                    toggle,
+                    const SizedBox(width: GlassSpacing.sm),
+                    time,
+                    const Spacer(),
+                    volume,
+                  ],
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -351,10 +417,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
 
 /// Direct-play verdict from §10.9 f: `null` is "unconfirmed", never "direct".
 class _DirectStatus extends StatelessWidget {
-  const _DirectStatus({
-    required this.videoDirect,
-    required this.audioTranscoded,
-  });
+  const _DirectStatus({required this.videoDirect, required this.audioTranscoded});
 
   final bool? videoDirect;
   final bool audioTranscoded;
@@ -383,19 +446,23 @@ class _Banner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: emphasis ? scheme.errorContainer : Colors.white24,
-        borderRadius: BorderRadius.circular(6),
+    final GlassPalette palette = context.glass;
+    return GlassSurface(
+      radius: GlassRadii.capsule,
+      blur: 16,
+      tintColor: emphasis ? palette.red : Colors.white,
+      tintOpacity: emphasis ? 0.3 : 0.16,
+      border: false,
+      shadow: false,
+      padding: const EdgeInsets.symmetric(
+        horizontal: GlassSpacing.md,
+        vertical: GlassSpacing.xs,
       ),
       child: Text(
         message,
-        style: theme.textTheme.labelMedium?.copyWith(
-          color: emphasis ? scheme.onErrorContainer : Colors.white,
+        style: GlassType.caption1.copyWith(
+          color: emphasis ? const Color(0xFFFFD9D6) : Colors.white,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -417,44 +484,58 @@ class _NoticeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final retry = onRetry;
+    final Future<void> Function()? retry = onRetry;
+    final GlassPalette palette = context.glass;
 
     return Center(
       key: const Key('player-error'),
       child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              alignment: WrapAlignment.center,
-              children: <Widget>[
-                OutlinedButton(
-                  key: const Key('player-back'),
-                  onPressed: onBack,
-                  child: const Text('返回'),
-                ),
-                if (retry != null)
-                  FilledButton(
-                    onPressed: () => unawaited(retry()),
-                    child: const Text('重试'),
+        padding: const EdgeInsets.all(GlassSpacing.xxxl),
+        child: GlassSurface(
+          radius: GlassRadii.cardLarge,
+          blur: 28,
+          padding: const EdgeInsets.all(GlassSpacing.xxl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                Icons.warning_amber_rounded,
+                color: palette.secondaryLabel,
+                size: 28,
+              ),
+              const SizedBox(height: GlassSpacing.md),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: GlassType.body.copyWith(color: palette.label),
+              ),
+              const SizedBox(height: GlassSpacing.xl),
+              Wrap(
+                spacing: GlassSpacing.md,
+                runSpacing: GlassSpacing.sm,
+                alignment: WrapAlignment.center,
+                children: <Widget>[
+                  GlassButton(
+                    key: const Key('player-back'),
+                    label: '返回',
+                    variant: GlassButtonVariant.glass,
+                    onPressed: onBack,
                   ),
-                if (onSelectEpisodes != null)
-                  FilledButton(
-                    key: const Key('player-select-episodes'),
-                    onPressed: onSelectEpisodes,
-                    child: const Text('选择分集'),
-                  ),
-              ],
-            ),
-          ],
+                  if (onSelectEpisodes != null)
+                    GlassButton(
+                      key: const Key('player-select-episodes'),
+                      label: '选择分集',
+                      onPressed: onSelectEpisodes,
+                    ),
+                  if (retry != null)
+                    GlassButton(
+                      label: '重试',
+                      onPressed: () => unawaited(retry()),
+                    ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

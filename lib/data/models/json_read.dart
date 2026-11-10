@@ -24,10 +24,35 @@ String? asString(Object? value) {
   return null;
 }
 
+/// Numeric readers used by MoviePilot payloads, which mix `12`, `"12"` and
+/// `12.0` for the same field (求片 plan S2).
+double? asDoubleOrNull(Object? value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value.trim());
+  return null;
+}
+
+double asDouble(Object? value, {double fallback = 0}) =>
+    asDoubleOrNull(value) ?? fallback;
+
 String asStringOr(Object? value, String fallback) => asString(value) ?? fallback;
 
 bool asBool(Object? value, {bool fallback = false}) =>
     value is bool ? value : fallback;
+
+/// Structural readers. `success`/`status` flags arrive as `true`, `"true"`,
+/// `1` and `"1"` depending on the MoviePilot version.
+bool asBoolLoose(Object? value, {bool fallback = false}) {
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == 'true' || normalized == '1') return true;
+    if (normalized == 'false' || normalized == '0') return false;
+  }
+  return fallback;
+}
 
 Map<String, dynamic> asMap(Object? value) {
   if (value is Map<String, dynamic>) return value;

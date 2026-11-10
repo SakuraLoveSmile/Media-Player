@@ -164,6 +164,25 @@ void main() {
     expect(subs.length, 4);
   });
 
+  test('device profile hides TrueHD so the server transcodes that track', () {
+    final direct = (kDeviceProfile['DirectPlayProfiles'] as List).single
+        as Map<String, dynamic>;
+    // The player has no TrueHD decoder and no passthrough, so claiming it
+    // would leave such titles silent; the server has to transcode instead.
+    expect(direct['AudioCodec'], isNot(contains('truehd')));
+    expect(direct['AudioCodec'], isNot(contains('mlp')));
+    // The codecs it can decode stay direct, so normal titles are unaffected.
+    expect(direct['AudioCodec'], contains('dts'));
+    expect(direct['AudioCodec'], contains('ac3'));
+
+    // A transcode target has to be offered, or the server has nowhere to put
+    // the track it rejects.
+    final transcode = (kDeviceProfile['TranscodingProfiles'] as List).single
+        as Map<String, dynamic>;
+    expect(transcode['AudioCodec'], 'aac');
+    expect(transcode['Protocol'], 'hls');
+  });
+
   test('EmbyException stringifies without payload details', () {
     final error = EmbyException(
       AppErrorCode.unauthorized,

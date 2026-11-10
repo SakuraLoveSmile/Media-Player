@@ -8,10 +8,18 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/config/app_config.dart';
+import '../core/router/app_routes.dart';
+import '../data/moviepilot/progress/request_notification.dart';
+import '../data/notifications/local_notification_sink.dart';
+import '../ui/glass/glass_theme.dart';
+import '../features/request/request_controller.dart';
 import '../features/settings/update_dialog.dart';
 import 'feedback_config.dart';
 import 'feedback_layer.dart';
 import 'feedback_orb_settings.dart';
+import 'moviepilot_providers.dart';
+import 'request_notification_banner.dart';
+import 'request_notification_settings.dart';
 import 'router.dart';
 import 'update_providers.dart';
 
@@ -40,6 +48,19 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
   /// would stack two dialogs.
   bool _autoPromptUpdates = false;
 
+  /// 求片 notifications. The controller is the app-wide one (both 求片 pages
+  /// share it), so subscribing here is what makes a request finishing on an
+  /// unrelated page still reach the user.
+  RequestController? _requestController;
+  void Function()? _unsubscribeRequest;
+  LocalRequestNotificationSink? _systemNotifications;
+  final ValueNotifier<RequestNotification?> _banner =
+      ValueNotifier<RequestNotification?>(null);
+  Timer? _bannerTimer;
+
+  /// How long the in-app banner stays up before dismissing itself.
+  static const Duration _bannerDuration = Duration(seconds: 6);
+
   @override
   void initState() {
     super.initState();
@@ -50,6 +71,7 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
     _router = ref.read(appRouterProvider);
     _router!.routerDelegate.addListener(_onRouteChanged);
     _syncFeedbackPageLabel();
+    _attachRequestNotifications();
 
     // Silent startup check; failures are invisible and never block the app.
     // Skipped in debug/tests so local runs and widget tests stay deterministic.
@@ -66,8 +88,80 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
   void dispose() {
     _router?.routerDelegate.removeListener(_onRouteChanged);
     WidgetsBinding.instance.removeObserver(this);
+    _unsubscribeRequest?.call();
+    _bannerTimer?.cancel();
+    _banner.dispose();
+    unawaited(_systemNotifications?.dispose());
     _feedbackPageLabel.dispose();
     super.dispose();
+  }
+
+  /// Subscribes to the app-wide 求片 controller.
+  ///
+  /// The controller provider resolves asynchronously (it reads storage first),
+  /// so this listens rather than reads; a failed resolution (no storage, no
+  /// MoviePilot configuration) simply leaves notifications off.
+  void _attachRequestNotifications() {
+    ref.listenManual<AsyncValue<RequestController?>>(
+      requestControllerProvider,
+      (_, AsyncValue<RequestController?> next) => _bindRequestController(next.value),
+      fireImmediately: true,
+    );
+  }
+
+  void _bindRequestController(RequestController? controller) {
+    if (identical(controller, _requestController)) return;
+    _unsubscribeRequest?.call();
+    _unsubscribeRequest = null;
+    _requestController = controller;
+    if (controller == null) return;
+
+    final sink = LocalRequestNotificationSink(
+      onTap: (String requestId) => _openMyRequests(),
+    );
+    _systemNotifications = sink;
+    _unsubscribeRequest = controller.addNotificationListener((event) {
+      unawaited(_deliver(event, sink));
+    });
+    // Ask for a round now: the controller may have restored a list whose
+    // requests finished while the app was closed.
+    unawaited(controller.startWatching());
+  }
+
+  /// Hands one event to the channels the user left enabled.
+  Future<void> _deliver(
+    RequestNotification event,
+    LocalRequestNotificationSink sink,
+  ) async {
+    final RequestNotificationSettings settings =
+        ref.read(requestNotificationSettingsProvider).value ??
+            RequestNotificationSettings.defaults;
+    if (settings.system) {
+      try {
+        await sink.show(event);
+      } catch (error) {
+        // A denied permission or a missing platform hook must never break the
+        // poll; the in-app banner below is the fallback.
+        debugPrint('[request] 系统通知失败：$error');
+      }
+    }
+    if (!settings.inApp || !mounted) return;
+    _bannerTimer?.cancel();
+    _banner.value = event;
+    _bannerTimer = Timer(_bannerDuration, _dismissBanner);
+  }
+
+  void _dismissBanner() {
+    _bannerTimer?.cancel();
+    _bannerTimer = null;
+    _banner.value = null;
+  }
+
+  void _openMyRequests() {
+    _dismissBanner();
+    final router = _router;
+    if (router == null) return;
+    router.push(AppRoutes.myRequests);
   }
 
   /// Android back / system pop: close the feedback panel before normal
@@ -133,16 +227,20 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
     return MaterialApp.router(
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF3F51B5),
-      ),
+      // Liquid Glass appearance: iOS system palette, SF text metrics and
+      // continuous corners in both light and dark mode.
+      theme: buildGlassTheme(Brightness.light),
+      darkTheme: buildGlassTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
       routerConfig: ref.watch(appRouterProvider),
       // Mount the long-lived feedback layer above the router subtree so the orb
       // is present on every page and the draft survives navigation. The orb is
       // hidden on the player page, where it would cover video controls.
       builder: (BuildContext context, Widget? child) {
-        final Widget routerChild = child ?? const SizedBox.shrink();
+        Widget routerChild = child ?? const SizedBox.shrink();
+        // The 求片 banner sits above every page (including the player) but
+        // below the feedback layer, so the orb's capture boundary stays intact.
+        routerChild = _withRequestBanner(routerChild);
         if (feedbackService == null) return routerChild;
         return ValueListenableBuilder<String>(
           valueListenable: _feedbackPageLabel,
@@ -181,6 +279,35 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
           },
         );
       },
+    );
+  }
+
+  /// Overlays the 求片 banner on [child].
+  ///
+  /// Kept out of the router so it survives navigation: the user is usually
+  /// watching something when a request finishes, and a banner inside the
+  /// library route would never appear while the player is on top.
+  Widget _withRequestBanner(Widget child) {
+    return Stack(
+      children: <Widget>[
+        child,
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: ValueListenableBuilder<RequestNotification?>(
+            valueListenable: _banner,
+            builder: (BuildContext context, RequestNotification? event, _) {
+              if (event == null) return const SizedBox.shrink();
+              return RequestNotificationBanner(
+                event: event,
+                onTap: _openMyRequests,
+                onDismiss: _dismissBanner,
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 

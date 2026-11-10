@@ -46,6 +46,12 @@ class PlaybackSnapshot {
   final Duration duration;
   final bool buffering;
   final bool playing;
+
+  /// The engine's latest error event, or null.
+  ///
+  /// Engines report errors as events rather than as latched state: mpv logs
+  /// one for problems it recovers from, so the UI must not read this as "the
+  /// player is broken" on its own (contract §6).
   final Object? error;
 
   PlaybackSnapshot copyWith({

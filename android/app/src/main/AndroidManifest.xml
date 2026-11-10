@@ -6,6 +6,11 @@
          distributed outside Google Play, so the Play policy restriction does
          not apply. Users must still allow "install unknown apps" per app. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- Android 13+ shows the runtime prompt for this; the app asks when the
+         user turns 求片 notifications on, never at startup. Declared here as
+         well as in the plugin's own manifest so the requirement is visible
+         next to the other permissions this app owns. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- Cleartext is allowed app-wide because Network Security Config cannot
          express RFC1918 ranges. WAN endpoints must stay HTTPS; see README
          "约束". -->
