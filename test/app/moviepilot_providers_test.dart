@@ -88,7 +88,11 @@ void main() {
 
     test('a stored connection is read back', () async {
       await MoviePilotConfigStore(store).write(
-        const MoviePilotConfig(baseUrl: 'http://nas:3002', apiToken: 't'),
+        const MoviePilotConfig(
+          baseUrl: 'http://nas:3002',
+          username: 'admin',
+          accessToken: 't',
+        ),
       );
       final c = container();
 
@@ -99,38 +103,69 @@ void main() {
   });
 
   group('MoviePilotSettings', () {
-    test('save verifies before persisting and updates the state', () async {
+    test('login verifies before persisting and updates the state', () async {
       final service = FakeMoviePilotService();
       final c = container(service: service);
       await c.read(moviePilotSettingsProvider.future);
 
       final saved = await c
           .read(moviePilotSettingsProvider.notifier)
-          .save(
-            const MoviePilotConfig(baseUrl: 'http://nas:3002', apiToken: 't'),
+          .login(
+            baseUrl: 'http://nas:3002',
+            username: 'admin',
+            password: 'pw',
           );
 
       expect(saved.baseUrl, 'http://nas:3002');
+      expect(saved.username, 'admin');
+      expect(service.logins.single.username, 'admin');
+      expect(service.logins.single.password, 'pw');
+      expect(service.logins.single.otp, isNull);
       expect(service.connectionTests, hasLength(1));
+      expect(service.connectionTests.single.accessToken, 'token-admin');
       expect(await MoviePilotConfigStore(store).read(), isNotNull);
       expect(c.read(moviePilotSettingsProvider).value, isNotNull);
     });
 
-    test('a rejected token is not persisted', () async {
+    test('a rejected login is not persisted', () async {
       final service = FakeMoviePilotService()
-        ..testFailure = mpFailure(AppErrorCode.unauthorized);
+        ..loginFailure = mpFailure(AppErrorCode.unauthorized);
       final c = container(service: service);
       await c.read(moviePilotSettingsProvider.future);
 
       await expectLater(
         c
             .read(moviePilotSettingsProvider.notifier)
-            .save(
-              const MoviePilotConfig(baseUrl: 'http://nas:3002', apiToken: 't'),
+            .login(
+              baseUrl: 'http://nas:3002',
+              username: 'admin',
+              password: 'wrong',
             ),
         throwsA(anything),
       );
 
+      expect(await MoviePilotConfigStore(store).read(), isNull);
+      expect(service.connectionTests, isEmpty);
+    });
+
+    test('a token the server rejects after login is not persisted', () async {
+      final service = FakeMoviePilotService()
+        ..testFailure = mpFailure(AppErrorCode.forbidden);
+      final c = container(service: service);
+      await c.read(moviePilotSettingsProvider.future);
+
+      await expectLater(
+        c
+            .read(moviePilotSettingsProvider.notifier)
+            .login(
+              baseUrl: 'http://nas:3002',
+              username: 'admin',
+              password: 'pw',
+            ),
+        throwsA(anything),
+      );
+
+      expect(service.connectionTests, hasLength(1));
       expect(await MoviePilotConfigStore(store).read(), isNull);
     });
 
@@ -140,8 +175,10 @@ void main() {
       await c.read(moviePilotSettingsProvider.future);
       await c
           .read(moviePilotSettingsProvider.notifier)
-          .save(
-            const MoviePilotConfig(baseUrl: 'http://nas:3002', apiToken: 't'),
+          .login(
+            baseUrl: 'http://nas:3002',
+            username: 'admin',
+            password: 'pw',
           );
       final requestStore = await c.read(requestStoreProvider.future);
       await requestStore!.write(const []);

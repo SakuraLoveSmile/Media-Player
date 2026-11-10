@@ -11,9 +11,20 @@ import 'progress/poll_snapshot.dart';
 /// [MoviePilotException]; "not configured yet" is reported as
 /// `AppErrorCode.notConfigured` so the page can offer the settings shortcut.
 abstract interface class MoviePilotService {
-  /// Verifies the stored connection with the cheapest authenticated call.
-  /// Throws `unauthorized` for a wrong token and `notConfigured` when nothing
-  /// has been saved.
+  /// `POST /login/access-token` — trades the account password for a bearer
+  /// token (求片 S16). Throws `unauthorized` for wrong credentials or a
+  /// disabled account; `mfaRequired` is set when the account still needs a
+  /// one-time code, and the call can be repeated with [otp].
+  Future<MoviePilotConfig> login({
+    required String baseUrl,
+    required String username,
+    required String password,
+    String? otp,
+  });
+
+  /// Verifies [config] with the cheapest authenticated call. Throws
+  /// `unauthorized` when the token is rejected, `forbidden` when the account
+  /// lacks a role the feature needs.
   Future<MoviePilotConfig> testConnection(MoviePilotConfig config);
 
   /// `GET /media/search` — movies and series only.

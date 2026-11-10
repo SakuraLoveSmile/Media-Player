@@ -213,7 +213,7 @@ class _RequestPageState extends ConsumerState<RequestPage> {
               ),
               const SizedBox(height: GlassSpacing.sm),
               Text(
-                '在设置中填写 MoviePilot 的地址与 API_TOKEN 后即可求片。',
+                '在设置中登录 MoviePilot 账号后即可求片。',
                 textAlign: TextAlign.center,
                 style: GlassType.footnote.copyWith(
                   color: palette.secondaryLabel,

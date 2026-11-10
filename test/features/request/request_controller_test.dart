@@ -52,7 +52,11 @@ class _Harness {
   }
 
   Future<void> configure() => configStore.write(
-    const MoviePilotConfig(baseUrl: 'http://nas:3002', apiToken: 'token'),
+    const MoviePilotConfig(
+      baseUrl: 'http://nas:3002',
+      username: 'admin',
+      accessToken: 'token',
+    ),
   );
 }
 
@@ -717,7 +721,8 @@ void main() {
       final result = await controller.saveConnection(
         config: const MoviePilotConfig(
           baseUrl: 'http://nas:3002',
-          apiToken: 'token',
+          username: 'admin',
+          accessToken: 'token',
         ),
       );
 
@@ -737,12 +742,13 @@ void main() {
       final result = await controller.saveConnection(
         config: const MoviePilotConfig(
           baseUrl: 'http://nas:3002',
-          apiToken: 'bad',
+          username: 'admin',
+          accessToken: 'bad',
         ),
       );
 
       expect(result.ok, isFalse);
-      expect(result.error, contains('API_TOKEN'));
+      expect(result.error, contains('登录'));
       expect(await harness.configStore.read(), isNull);
       controller.dispose();
     });
@@ -970,6 +976,19 @@ class _GatedService implements MoviePilotService {
     bool needsTasks = true,
     Set<MpMediaType> historyTypes = const <MpMediaType>{},
   }) => _inner.poll(needsTasks: needsTasks, historyTypes: historyTypes);
+
+  @override
+  Future<MoviePilotConfig> login({
+    required String baseUrl,
+    required String username,
+    required String password,
+    String? otp,
+  }) => _inner.login(
+    baseUrl: baseUrl,
+    username: username,
+    password: password,
+    otp: otp,
+  );
 
   @override
   Future<MoviePilotConfig> testConnection(MoviePilotConfig config) =>

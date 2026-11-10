@@ -14,9 +14,9 @@ typedef MpLogSink = void Function(String line);
 /// Same shape as [EmbyHttpClient]: absolute [Uri] per request (no shared
 /// `baseUrl`), plain-text responses decoded here so a malformed body maps to
 /// `serverError` instead of an opaque adapter failure, and a redacted log line
-/// per request. The differences are the authentication header — MoviePilot
-/// takes a single `X-API-KEY` and needs no device identity — and the methods
-/// 求片 needs (GET / POST / DELETE).
+/// per request. The connection is authenticated by the current user's bearer
+/// token (求片 S16); [postForm] is the one anonymous call, used to trade the
+/// account password for that token.
 class MoviePilotHttpClient {
   MoviePilotHttpClient(
     this._dio, {
@@ -34,22 +34,27 @@ class MoviePilotHttpClient {
 
   Future<Object?> getJson(
     Uri url, {
-    required String apiToken,
+    required String accessToken,
     Duration? timeout,
   }) {
-    return _send(method: 'GET', url: url, apiToken: apiToken, timeout: timeout);
+    return _send(
+      method: 'GET',
+      url: url,
+      accessToken: accessToken,
+      timeout: timeout,
+    );
   }
 
   Future<Object?> postJson(
     Uri url, {
-    required String apiToken,
+    required String accessToken,
     Object? body,
     Duration? timeout,
   }) {
     return _send(
       method: 'POST',
       url: url,
-      apiToken: apiToken,
+      accessToken: accessToken,
       body: body,
       timeout: timeout,
     );
@@ -57,38 +62,52 @@ class MoviePilotHttpClient {
 
   Future<Object?> deleteJson(
     Uri url, {
-    required String apiToken,
+    required String accessToken,
     Duration? timeout,
   }) {
     return _send(
       method: 'DELETE',
       url: url,
-      apiToken: apiToken,
+      accessToken: accessToken,
       timeout: timeout,
     );
+  }
+
+  /// `POST /api/v1/login/access-token` — the only request that carries no
+  /// bearer token, because it is how one is obtained.
+  Future<Object?> postForm(
+    Uri url, {
+    required Map<String, String> fields,
+    Duration? timeout,
+  }) {
+    return _send(method: 'POST', url: url, form: fields, timeout: timeout);
   }
 
   Future<Object?> _send({
     required String method,
     required Uri url,
-    required String apiToken,
+    String? accessToken,
+    Map<String, String>? form,
     Object? body,
     Duration? timeout,
   }) async {
-    // Path only: the query can carry a `token=` fallback and the header carries
-    // the administrator key.
+    // Path only: the query can carry file names the user searched for, and the
+    // header carries the bearer token.
     _log('$method ${redactUrl(url.toString())}');
 
     try {
       final response = await _dio.requestUri<Object?>(
         url,
-        data: body == null ? null : jsonEncode(body),
+        data: form ?? (body == null ? null : jsonEncode(body)),
         options: Options(
           method: method,
           headers: <String, String>{
             Headers.acceptHeader: Headers.jsonContentType,
-            Headers.contentTypeHeader: Headers.jsonContentType,
-            'X-API-KEY': apiToken,
+            Headers.contentTypeHeader: form != null
+                ? Headers.formUrlEncodedContentType
+                : Headers.jsonContentType,
+            if (accessToken != null && accessToken.isNotEmpty)
+              'Authorization': 'Bearer $accessToken',
           },
           // Decode ourselves so a malformed body maps to serverError instead
           // of surfacing as an adapter-level "unknown" network failure.
@@ -161,9 +180,17 @@ class MoviePilotHttpClient {
         return MoviePilotException(
           _fromStatus(status),
           message: _serverMessage(error.response?.data) ?? 'HTTP $status',
+          // v3 answers 401 plus this header when the password was right but
+          // the account still needs a one-time code.
+          mfaRequired:
+              status == 401 &&
+              _isTrue(error.response?.headers.value('x-mfa-required')),
         );
     }
   }
+
+  static bool _isTrue(String? value) =>
+      value != null && value.toLowerCase() == 'true';
 
   /// FastAPI puts the human reason in `detail`; v3's own envelope uses
   /// `message`. Truncated so a stack trace cannot reach the UI.
@@ -191,10 +218,13 @@ class MoviePilotHttpClient {
   static AppErrorCode _fromStatus(int status) {
     switch (status) {
       case 401:
-      case 403:
-        // MoviePilot answers 403 for a token that is valid but lacks the
-        // administrator role; both mean "fix the settings".
+        // Expired token, wrong password, or a disabled account: the user has
+        // to sign in again.
         return AppErrorCode.unauthorized;
+      case 403:
+        // v3 answers 403 for an authenticated account that lacks the required
+        // role (downloads and the transfer queue need the manage permission).
+        return AppErrorCode.forbidden;
       case 404:
         return AppErrorCode.notFound;
       default:

@@ -1,4 +1,4 @@
-# MoviePilot 求片（S1–S14）
+# MoviePilot 求片（S1–S16）
 
 分支 `feat/moviepilot-request`，基线 = `experiment/liquid-glass`（b14bb15）+ 合入 `origin/main`（v0.2.5 剧集播放与更新渠道）。
 
@@ -8,13 +8,13 @@
 
 数据层（`lib/data/moviepilot/`）：
 
-- `api/moviepilot_http_client.dart` — 逐请求绝对 Uri、`X-API-KEY`、GET/POST/DELETE、`ResponseType.plain` 自解码、Dio 异常映射、redact 日志。401 与 403 都映射为 `unauthorized`（v3 对无管理员角色的 token 返回 403）。
+- `api/moviepilot_http_client.dart` — 逐请求绝对 Uri、`Authorization: Bearer`、GET/POST/DELETE/表单 POST、`ResponseType.plain` 自解码、Dio 异常映射、redact 日志。401 → `unauthorized`，403 → `forbidden`（v3 对缺少 manage 权限的账号返回 403）；登录 401 带 `X-MFA-Required` 时标记 `mfaRequired`。
 - `api/mp_envelope.dart` — 三态解包：`{success,data}`、裸 list/对象、`{data:{list,total}}`；`success:false` 抛 `MoviePilotException` 并带服务端 message。
 - `models/` — 配置、媒体身份/搜索结果、季、订阅（含 execution_status）、下载任务、整理队列、整理历史。数字字符串、`media_id` 数字或字符串、缺失 `media dict`、progress 0–1 与 0–100 均已容错。
 - `moviepilot_repository.dart` — `/api/v1` 前缀、not-configured 守卫、按需拉取。v3 契约要点：`/mediaserver/exists` 参数名是 `mtype`；`/subscribe/search/{id}` 是 POST；历史 `mtype` 是路径段；创建返回 `data.id`（缺失即视为失败，否则订阅无法跟踪或取消）。
 - `progress/` — `PollSnapshot`（可持久化）、`RequestMatcher`（分层匹配）、`RequestProgressEngine`（纯函数推导）。
 
-存储与 DI：`MoviePilotConfigStore`（`mp.moviepilot.v1`）、`RequestStore`（`mp.requests.v1`，记录 + 上次快照同键）、`lib/app/moviepilot_providers.dart`。
+存储与 DI：`MoviePilotConfigStore`（`mp.moviepilot.v1`，schema 2 = 账号 token）、`RequestStore`（`mp.requests.v1`，记录 + 上次快照同键）、`lib/app/moviepilot_providers.dart`。
 
 功能层：`lib/features/request/`（state/controller/page + 三个 widget）、`lib/features/settings/moviepilot_config_dialog.dart`；设置页新增「求片」分区，媒体库工具栏新增求片入口，路由 `/request`。
 
@@ -88,6 +88,26 @@ S1 `ad1bbe7` … S14 `32ce556`，每片单独本地提交，未推送。
 2. Windows 的 toast 未在真机验证（只有 CI release 构建，没有 Windows 机器）。
 3. 用户提出的「支持 push 的走 push、小米等走后台常驻、GMS 兜底」没有实现。这需要第三方推送服务、服务端改动与各厂商通道接入，是独立于本轮的工程量；本轮交付的是应用存活期的本地通知，应用被系统清理后不会提醒。如果要做，建议单独开任务，且要先定服务端由谁托管。
 
+## 账号登录（S16，本轮）
+
+原实现用实例级 `API_TOKEN`（`X-API-KEY`）。它是永久有效的管理员密钥，一旦落盘就没有过期窗口；改成用 MoviePilot 账号登录，只保存服务端签发的 bearer token。
+
+**接口**：`POST /api/v1/login/access-token`（OAuth2 密码表单，`username` + `password`，开了二次验证再加 `otp_password`）→ `{access_token, token_type: bearer, ...}`；之后请求带 `Authorization: Bearer <token>`。v3 的 `verify_token` 先认 Bearer、再认 `X-API-KEY`。JWT 默认 8 天（`ACCESS_TOKEN_EXPIRE_MINUTES`），没有 refresh 接口。
+
+**权限差异**：`/subscribe/`、`/media/search`、`/media/seasons`、`/mediaserver/exists`、`/history/transfer`、`/subscribe/history/{mtype}` 只要求登录；`GET /download/` 与 `GET /transfer/queue` 要求 `manage` 权限。所以登录账号需要管理员身份才能拿到完整的求片进度；普通账号轮询会 403，请求页提示「账号权限不足」并停止心跳（不会伪装成登录失效）。
+
+**实现**：
+
+- `MoviePilotConfig` 改为 `baseUrl + username + accessToken + expiresAt`（从 JWT `exp` 读取，不验签）。密码只存在于对话框的 controller 里，登录一次后即丢弃，**不落盘**。
+- `MoviePilotHttpClient`：新增 `postForm`，登录是唯一不带 token 的请求；其余请求带 `Authorization: Bearer`。
+- `MoviePilotRepository.login(...)`：表单 POST，拒绝无 token 或非 bearer 的 200 响应；token 过期时 `_requireConfig` 直接报 `unauthorized`，不再白跑一轮 401。
+- `MoviePilotSettings.login(...)`：登录 → `testConnection`（`GET /subscribe/`）→ 落盘；任一步失败都不写任何东西。
+- 设置对话框：地址 + 用户名 + 密码（可显示/隐藏）+ 按需出现的二次验证码；错误文案区分「用户名或密码错误」「地址不对」「证书」「网络」「权限」。
+
+**兼容**：`MoviePilotConfigStore` schema 升到 2；读到其他版本（包括存着 API_TOKEN 的 v1）直接删除记录，避免旧管理员密钥继续留在磁盘上，用户需重新登录一次。
+
+**验证**：`flutter analyze` 零问题；`flutter test` 646 通过（新增登录表单 / Bearer / 403 / MFA / 过期 / 旧记录清理用例）。仍未在真实实例验证：真实登录响应形状、8 天过期后的重新登录流程、开启二次验证的账号（fake server 只模拟了 OTP 挑战）、普通账号的 403 表现。
+
 ## 设备/实例取证状态
 
-未开始。需要用户在设置页填入真实 `url + API_TOKEN` 后按计划“端到端验证”1–7 逐条走。公开仓库中不得提交真实地址与 token；测试全部使用 loopback fake server 与 dummy token。
+未开始。需要用户在设置页用真实 MoviePilot 账号登录后按计划“端到端验证”1–7 逐条走。公开仓库中不得提交真实地址与 token；测试全部使用 loopback fake server 与 dummy token。
