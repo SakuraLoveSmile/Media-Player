@@ -15,6 +15,7 @@ import '../support/fake_library_service.dart';
 import '../support/fake_playback_engine.dart';
 import '../support/fake_playback_reporter.dart';
 import '../support/fake_playback_service.dart';
+import '../support/fake_poster_cache.dart';
 
 class FakeAuth implements AuthService {
   FakeAuth({this.restoreResult});
@@ -72,6 +73,7 @@ Future<void> pumpApp(WidgetTester tester, FakeAuth auth) async {
               AppServices(
                 auth: auth,
                 library: FakeLibraryService(),
+                posters: FakePosterCache(),
                 playback: FakePlaybackService(),
                 createEngine: FakePlaybackEngine.new,
                 createReporter: FakePlaybackReporter.new,
@@ -119,6 +121,7 @@ void main() {
       AppServices(
         auth: FakeAuth(restoreResult: session),
         library: FakeLibraryService(),
+        posters: FakePosterCache(),
         playback: FakePlaybackService(),
         createEngine: FakePlaybackEngine.new,
         createReporter: FakePlaybackReporter.new,

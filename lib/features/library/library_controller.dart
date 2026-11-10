@@ -1,8 +1,11 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 
 import '../../core/errors/app_error.dart';
 import '../../core/errors/emby_exception.dart';
 import '../../data/library/library_service.dart';
+import '../../data/library/poster_cache.dart';
+import '../../data/library/poster_image_provider.dart';
 import '../../data/models/library_view.dart';
 import '../../data/models/media_item.dart';
 
@@ -65,9 +68,11 @@ class LibraryState {
 
 /// Drives the library page: views, first page, infinite scroll (contract §2).
 class LibraryController extends ChangeNotifier {
-  LibraryController(this._service);
+  LibraryController(this._service, this._posters);
 
   final LibraryService _service;
+
+  final PosterCache _posters;
 
   LibraryState _state = const LibraryState();
   bool _disposed = false;
@@ -173,8 +178,18 @@ class LibraryController extends ChangeNotifier {
     }
   }
 
-  Uri? imageUrl(String itemId, {String? tag, int? maxWidth}) =>
-      _service.imageUrl(itemId, tag: tag, maxWidth: maxWidth);
+  /// Null without a session, which is the card's cue to show its placeholder.
+  ImageProvider? posterImage(String itemId, {String? tag, int? maxWidth}) {
+    final url = _service.imageUrl(itemId, tag: tag, maxWidth: maxWidth);
+    if (url == null) return null;
+    return PosterImageProvider(
+      cache: _posters,
+      itemId: itemId,
+      url: url,
+      tag: tag,
+      maxWidth: maxWidth,
+    );
+  }
 
   void _fail(EmbyException error, {bool keepItems = true}) {
     _set(_state.copyWith(

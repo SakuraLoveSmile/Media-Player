@@ -6,6 +6,7 @@ import 'package:media_player/data/models/media_item.dart';
 import 'package:media_player/features/library/library_controller.dart';
 
 import '../../support/fake_library_service.dart';
+import '../../support/fake_poster_cache.dart';
 
 void main() {
   late FakeLibraryService service;
@@ -25,7 +26,7 @@ void main() {
         ),
       },
     );
-    controller = LibraryController(service);
+    controller = LibraryController(service, FakePosterCache());
   });
 
   tearDown(() => controller.dispose());

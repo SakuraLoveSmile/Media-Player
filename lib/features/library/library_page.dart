@@ -47,7 +47,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     try {
       final services = await ref.read(bootstrapProvider.future);
       if (!mounted) return;
-      final controller = LibraryController(services.library)
+      final controller = LibraryController(services.library, services.posters)
         ..addListener(_onChanged);
       setState(() => _controller = controller);
       await controller.load();
@@ -190,7 +190,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                     final item = state.items[index];
                     return _PosterCard(
                       item: item,
-                      imageUrl: controller.imageUrl(
+                      image: controller.posterImage(
                         item.id,
                         tag: item.imageTag,
                         maxWidth: 320,
@@ -214,12 +214,12 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
 class _PosterCard extends StatefulWidget {
   const _PosterCard({
     required this.item,
-    required this.imageUrl,
+    required this.image,
     required this.onTap,
   });
 
   final MediaItem item;
-  final Uri? imageUrl;
+  final ImageProvider? image;
   final VoidCallback onTap;
 
   @override
@@ -262,14 +262,14 @@ class _PosterCardState extends State<_PosterCard> {
                     children: <Widget>[
                       ColoredBox(
                         color: palette.fill,
-                        child: widget.imageUrl == null
+                        child: widget.image == null
                             ? Icon(
                                 Icons.movie_outlined,
                                 size: 30,
                                 color: palette.tertiaryLabel,
                               )
-                            : Image.network(
-                                widget.imageUrl.toString(),
+                            : Image(
+                                image: widget.image!,
                                 fit: BoxFit.cover,
                                 gaplessPlayback: true,
                                 errorBuilder: (_, _, _) => Icon(

@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/config/app_config.dart';
 import '../core/device/device_info.dart';
@@ -9,6 +12,7 @@ import '../data/auth/auth_repository.dart';
 import '../data/endpoints/endpoint_probe.dart';
 import '../data/endpoints/endpoint_resolver.dart';
 import '../data/library/library_repository.dart';
+import '../data/library/poster_cache.dart';
 import '../data/playback/media_kit_engine.dart';
 import '../data/playback/playback_repository.dart';
 import '../data/playback/session_reporter.dart';
@@ -48,9 +52,16 @@ final bootstrapProvider = FutureProvider<AppServices>((ref) async {
     dio.close(force: true);
   });
 
+  final support = await getApplicationSupportDirectory();
   return AppServices(
     auth: auth,
     library: LibraryRepository(auth),
+    // The poster URL carries api_key, so it goes straight to dio and never to
+    // disk; no X-Emby-Token header, exactly like the previous Image.network.
+    posters: FilePosterCache(
+      directory: Directory('${support.path}/posters_v1'),
+      fetch: client.getBytes,
+    ),
     playback: PlaybackRepository(auth),
     // Factories, not instances: each playback needs its own libmpv instance
     // and its own "already stopped" flag (contract §5, §10.9 c).

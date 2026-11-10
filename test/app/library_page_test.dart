@@ -21,6 +21,7 @@ import '../support/fake_library_service.dart';
 import '../support/fake_playback_engine.dart';
 import '../support/fake_playback_reporter.dart';
 import '../support/fake_playback_service.dart';
+import '../support/fake_poster_cache.dart';
 
 class _PendingEpisodeStop extends FakePlaybackReporter {
   final completion = Completer<void>();
@@ -76,6 +77,7 @@ void main() {
     WidgetTester tester,
     FakeLibraryService library, {
     FakePlaybackService? playback,
+    FakePosterCache? posters,
     FakePlaybackEngine Function()? createEngine,
     FakePlaybackReporter Function()? createReporter,
   }) async {
@@ -86,6 +88,7 @@ void main() {
             (ref) async => AppServices(
               auth: StaticAuth(),
               library: library,
+              posters: posters ?? FakePosterCache(),
               playback: playback ?? FakePlaybackService(),
               createEngine: createEngine ?? FakePlaybackEngine.new,
               createReporter: createReporter ?? FakePlaybackReporter.new,
@@ -372,5 +375,49 @@ void main() {
     await pumpLibrary(tester, FakeLibraryService());
 
     expect(find.text('服务器没有可浏览的媒体库'), findsOneWidget);
+  });
+
+  testWidgets('posters resolve once and survive a grid rebuild', (
+    tester,
+  ) async {
+    final library = buildService()..imageHost = '192.168.1.10:8096';
+    final posters = FakePosterCache();
+    await pumpLibrary(tester, library, posters: posters);
+
+    expect(posters.loadCalls, greaterThan(0));
+    expect(find.byIcon(Icons.broken_image_outlined), findsNothing);
+    final int resolved = posters.loadCalls;
+
+    // Refresh rebuilds every card with a freshly constructed provider. Value
+    // equality is what keeps Flutter's image cache from re-resolving them.
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pumpAndSettle();
+
+    expect(posters.loadCalls, resolved);
+    expect(find.byIcon(Icons.broken_image_outlined), findsNothing);
+  });
+
+  testWidgets('a re-login does not re-resolve the posters', (tester) async {
+    final library = buildService()..imageHost = '192.168.1.10:8096';
+    final posters = FakePosterCache();
+    await pumpLibrary(tester, library, posters: posters);
+    final int resolved = posters.loadCalls;
+    expect(resolved, greaterThan(0));
+
+    library.imageToken = 'token-2';
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pumpAndSettle();
+
+    expect(posters.loadCalls, resolved);
+  });
+
+  testWidgets('without an image url the card keeps its placeholder', (
+    tester,
+  ) async {
+    final posters = FakePosterCache();
+    await pumpLibrary(tester, buildService(), posters: posters);
+
+    expect(posters.loadCalls, 0);
+    expect(find.byIcon(Icons.movie_outlined), findsWidgets);
   });
 }

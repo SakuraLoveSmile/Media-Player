@@ -20,6 +20,7 @@ import '../support/fake_library_service.dart';
 import '../support/fake_playback_engine.dart';
 import '../support/fake_playback_reporter.dart';
 import '../support/fake_playback_service.dart';
+import '../support/fake_poster_cache.dart';
 
 class _Auth implements AuthService {
   @override
@@ -232,6 +233,7 @@ void main() {
             return AppServices(
               auth: auth,
               library: library,
+              posters: FakePosterCache(),
               playback: FakePlaybackService(),
               createEngine: FakePlaybackEngine.new,
               createReporter: FakePlaybackReporter.new,
