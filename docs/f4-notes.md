@@ -10,7 +10,7 @@
 | 项 | 决定 | 依据 |
 |---|---|---|
 | 反馈组件版本 | `feedback_widget` 0.8.6，Git tag `v0.8.6`（commit `a345ca67de03153ebb8a4594b33b22475d0dff61`，`flutter/feedback` 子目录；0.8.6 修复灵感球背景残留，宿主 API 与 0.8.4/0.8.5 相同） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
-| 反馈服务 | 生产地址 `https://feedback.xn--fhqths51enha.cn`，`appId = dev.mediaplayer.media_player`，`appName = Media Player` | 与 Android applicationId 一致；服务端首次提交自动发现软件 |
+| 反馈服务 | 生产地址 `https://feedback.xn--fhqths51enha.cn`，`appId = dev.mediaplayer.media_player`，`appName = Media Player` | 迁移前的历史决定（当时与 Android applicationId 一致）。应用标识已统一为 `cn.sakuralovesmile.mediaplayer`，此 appId 保持不变：它是反馈服务端侧的软件主键，改动会使历史反馈与面板登录态落到新软件下 |
 | 反馈默认开关 | release/profile 默认开启；debug 与 `flutter test` 默认关闭；可用 `FEEDBACK_ENABLED` / `FEEDBACK_API_BASE` / `FEEDBACK_APP_ID` / `FEEDBACK_APP_NAME` 覆盖 | 开发与既有测试不受影响；发布构建显式传 `--dart-define` |
 | 反馈入口 | 亮色主题、右侧灵感球（orb）+ 视口截图；播放页隐藏悬浮球；登录页服务器地址/用户名包 `FeedbackCaptureMask` | 与 app 亮色主题一致；避免遮挡播放控件；截图不泄露地址/账号 |
 | 更新源 | GitHub Releases API（`SakuraLoveSmile/Media-Player`，public），只接受正式 Release | 用户确认：不引入仓库内清单与镜像维护；API 匿名限额足够个人使用 |
