@@ -7,8 +7,12 @@
 // The application's name. By default this is also the title of the Flutter window.
 PRODUCT_NAME = Media Player
 
-// The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = dev.mediaplayer.mediaPlayer
+// The application's bundle identifier. Keep in sync with the Android
+// applicationId (android/app/build.gradle.kts) and the Windows VersionInfo in
+// windows/runner/Runner.rc: this id also decides where the app data lives
+// (~/Library/Application Support/<bundle id>/), so changing it drops the stored
+// session.
+PRODUCT_BUNDLE_IDENTIFIER = cn.sakuralovesmile.mediaplayer
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 dev.mediaplayer. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 cn.sakuralovesmile. All rights reserved.

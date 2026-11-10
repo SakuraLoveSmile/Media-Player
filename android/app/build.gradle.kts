@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.mediaplayer.media_player"
+    namespace = "cn.sakuralovesmile.mediaplayer"
     // flutter_local_notifications 23 compiles against API 37 and refuses to be
     // consumed by an app built against an older platform (AAR metadata check),
     // so this is pinned above Flutter's default of 36. targetSdk stays on
@@ -50,7 +50,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "dev.mediaplayer.media_player"
+        applicationId = "cn.sakuralovesmile.mediaplayer"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
