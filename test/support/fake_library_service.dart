@@ -32,6 +32,13 @@ class FakeLibraryService implements LibraryService {
   EmbyException? failure;
   bool unauthorized;
 
+  /// Null keeps [imageUrl] null so cards render their placeholder. Set it to
+  /// exercise the poster path.
+  String? imageHost;
+
+  /// Mirrors a re-login: every image URL changes, the item identity does not.
+  String imageToken = 'token-1';
+
   int viewCalls = 0;
   int itemCalls = 0;
 
@@ -126,7 +133,14 @@ class FakeLibraryService implements LibraryService {
   }
 
   @override
-  Uri? imageUrl(String itemId, {String? tag, int? maxWidth}) => null;
+  Uri? imageUrl(String itemId, {String? tag, int? maxWidth}) {
+    final host = imageHost;
+    if (host == null) return null;
+    return Uri.parse(
+      'http://$host/Items/$itemId/Images/Primary'
+      '?maxWidth=${maxWidth ?? ''}&tag=${tag ?? ''}&api_key=$imageToken',
+    );
+  }
 
   void _maybeThrow() {
     if (unauthorized) {

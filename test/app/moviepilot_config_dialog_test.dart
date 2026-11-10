@@ -18,6 +18,7 @@ import '../support/fake_moviepilot_service.dart';
 import '../support/fake_playback_engine.dart';
 import '../support/fake_playback_reporter.dart';
 import '../support/fake_playback_service.dart';
+import '../support/fake_poster_cache.dart';
 
 class _NoAuth implements AuthService {
   @override
@@ -39,6 +40,7 @@ void main() {
         (ref) async => AppServices(
           auth: _NoAuth(),
           library: FakeLibraryService(),
+          posters: FakePosterCache(),
           playback: FakePlaybackService(),
           createEngine: FakePlaybackEngine.new,
           createReporter: FakePlaybackReporter.new,

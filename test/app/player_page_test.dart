@@ -24,6 +24,7 @@ import '../support/fake_library_service.dart';
 import '../support/fake_playback_engine.dart';
 import '../support/fake_playback_reporter.dart';
 import '../support/fake_playback_service.dart';
+import '../support/fake_poster_cache.dart';
 
 class PendingStopReporter extends FakePlaybackReporter {
   final completion = Completer<void>();
@@ -160,6 +161,7 @@ void main() {
             (ref) async => AppServices(
               auth: StaticAuth(),
               library: library,
+              posters: FakePosterCache(),
               playback: playback,
               createEngine: createEngine ?? () => engine,
               createReporter: createReporter ?? () => reporter,

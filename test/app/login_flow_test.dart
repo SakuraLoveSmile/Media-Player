@@ -16,6 +16,7 @@ import '../support/fake_library_service.dart';
 import '../support/fake_playback_engine.dart';
 import '../support/fake_playback_reporter.dart';
 import '../support/fake_playback_service.dart';
+import '../support/fake_poster_cache.dart';
 
 class LoginCall {
   const LoginCall({
@@ -99,6 +100,7 @@ void main() {
                 AppServices(
                   auth: auth,
                   library: FakeLibraryService(),
+                  posters: FakePosterCache(),
                   playback: FakePlaybackService(),
                   createEngine: FakePlaybackEngine.new,
                   createReporter: FakePlaybackReporter.new,

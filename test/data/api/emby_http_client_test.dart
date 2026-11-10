@@ -46,6 +46,9 @@ void main() {
           response.write('<html>not json</html>');
         case '/empty':
           response.statusCode = HttpStatus.noContent;
+        case '/bytes':
+          response.headers.contentType = ContentType.binary;
+          response.add(const [0x89, 0x50, 0x4E, 0x47, 0x00, 0xFF]);
         case '/slow':
           await Future<void>.delayed(const Duration(seconds: 5));
         default:
@@ -181,5 +184,62 @@ void main() {
     expect(joined, isNot(contains('api_key')));
     expect(joined, isNot(contains('secret-token')));
     expect(joined, isNot(contains('MediaSourceId')));
+  });
+
+  test('getBytes returns the raw body and sends the auth headers', () async {
+    final bytes = await buildClient().getBytes(
+      Uri.parse('$base/bytes?api_key=secret-token'),
+      token: 'secret-token',
+    );
+
+    expect(bytes, const [0x89, 0x50, 0x4E, 0x47, 0x00, 0xFF]);
+    final headers = receivedHeaders.last;
+    expect(headers.value(EmbyHeaders.deviceId), 'device-1');
+    expect(headers.value(EmbyHeaders.token), 'secret-token');
+  });
+
+  test('getBytes maps HTTP status codes like getJson', () async {
+    final client = buildClient();
+    final expectations = <String, AppErrorCode>{
+      '/401': AppErrorCode.unauthorized,
+      '/403': AppErrorCode.forbidden,
+      '/404': AppErrorCode.notFound,
+      '/500': AppErrorCode.serverError,
+    };
+
+    for (final entry in expectations.entries) {
+      await expectLater(
+        client.getBytes(Uri.parse('$base${entry.key}')),
+        throwsA(
+          isA<EmbyException>().having((e) => e.code, 'code', entry.value),
+        ),
+        reason: entry.key,
+      );
+    }
+  });
+
+  test('getBytes maps a receive timeout to networkUnreachable', () async {
+    await expectLater(
+      buildClient(timeout: const Duration(milliseconds: 300))
+          .getBytes(Uri.parse('$base/slow')),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.code,
+          'code',
+          AppErrorCode.networkUnreachable,
+        ),
+      ),
+    );
+  });
+
+  test('getBytes redacts the query from the log', () async {
+    await buildClient().getBytes(
+      Uri.parse('$base/bytes?api_key=secret-token&tag=abc'),
+    );
+
+    final joined = logs.join('\n');
+    expect(joined, contains('/bytes'));
+    expect(joined, isNot(contains('api_key')));
+    expect(joined, isNot(contains('secret-token')));
   });
 }

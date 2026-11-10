@@ -16,6 +16,7 @@ import '../support/fake_moviepilot_service.dart';
 import '../support/fake_playback_engine.dart';
 import '../support/fake_playback_reporter.dart';
 import '../support/fake_playback_service.dart';
+import '../support/fake_poster_cache.dart';
 
 /// Auth is never touched by the request feature; the graph only needs a stub.
 class _NoAuth implements AuthService {
@@ -28,6 +29,7 @@ AppServices buildServices(InMemoryKeyValueStore store) {
   return AppServices(
     auth: _NoAuth(),
     library: FakeLibraryService(),
+    posters: FakePosterCache(),
     playback: FakePlaybackService(),
     createEngine: FakePlaybackEngine.new,
     createReporter: FakePlaybackReporter.new,

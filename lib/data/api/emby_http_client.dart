@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
@@ -55,6 +56,40 @@ class EmbyHttpClient {
       authorization: authorization,
       timeout: timeout,
     );
+  }
+
+  /// Raw response body, for poster bytes. A second request path rather than a
+  /// flag on [_send]: image endpoints answer with binary, so the JSON accept
+  /// headers and [_decode] must not run. Error mapping, redacted logging and
+  /// timeouts are the same.
+  Future<Uint8List> getBytes(
+    Uri url, {
+    String? token,
+    Duration? timeout,
+  }) async {
+    _log('GET ${redactUrl(url.toString())}');
+
+    try {
+      final response = await _dio.requestUri<Uint8List>(
+        url,
+        options: Options(
+          method: 'GET',
+          headers: <String, String>{
+            EmbyHeaders.deviceId: deviceId,
+            EmbyHeaders.token: ?token,
+          },
+          responseType: ResponseType.bytes,
+          followRedirects: true,
+          maxRedirects: 5,
+          connectTimeout: timeout ?? defaultConnectTimeout,
+          receiveTimeout: timeout ?? defaultReceiveTimeout,
+          sendTimeout: timeout ?? defaultReceiveTimeout,
+        ),
+      );
+      return response.data ?? Uint8List(0);
+    } on DioException catch (error) {
+      throw _map(error);
+    }
   }
 
   Future<Map<String, dynamic>> _send({
