@@ -17,7 +17,9 @@ class ResolvedEndpoint {
   final DateTime resolvedAt;
 
   Uri resolve(String pathAndQuery) {
-    final suffix = pathAndQuery.startsWith('/') ? pathAndQuery : '/$pathAndQuery';
+    final suffix = pathAndQuery.startsWith('/')
+        ? pathAndQuery
+        : '/$pathAndQuery';
     return Uri.parse('$baseUrl$suffix');
   }
 

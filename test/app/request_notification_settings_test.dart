@@ -71,7 +71,9 @@ void main() {
           .read(requestNotificationSettingsProvider.notifier)
           .set(system: false);
 
-      final settings = container.read(requestNotificationSettingsProvider).value!;
+      final settings = container
+          .read(requestNotificationSettingsProvider)
+          .value!;
       expect(settings.system, isFalse);
       expect(settings.inApp, isTrue);
       expect(await store.read(requestNotificationStorageKey), '1|0');

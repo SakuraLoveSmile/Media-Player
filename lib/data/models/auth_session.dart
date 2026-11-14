@@ -48,10 +48,10 @@ class AuthSession {
   }
 
   Map<String, dynamic> toMetaJson() => <String, dynamic>{
-        'userId': userId,
-        'userName': userName,
-        'deviceId': deviceId,
-      };
+    'userId': userId,
+    'userName': userName,
+    'deviceId': deviceId,
+  };
 
   @override
   String toString() => 'AuthSession(user: $userName)';

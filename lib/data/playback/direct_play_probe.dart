@@ -12,7 +12,7 @@ import '../models/playback_plan.dart';
 /// asked, never sleeps, never retries and never throws.
 class DirectPlayProbe {
   DirectPlayProbe(this._session, {LogSink? logSink})
-      : _log = logSink ?? _discard;
+    : _log = logSink ?? _discard;
 
   final ApiSession _session;
   final LogSink _log;
@@ -41,8 +41,9 @@ class DirectPlayProbe {
     } catch (error) {
       // Network / parsing / 401 must not escape; 401 cleanup already ran
       // inside authorizedGet (contract §10.4, §10.9 f).
-      final reason =
-          error is EmbyException ? error.code.name : error.runtimeType;
+      final reason = error is EmbyException
+          ? error.code.name
+          : error.runtimeType;
       _log('DEBUG direct-play probe failed: $reason');
       return plan;
     }
@@ -61,20 +62,22 @@ class DirectPlayProbe {
         // counts as video-direct (contract §3.5).
         return plan.copyWith(videoDirect: true, audioTranscoded: false);
       case 'Transcode':
-        final isVideoDirect =
-            asMap(session['TranscodingInfo'])['IsVideoDirect'];
+        final isVideoDirect = asMap(
+          session['TranscodingInfo'],
+        )['IsVideoDirect'];
         if (isVideoDirect is! bool) {
-          _log('DEBUG direct-play probe: TranscodingInfo.IsVideoDirect missing');
+          _log(
+            'DEBUG direct-play probe: TranscodingInfo.IsVideoDirect missing',
+          );
           return plan;
         }
         // `transcodingReasons` keeps its empty list: the server field name is
         // still unverified (contract §3.4, §9).
-        return plan.copyWith(
-          videoDirect: isVideoDirect,
-          audioTranscoded: true,
-        );
+        return plan.copyWith(videoDirect: isVideoDirect, audioTranscoded: true);
       default:
-        _log('DEBUG direct-play probe: PlayState.PlayMethod missing or unknown');
+        _log(
+          'DEBUG direct-play probe: PlayState.PlayMethod missing or unknown',
+        );
         return plan;
     }
   }

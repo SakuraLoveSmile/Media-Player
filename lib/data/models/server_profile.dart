@@ -65,15 +65,15 @@ class ServerProfile {
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'serverId': serverId,
-        'name': name,
-        'lanUrl': lanUrl,
-        'wanUrl': wanUrl,
-        'preference': preference.name,
-        'wanBitrateCapMbps': wanBitrateCapMbps,
-        'forceDirectOnWan': forceDirectOnWan,
-        'lastGoodEndpoint': lastGoodEndpoint?.name,
-      };
+    'serverId': serverId,
+    'name': name,
+    'lanUrl': lanUrl,
+    'wanUrl': wanUrl,
+    'preference': preference.name,
+    'wanBitrateCapMbps': wanBitrateCapMbps,
+    'forceDirectOnWan': forceDirectOnWan,
+    'lastGoodEndpoint': lastGoodEndpoint?.name,
+  };
 
   static EndpointPreference _preferenceFromName(String? name) {
     return EndpointPreference.values.firstWhere(

@@ -136,7 +136,8 @@ class RequestProgressEngine {
     );
     final done = downloads.fold<double>(
       0,
-      (sum, torrent) => sum + torrent.progress * (torrent.size > 0 ? torrent.size : 1),
+      (sum, torrent) =>
+          sum + torrent.progress * (torrent.size > 0 ? torrent.size : 1),
     );
     final fraction = totalSize <= 0 ? 0.0 : (done / totalSize).clamp(0.0, 1.0);
 
@@ -156,9 +157,7 @@ class RequestProgressEngine {
       downloadSpeed: speed,
       eta: eta,
       activeTaskCount: downloads.length,
-      completedEpisodes: request.isSeries
-          ? _completedEpisodes(downloads)
-          : 0,
+      completedEpisodes: request.isSeries ? _completedEpisodes(downloads) : 0,
       totalEpisodes: active?.totalEpisode ?? request.totalEpisodes,
     );
   }
@@ -180,9 +179,7 @@ class RequestProgressEngine {
     if (status.hasError || status.failed) {
       return RequestProgress(
         stage: RequestStage.noResource,
-        message: status.hasError
-            ? '搜索出错，将持续重试'
-            : '暂未找到资源，持续订阅中',
+        message: status.hasError ? '搜索出错，将持续重试' : '暂未找到资源，持续订阅中',
         canSearchNow: true,
         completedEpisodes: subscribe.effectiveCompletedEpisode,
         totalEpisodes: subscribe.totalEpisode,

@@ -39,16 +39,14 @@ class FakeAuth implements AuthService {
     required String username,
     required String password,
     required ServerProfile profile,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<ServerProfile> adoptAddress({
     required ServerProfile profile,
     required EndpointKind kind,
     required String rawUrl,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<void> logout() async {}
@@ -69,15 +67,14 @@ Future<void> pumpApp(WidgetTester tester, FakeAuth auth) async {
     ProviderScope(
       overrides: [
         bootstrapProvider.overrideWith(
-          (ref) async =>
-              AppServices(
-                auth: auth,
-                library: FakeLibraryService(),
-                posters: FakePosterCache(),
-                playback: FakePlaybackService(),
-                createEngine: FakePlaybackEngine.new,
-                createReporter: FakePlaybackReporter.new,
-              ),
+          (ref) async => AppServices(
+            auth: auth,
+            library: FakeLibraryService(),
+            posters: FakePosterCache(),
+            playback: FakePlaybackService(),
+            createEngine: FakePlaybackEngine.new,
+            createReporter: FakePlaybackReporter.new,
+          ),
         ),
       ],
       child: const MediaPlayerApp(),
@@ -86,8 +83,9 @@ Future<void> pumpApp(WidgetTester tester, FakeAuth auth) async {
 }
 
 void main() {
-  testWidgets('without a session the gate opens the login screen',
-      (tester) async {
+  testWidgets('without a session the gate opens the login screen', (
+    tester,
+  ) async {
     await pumpApp(tester, FakeAuth());
     await tester.pumpAndSettle();
 
@@ -95,11 +93,13 @@ void main() {
     expect(find.text('连接你的 Emby 服务器'), findsOneWidget);
   });
 
-  testWidgets('with a session the gate opens the library', (tester) async {
+  testWidgets('with a session the gate opens the home dashboard', (
+    tester,
+  ) async {
     await pumpApp(tester, FakeAuth(restoreResult: session));
     await tester.pumpAndSettle();
 
-    expect(find.text('媒体库'), findsOneWidget);
+    expect(find.byKey(const Key('home-page')), findsOneWidget);
   });
 
   testWidgets('shows progress until bootstrap completes', (tester) async {
@@ -107,9 +107,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          bootstrapProvider.overrideWith((ref) => completer.future),
-        ],
+        overrides: [bootstrapProvider.overrideWith((ref) => completer.future)],
         child: const MediaPlayerApp(),
       ),
     );
@@ -128,6 +126,6 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('媒体库'), findsOneWidget);
+    expect(find.byKey(const Key('home-page')), findsOneWidget);
   });
 }

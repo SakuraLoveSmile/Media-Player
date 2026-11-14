@@ -15,8 +15,7 @@ class FakeMoviePilotService implements MoviePilotService {
   FakeMoviePilotService();
 
   /// Search results per query; a missing key answers an empty list.
-  Map<String, List<MpMediaInfo>> searchResults =
-      <String, List<MpMediaInfo>>{};
+  Map<String, List<MpMediaInfo>> searchResults = <String, List<MpMediaInfo>>{};
 
   /// Explicit search failure.
   Object? searchFailure;
@@ -53,7 +52,8 @@ class FakeMoviePilotService implements MoviePilotService {
   final List<int> cancelRequests = <int>[];
   final List<MoviePilotConfig> connectionTests = <MoviePilotConfig>[];
   final List<({String baseUrl, String username, String password, String? otp})>
-  logins = <({String baseUrl, String username, String password, String? otp})>[];
+  logins =
+      <({String baseUrl, String username, String password, String? otp})>[];
   int pollCalls = 0;
   final List<bool> pollNeedsTasks = <bool>[];
   final List<Set<MpMediaType>> pollHistoryTypes = <Set<MpMediaType>>[];
@@ -129,7 +129,9 @@ class FakeMoviePilotService implements MoviePilotService {
     final failure = createFailure;
     if (failure != null) throw failure;
     final index = createRequests.length - 1;
-    return createdIds[index < createdIds.length ? index : createdIds.length - 1];
+    return createdIds[index < createdIds.length
+        ? index
+        : createdIds.length - 1];
   }
 
   @override
@@ -164,8 +166,9 @@ class FakeMoviePilotService implements MoviePilotService {
 
     if (snapshotQueue.isNotEmpty) {
       final index = pollCalls - 1;
-      return snapshotQueue[
-          index < snapshotQueue.length ? index : snapshotQueue.length - 1];
+      return snapshotQueue[index < snapshotQueue.length
+          ? index
+          : snapshotQueue.length - 1];
     }
     return snapshot;
   }

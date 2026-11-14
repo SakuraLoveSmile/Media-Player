@@ -19,7 +19,7 @@ import 'playback_service.dart';
 /// session can never straddle LAN and WAN (contract §1.3, §10.3).
 class PlaybackRepository implements PlaybackService {
   PlaybackRepository(this._session, {DirectPlayProbe? probe})
-      : _probe = probe ?? DirectPlayProbe(_session);
+    : _probe = probe ?? DirectPlayProbe(_session);
 
   final ApiSession _session;
   final DirectPlayProbe _probe;
@@ -31,6 +31,7 @@ class PlaybackRepository implements PlaybackService {
   Future<PlaybackPlan> resolve(
     String itemId, {
     Duration startAt = Duration.zero,
+    String? mediaSourceId,
   }) async {
     final endpoint = _session.endpoint;
     final token = _session.accessToken;
@@ -45,7 +46,10 @@ class PlaybackRepository implements PlaybackService {
       throw EmbyException(AppErrorCode.unauthorized);
     }
 
-    final options = PlaybackOptions.forEndpoint(endpoint.kind, _session.profile);
+    final options = PlaybackOptions.forEndpoint(
+      endpoint.kind,
+      _session.profile,
+    );
     final requestUri = _uri('/Items/$itemId/PlaybackInfo', <String, String>{
       'UserId': _userId,
     });
@@ -56,9 +60,10 @@ class PlaybackRepository implements PlaybackService {
         startAt,
         maxStreamingBitrate: options.maxStreamingBitrate,
         enableTranscoding: options.enableTranscoding,
+        mediaSourceId: mediaSourceId,
       ),
     );
-    var source = _firstSource(json);
+    var source = _firstSource(json, preferredId: mediaSourceId);
 
     if (endpoint.kind == EndpointKind.lan && !_directCapable(source)) {
       // LAN requires a direct video stream; retry exactly once at the highest
@@ -70,9 +75,10 @@ class PlaybackRepository implements PlaybackService {
           startAt,
           maxStreamingBitrate: PlaybackOptions.unrestrictedBitrate,
           enableTranscoding: false,
+          mediaSourceId: mediaSourceId,
         ),
       );
-      source = _firstSource(json);
+      source = _firstSource(json, preferredId: mediaSourceId);
       if (!_directCapable(source)) {
         throw EmbyException(
           AppErrorCode.directPlayDenied,
@@ -95,6 +101,7 @@ class PlaybackRepository implements PlaybackService {
     Duration startAt, {
     required int maxStreamingBitrate,
     required bool enableTranscoding,
+    String? mediaSourceId,
   }) {
     return <String, dynamic>{
       'UserId': _userId,
@@ -105,20 +112,31 @@ class PlaybackRepository implements PlaybackService {
       'EnableDirectPlay': true,
       'EnableDirectStream': true,
       'EnableTranscoding': enableTranscoding,
+      // Only sent when the user picked a version (S7); absent otherwise, so
+      // the default negotiation body stays byte-for-byte unchanged.
+      if (mediaSourceId != null && mediaSourceId.isNotEmpty)
+        'MediaSourceId': mediaSourceId,
       'DeviceProfile': kDeviceProfile,
     };
   }
 
-  /// Takes the first version; multi-version selection is out of scope
-  /// (contract §2). Emby 4.10.1 only sends `PlaySessionId` at the response top
-  /// level (contract §3.1).
-  MediaSource _firstSource(Map<String, dynamic> json) {
+  /// Takes the requested version when the user picked one (S7), otherwise the
+  /// first. A stale or unknown id falls back to the first source rather than
+  /// failing playback. Emby 4.10.1 only sends `PlaySessionId` at the response
+  /// top level (contract §3.1).
+  MediaSource _firstSource(Map<String, dynamic> json, {String? preferredId}) {
     final sources = asMapList(json['MediaSources']);
     if (sources.isEmpty) {
       throw EmbyException(AppErrorCode.playbackUnsupported);
     }
+    final chosen = preferredId == null || preferredId.isEmpty
+        ? sources.first
+        : sources.firstWhere(
+            (source) => asString(source['Id']) == preferredId,
+            orElse: () => sources.first,
+          );
     return MediaSource.fromJson(
-      sources.first,
+      chosen,
       topLevelPlaySessionId: asString(json['PlaySessionId']),
     );
   }
@@ -144,16 +162,27 @@ class PlaybackRepository implements PlaybackService {
       url = _absolute(endpoint, directStreamUrl);
       mode = PlaybackMode.direct;
     } else if (source.supportsDirectPlay || source.supportsDirectStream) {
-      // Contract §3.4 (2): header auth is preferred by the player, the URL
-      // keeps `api_key` so playback still works when headers are dropped.
-      url = endpoint.resolve('/Videos/$itemId/stream').replace(
-        queryParameters: <String, String>{
-          'Static': 'true',
-          'MediaSourceId': source.id,
-          'DeviceId': deviceId,
-          'api_key': token,
-        },
-      ).toString();
+      final transcodingUrl = source.transcodingUrl;
+      if (!source.supportsDirectPlay && transcodingUrl != null) {
+        // Direct-stream with audio transcode: the server URL already pairs
+        // video copy with a decodable audio codec. `Static=true` would force
+        // the original (undecodable) audio back in and play silent.
+        url = _withApiKey(_absolute(endpoint, transcodingUrl), token);
+      } else {
+        // Contract §3.4 (2): header auth is preferred by the player, the URL
+        // keeps `api_key` so playback still works when headers are dropped.
+        url = endpoint
+            .resolve('/Videos/$itemId/stream')
+            .replace(
+              queryParameters: <String, String>{
+                'Static': 'true',
+                'MediaSourceId': source.id,
+                'DeviceId': deviceId,
+                'api_key': token,
+              },
+            )
+            .toString();
+      }
       mode = PlaybackMode.direct;
     } else {
       final transcodingUrl = source.transcodingUrl;
@@ -178,6 +207,8 @@ class PlaybackRepository implements PlaybackService {
       // B5-6 will report the gap instead (contract §3.6).
       playSessionId: source.playSessionId ?? '',
       startAt: startAt,
+      audios: source.audios.toList(growable: false),
+      subtitles: source.subtitles.toList(growable: false),
     );
   }
 

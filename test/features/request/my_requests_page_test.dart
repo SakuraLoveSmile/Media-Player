@@ -114,10 +114,7 @@ void main() {
           path: '/request/mine',
           builder: (_, _) => const MyRequestsPage(),
         ),
-        GoRoute(
-          path: '/request',
-          builder: (_, _) => const Text('search page'),
-        ),
+        GoRoute(path: '/request', builder: (_, _) => const Text('search page')),
         GoRoute(
           path: '/player/:itemId',
           builder: (_, GoRouterState state) =>
@@ -225,9 +222,7 @@ void main() {
     expect(find.text('正在下载'), findsOneWidget);
     // One detail line: numbers on the first row, then episodes and task count.
     expect(
-      tester
-          .widget<Text>(find.byKey(const Key('request-detail-req-1')))
-          .data,
+      tester.widget<Text>(find.byKey(const Key('request-detail-req-1'))).data,
       '42% · 5 MB/s · 剩余 10m\n已完成 0/10 集\n2 个任务并行',
     );
   });
@@ -292,9 +287,7 @@ void main() {
   testWidgets('cancelling removes the card and the subscription', (
     tester,
   ) async {
-    service.snapshot = PollSnapshot(
-      subscribes: <MpSubscribe>[fakeSubscribe()],
-    );
+    service.snapshot = PollSnapshot(subscribes: <MpSubscribe>[fakeSubscribe()]);
     await pumpPage(tester, requests: <MediaRequest>[seeded()]);
 
     await tester.tap(find.byKey(const Key('request-cancel-req-1')));

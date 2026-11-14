@@ -80,8 +80,7 @@ class RecordingAuth implements AuthService {
     required ServerProfile profile,
     required EndpointKind kind,
     required String rawUrl,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<void> logout() async {}
@@ -96,15 +95,14 @@ void main() {
       ProviderScope(
         overrides: [
           bootstrapProvider.overrideWith(
-            (ref) async =>
-                AppServices(
-                  auth: auth,
-                  library: FakeLibraryService(),
-                  posters: FakePosterCache(),
-                  playback: FakePlaybackService(),
-                  createEngine: FakePlaybackEngine.new,
-                  createReporter: FakePlaybackReporter.new,
-                ),
+            (ref) async => AppServices(
+              auth: auth,
+              library: FakeLibraryService(),
+              posters: FakePosterCache(),
+              playback: FakePlaybackService(),
+              createEngine: FakePlaybackEngine.new,
+              createReporter: FakePlaybackReporter.new,
+            ),
           ),
         ],
         child: const MediaPlayerApp(),
@@ -130,31 +128,34 @@ void main() {
     await tester.enterText(find.byKey(const Key('login-password')), password);
   }
 
-  testWidgets('a valid login forwards normalized data and opens the library',
-      (tester) async {
-    final auth = RecordingAuth();
-    await pumpApp(tester, auth);
-    expect(find.byKey(const Key('login-submit')), findsOneWidget);
+  testWidgets(
+    'a valid login forwards normalized data and opens the home dashboard',
+    (tester) async {
+      final auth = RecordingAuth();
+      await pumpApp(tester, auth);
+      expect(find.byKey(const Key('login-submit')), findsOneWidget);
 
-    await fill(
-      tester,
-      lan: ' 192.168.1.10:8096/ ',
-      wan: 'https://emby.example.com/',
-      username: ' test ',
-    );
-    await tester.tap(find.byKey(const Key('login-submit')));
-    await tester.pumpAndSettle();
+      await fill(
+        tester,
+        lan: ' 192.168.1.10:8096/ ',
+        wan: 'https://emby.example.com/',
+        username: ' test ',
+      );
+      await tester.tap(find.byKey(const Key('login-submit')));
+      await tester.pumpAndSettle();
 
-    expect(auth.loginAttempts, 1);
-    expect(auth.lastLogin?.profile.lanUrl, 'http://192.168.1.10:8096');
-    expect(auth.lastLogin?.profile.wanUrl, 'https://emby.example.com');
-    expect(auth.lastLogin?.username, 'test');
-    expect(auth.lastLogin?.password, 'secret');
-    expect(find.text('媒体库'), findsOneWidget);
-  });
+      expect(auth.loginAttempts, 1);
+      expect(auth.lastLogin?.profile.lanUrl, 'http://192.168.1.10:8096');
+      expect(auth.lastLogin?.profile.wanUrl, 'https://emby.example.com');
+      expect(auth.lastLogin?.username, 'test');
+      expect(auth.lastLogin?.password, 'secret');
+      expect(find.byKey(const Key('home-page')), findsOneWidget);
+    },
+  );
 
-  testWidgets('a rejected login keeps the form and shows the reason',
-      (tester) async {
+  testWidgets('a rejected login keeps the form and shows the reason', (
+    tester,
+  ) async {
     final auth = RecordingAuth(
       failure: EmbyException(AppErrorCode.unauthorized, message: 'HTTP 401'),
     );
@@ -166,11 +167,12 @@ void main() {
 
     expect(find.text('用户名或密码错误'), findsOneWidget);
     expect(find.byKey(const Key('login-submit')), findsOneWidget);
-    expect(find.text('媒体库'), findsNothing);
+    expect(find.byKey(const Key('home-page')), findsNothing);
   });
 
-  testWidgets('an unreachable server lists the endpoint reasons',
-      (tester) async {
+  testWidgets('an unreachable server lists the endpoint reasons', (
+    tester,
+  ) async {
     final auth = RecordingAuth(
       failure: EmbyException(
         AppErrorCode.networkUnreachable,
@@ -193,8 +195,9 @@ void main() {
     expect(find.text('lan: 无法连接'), findsOneWidget);
   });
 
-  testWidgets('an empty form is rejected without calling the backend',
-      (tester) async {
+  testWidgets('an empty form is rejected without calling the backend', (
+    tester,
+  ) async {
     final auth = RecordingAuth();
     await pumpApp(tester, auth);
 
@@ -217,10 +220,12 @@ void main() {
     await pumpApp(tester, auth);
     await tester.pumpAndSettle();
 
-    final lan =
-        tester.widget<TextField>(find.byKey(const Key('login-lan-url')));
-    final wan =
-        tester.widget<TextField>(find.byKey(const Key('login-wan-url')));
+    final lan = tester.widget<TextField>(
+      find.byKey(const Key('login-lan-url')),
+    );
+    final wan = tester.widget<TextField>(
+      find.byKey(const Key('login-wan-url')),
+    );
     expect(lan.controller?.text, 'http://192.168.1.10:8096');
     expect(wan.controller?.text, 'https://emby.example.com');
   });

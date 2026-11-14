@@ -32,10 +32,7 @@ void main() {
       messageOf(validate(lan: 'ftp://host')),
       '局域网地址格式不正确，需要 http:// 或 https://',
     );
-    expect(
-      messageOf(validate(wan: 'not a url')),
-      '公网地址格式不正确，需要 https://',
-    );
+    expect(messageOf(validate(wan: 'not a url')), '公网地址格式不正确，需要 https://');
   });
 
   test('requires username and password', () {
@@ -85,9 +82,6 @@ void main() {
       loginErrorMessage(AppErrorCode.networkUnreachable),
       contains('无法连接服务器'),
     );
-    expect(
-      loginErrorMessage(AppErrorCode.playbackUnsupported),
-      '登录失败，请稍后重试',
-    );
+    expect(loginErrorMessage(AppErrorCode.playbackUnsupported), '登录失败，请稍后重试');
   });
 }

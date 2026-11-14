@@ -1,19 +1,27 @@
 import 'dart:convert';
 
 import 'key_value_store.dart';
+import '../models/server_entry.dart';
 import '../models/server_profile.dart';
 
-/// Persists the single configured server profile (contract §10.1).
+/// Persists a configured server profile (contract §10.1).
+///
+/// Server-scoped (S20): [defaultServerId] keeps the original key; other ids get
+/// a suffixed key in the same backend.
 class ProfileStore {
-  ProfileStore(this._store);
+  ProfileStore(this._store, {this.serverId = defaultServerId});
 
   static const String key = 'mp.profile.v1';
   static const int schemaVersion = 1;
 
   final KeyValueStore _store;
+  final String serverId;
+
+  /// Effective storage key for [serverId].
+  String get scopedKey => serverId == defaultServerId ? key : '$key.$serverId';
 
   Future<ServerProfile?> read() async {
-    final raw = await _store.read(key);
+    final raw = await _store.read(scopedKey);
     if (raw == null) return null;
     try {
       final decoded = jsonDecode(raw);
@@ -31,7 +39,7 @@ class ProfileStore {
 
   Future<void> write(ServerProfile profile) {
     return _store.write(
-      key,
+      scopedKey,
       jsonEncode(<String, dynamic>{
         'schemaVersion': schemaVersion,
         'profile': profile.toJson(),
@@ -39,5 +47,5 @@ class ProfileStore {
     );
   }
 
-  Future<void> delete() => _store.delete(key);
+  Future<void> delete() => _store.delete(scopedKey);
 }

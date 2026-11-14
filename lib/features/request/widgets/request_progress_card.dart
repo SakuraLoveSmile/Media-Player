@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/moviepilot/models/media_request.dart';
-import '../../../ui/glass/glass_controls.dart';
-import '../../../ui/glass/glass_theme.dart';
-import '../../../ui/glass/glass_tokens.dart';
+import '../../../ui/app_controls.dart';
+import '../../../ui/theme/app_tokens.dart';
 
 /// The 求片 page for one request (求片 plan S13).
 ///
@@ -30,10 +29,10 @@ class RequestProgressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
 
-    return GlassCard(
-      padding: const EdgeInsets.all(GlassSpacing.lg),
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -41,7 +40,7 @@ class RequestProgressCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Expanded(child: _header(palette)),
+              Expanded(child: _header(context, palette)),
               if (busy)
                 const SizedBox(
                   width: 16,
@@ -50,19 +49,19 @@ class RequestProgressCard extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: GlassSpacing.md),
+          const SizedBox(height: AppSpacing.md),
           RequestStageChain(stage: request.stage),
-          const SizedBox(height: GlassSpacing.md),
-          _status(palette),
+          const SizedBox(height: AppSpacing.md),
+          _status(context, palette),
           _progress(context, palette),
-          const SizedBox(height: GlassSpacing.md),
-          _actions(palette),
+          const SizedBox(height: AppSpacing.md),
+          _actions(context, palette),
         ],
       ),
     );
   }
 
-  Widget _header(GlassPalette palette) {
+  Widget _header(BuildContext context, ColorScheme palette) {
     final season = request.seasonLabel;
     final subtitle = <String>[
       if (request.year.isNotEmpty) request.year,
@@ -78,16 +77,15 @@ class RequestProgressCard extends StatelessWidget {
           request.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: GlassType.body.copyWith(
-            color: palette.label,
-            fontWeight: FontWeight.w600,
-          ),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: palette.onSurface, fontWeight: FontWeight.w600),
         ),
         if (subtitle.isNotEmpty) ...<Widget>[
           const SizedBox(height: 2),
           Text(
             subtitle,
-            style: GlassType.caption1.copyWith(color: palette.secondaryLabel),
+            style: Theme.of(context).textTheme.labelMedium!
+                .copyWith(color: palette.onSurfaceVariant),
           ),
         ],
       ],
@@ -95,42 +93,44 @@ class RequestProgressCard extends StatelessWidget {
   }
 
   /// The one sentence describing the phase, and the only place it is written.
-  Widget _status(GlassPalette palette) {
+  Widget _status(BuildContext context, ColorScheme palette) {
     final String text;
     final Color color;
     switch (request.stage) {
       case RequestStage.inLibrary:
         text = request.message.isEmpty ? '已入库，可以播放' : request.message;
-        color = palette.green;
+        color = Colors.green;
       case RequestStage.noResource:
         text = request.message.isEmpty ? '暂未找到资源，持续订阅中' : request.message;
-        color = palette.orange;
+        color = Colors.orange;
       case RequestStage.paused:
         text = request.message.isEmpty ? '已在 MoviePilot 中暂停' : request.message;
-        color = palette.tertiaryLabel;
+        color = palette.outline;
       case RequestStage.cancelled:
         text = request.message.isEmpty ? '已取消求片' : request.message;
-        color = palette.tertiaryLabel;
+        color = palette.outline;
       case RequestStage.submitted:
-        text = request.message.isEmpty ? '已提交，等待 MoviePilot 搜索' : request.message;
-        color = palette.secondaryLabel;
+        text = request.message.isEmpty
+            ? '已提交，等待 MoviePilot 搜索'
+            : request.message;
+        color = palette.onSurfaceVariant;
       case RequestStage.searching:
         text = request.message.isEmpty ? '正在搜索资源' : request.message;
-        color = palette.tint;
+        color = palette.primary;
       case RequestStage.downloading:
         text = request.message.isEmpty ? '正在下载' : request.message;
-        color = palette.tint;
+        color = palette.primary;
       case RequestStage.organizing:
         text = request.message.isEmpty ? '正在整理文件到媒体库' : request.message;
-        color = palette.tint;
+        color = palette.primary;
       case RequestStage.organizedPendingLibrary:
         text = request.message.isEmpty ? '整理完成，等待 Emby 入库' : request.message;
-        color = palette.tint;
+        color = palette.primary;
     }
     return Text(
       text,
       key: Key('request-status-${request.id}'),
-      style: GlassType.footnote.copyWith(color: color),
+      style: Theme.of(context).textTheme.bodySmall!.copyWith(color: color),
     );
   }
 
@@ -141,7 +141,7 @@ class RequestProgressCard extends StatelessWidget {
   /// progress. The sentence describing the phase lives in the message line
   /// below; this method only adds what that cannot express — the download
   /// numbers, or a badge for a stage that is not progress at all.
-  Widget _progress(BuildContext context, GlassPalette palette) {
+  Widget _progress(BuildContext context, ColorScheme palette) {
     switch (request.stage) {
       case RequestStage.downloading:
         final progress = request.progressPercent;
@@ -165,34 +165,35 @@ class RequestProgressCard extends StatelessWidget {
         return Text(
           below.join('\n'),
           key: Key('request-detail-${request.id}'),
-          style: GlassType.caption1.copyWith(color: palette.secondaryLabel),
+          style: Theme.of(context).textTheme.labelMedium!
+              .copyWith(color: palette.onSurfaceVariant),
         );
       case RequestStage.inLibrary:
         return _Badge(
           key: Key('request-library-${request.id}'),
           label: '已入库',
-          color: palette.green,
+          color: Colors.green,
           icon: Icons.check_circle_outline,
         );
       case RequestStage.noResource:
         return _Badge(
           key: Key('request-no-resource-${request.id}'),
           label: '暂无资源',
-          color: palette.orange,
+          color: Colors.orange,
           icon: Icons.search_off,
         );
       case RequestStage.paused:
         return _Badge(
           key: Key('request-paused-${request.id}'),
           label: '已暂停',
-          color: palette.tertiaryLabel,
+          color: palette.outline,
           icon: Icons.pause_circle_outline,
         );
       case RequestStage.cancelled:
         return _Badge(
           key: Key('request-cancelled-${request.id}'),
           label: '已取消',
-          color: palette.tertiaryLabel,
+          color: palette.outline,
           icon: Icons.cancel_outlined,
         );
       case RequestStage.submitted:
@@ -204,15 +205,15 @@ class RequestProgressCard extends StatelessWidget {
     }
   }
 
-  Widget _actions(GlassPalette palette) {
+  Widget _actions(BuildContext context, ColorScheme palette) {
     final actions = <Widget>[];
 
     if (request.stage == RequestStage.inLibrary && request.embyItemId != null) {
       actions.add(
-        GlassButton(
+        AppButton(
           key: Key('request-play-${request.id}'),
           label: request.isSeries ? '去媒体库查看' : '去播放',
-          variant: GlassButtonVariant.tinted,
+          variant: AppButtonVariant.tinted,
           height: 36,
           onPressed: onPlay,
         ),
@@ -220,10 +221,10 @@ class RequestProgressCard extends StatelessWidget {
     } else if (request.stage != RequestStage.cancelled) {
       if (onSearchNow != null && request.subscribeId != null) {
         actions.add(
-          GlassButton(
+          AppButton(
             key: Key('request-search-now-${request.id}'),
             label: '立即搜索',
-            variant: GlassButtonVariant.glass,
+            variant: AppButtonVariant.outlined,
             height: 36,
             onPressed: busy ? null : onSearchNow,
           ),
@@ -231,10 +232,10 @@ class RequestProgressCard extends StatelessWidget {
       }
       if (onCancel != null) {
         actions.add(
-          GlassButton(
+          AppButton(
             key: Key('request-cancel-${request.id}'),
             label: '取消求片',
-            variant: GlassButtonVariant.plain,
+            variant: AppButtonVariant.plain,
             height: 36,
             onPressed: busy ? null : onCancel,
           ),
@@ -245,13 +246,14 @@ class RequestProgressCard extends StatelessWidget {
     if (actions.isEmpty) {
       return Text(
         '求片完成',
-        style: GlassType.caption1.copyWith(color: palette.green),
+        style: Theme.of(context).textTheme.labelMedium!
+            .copyWith(color: Colors.green),
       );
     }
 
     return Wrap(
-      spacing: GlassSpacing.sm,
-      runSpacing: GlassSpacing.sm,
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
       alignment: WrapAlignment.end,
       children: actions,
     );
@@ -269,7 +271,7 @@ class RequestStageChain extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
     final index = stage.chainIndex;
 
     return Row(
@@ -279,16 +281,16 @@ class RequestStageChain extends StatelessWidget {
             Expanded(
               child: Container(
                 height: 1,
-                margin: const EdgeInsets.symmetric(horizontal: GlassSpacing.xs),
+                margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
                 color: i <= index
-                    ? palette.tint.withValues(alpha: 0.6)
-                    : palette.separator,
+                    ? palette.primary.withValues(alpha: 0.6)
+                    : palette.outlineVariant,
               ),
             ),
-          GlassTag(
+          AppTag(
             label: labels[i],
             dense: true,
-            color: i <= index ? palette.tint : palette.tertiaryLabel,
+            color: i <= index ? palette.primary : palette.outline,
           ),
         ],
       ],
@@ -312,11 +314,7 @@ class _Badge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.centerLeft,
-      child: GlassTag(
-        label: label,
-        color: color,
-        icon: Icon(icon),
-      ),
+      child: AppTag(label: label, color: color, icon: Icon(icon)),
     );
   }
 }

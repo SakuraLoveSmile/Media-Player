@@ -70,8 +70,10 @@ void main() {
   });
 
   test('sends device id and token headers', () async {
-    final json = await buildClient()
-        .getJson(Uri.parse('$base/json'), token: 'secret-token');
+    final json = await buildClient().getJson(
+      Uri.parse('$base/json'),
+      token: 'secret-token',
+    );
 
     expect(json['Id'], 'server-1');
     final headers = receivedHeaders.single;
@@ -119,8 +121,9 @@ void main() {
     for (final entry in expectations.entries) {
       await expectLater(
         client.getJson(Uri.parse('$base${entry.key}')),
-        throwsA(isA<EmbyException>()
-            .having((e) => e.code, 'code', entry.value)),
+        throwsA(
+          isA<EmbyException>().having((e) => e.code, 'code', entry.value),
+        ),
         reason: entry.key,
       );
     }
@@ -129,8 +132,13 @@ void main() {
   test('maps non-JSON bodies to serverError', () async {
     await expectLater(
       buildClient().getJson(Uri.parse('$base/htmlish')),
-      throwsA(isA<EmbyException>()
-          .having((e) => e.code, 'code', AppErrorCode.serverError)),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.code,
+          'code',
+          AppErrorCode.serverError,
+        ),
+      ),
     );
   });
 
@@ -149,11 +157,13 @@ void main() {
 
     await expectLater(
       client.getJson(Uri.parse('$base/slow')),
-      throwsA(isA<EmbyException>().having(
-        (e) => e.code,
-        'code',
-        AppErrorCode.networkUnreachable,
-      )),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.code,
+          'code',
+          AppErrorCode.networkUnreachable,
+        ),
+      ),
     );
   });
 
@@ -164,11 +174,13 @@ void main() {
 
     await expectLater(
       buildClient().getJson(Uri.parse('http://127.0.0.1:$closedPort/json')),
-      throwsA(isA<EmbyException>().having(
-        (e) => e.code,
-        'code',
-        AppErrorCode.networkUnreachable,
-      )),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.code,
+          'code',
+          AppErrorCode.networkUnreachable,
+        ),
+      ),
     );
   });
 

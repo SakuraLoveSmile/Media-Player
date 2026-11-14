@@ -5,11 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/update_providers.dart';
 import '../../data/update/update_models.dart';
-import '../../ui/glass/glass_controls.dart';
-import '../../ui/glass/glass_shell.dart';
-import '../../ui/glass/glass_surface.dart';
-import '../../ui/glass/glass_theme.dart';
-import '../../ui/glass/glass_tokens.dart';
+import '../../ui/app_controls.dart';
+import '../../ui/app_dialog.dart';
+import '../../ui/theme/app_tokens.dart';
 
 /// Whether a dialog is being shown or is already on screen.
 ///
@@ -41,7 +39,7 @@ Future<void> showUpdateDialog(BuildContext context) async {
   _dialogVisible = true;
   _visibleRoute = null;
   try {
-    await showGlassDialog<void>(
+    await showAppDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
@@ -56,13 +54,13 @@ Future<void> showUpdateDialog(BuildContext context) async {
 }
 
 /// Release notes, download progress and the actions that fit the current
-/// [UpdateState], presented as a frosted alert sheet.
+/// [UpdateState], presented as a Material alert dialog.
 class UpdateDialog extends ConsumerWidget {
   const UpdateDialog({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
     final UpdateState state = ref.watch(updateControllerProvider);
     final AppRelease? release = state.release;
     // Dismissed/reset: keep the route but draw nothing so that the caller's
@@ -77,7 +75,7 @@ class UpdateDialog extends ConsumerWidget {
 
     return PopScope(
       canPop: !busy,
-      child: GlassDialog(
+      child: AppDialog(
         title: '发现新版本 ${release.tagName}',
         maxWidth: 400,
         content: ConstrainedBox(
@@ -89,68 +87,60 @@ class UpdateDialog extends ConsumerWidget {
               children: <Widget>[
                 Text(
                   '更新说明',
-                  style: GlassType.footnote.copyWith(
-                    color: palette.secondaryLabel,
+                  style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                    color: palette.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.2,
                   ),
                 ),
-                const SizedBox(height: GlassSpacing.sm),
-                GlassSurface(
-                  radius: GlassRadii.control,
-                  blur: 12,
-                  tintColor: palette.fill,
-                  tintOpacity: 0.12,
-                  border: false,
-                  shadow: false,
-                  padding: const EdgeInsets.all(GlassSpacing.md),
+                const SizedBox(height: AppSpacing.sm),
+                AppCard(
+                  radius: AppRadii.control,
+                  elevation: 0,
+                  color: palette.surfaceContainerHighest,
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 300),
                     child: SingleChildScrollView(
                       child: Text(
                         notes.isEmpty ? '暂无更新说明' : notes,
-                        style: GlassType.footnote.copyWith(
-                          color: palette.label,
-                          height: 1.45,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall!
+                            .copyWith(color: palette.onSurface, height: 1.45),
                       ),
                     ),
                   ),
                 ),
                 if (asset != null) ...<Widget>[
-                  const SizedBox(height: GlassSpacing.lg),
+                  const SizedBox(height: AppSpacing.lg),
                   Text(
                     '安装包：${asset.name}',
                     overflow: TextOverflow.ellipsis,
-                    style: GlassType.caption1.copyWith(
-                      color: palette.secondaryLabel,
-                    ),
+                    style: Theme.of(context).textTheme.labelMedium!
+                        .copyWith(color: palette.onSurfaceVariant),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     '大小：${formatBytes(asset.sizeBytes)}',
-                    style: GlassType.caption1.copyWith(
-                      color: palette.secondaryLabel,
-                    ),
+                    style: Theme.of(context).textTheme.labelMedium!
+                        .copyWith(color: palette.onSurfaceVariant),
                   ),
                 ],
                 if (status == UpdateStatus.downloading) ...<Widget>[
-                  const SizedBox(height: GlassSpacing.lg),
+                  const SizedBox(height: AppSpacing.lg),
                   ClipRRect(
-                    borderRadius:
-                        BorderRadius.circular(GlassRadii.capsule),
+                    borderRadius: BorderRadius.circular(AppRadii.capsule),
                     child: LinearProgressIndicator(
                       value: state.progress.clamp(0.0, 1.0),
                       minHeight: 6,
                     ),
                   ),
-                  const SizedBox(height: GlassSpacing.sm),
+                  const SizedBox(height: AppSpacing.sm),
                   Row(
                     children: <Widget>[
                       Text(
                         _percent(state.progress),
-                        style: GlassType.footnote.copyWith(
-                          color: palette.tint,
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                          color: palette.primary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -159,44 +149,41 @@ class UpdateDialog extends ConsumerWidget {
                         Text(
                           '${formatBytes(state.receivedBytes)} / '
                           '${formatBytes(state.totalBytes)}',
-                          style: GlassType.caption1.copyWith(
-                            color: palette.secondaryLabel,
-                          ),
+                          style: Theme.of(context).textTheme.labelMedium!
+                              .copyWith(color: palette.onSurfaceVariant),
                         ),
                     ],
                   ),
                 ],
                 if (status == UpdateStatus.installing) ...<Widget>[
-                  const SizedBox(height: GlassSpacing.lg),
+                  const SizedBox(height: AppSpacing.lg),
                   ClipRRect(
-                    borderRadius:
-                        BorderRadius.circular(GlassRadii.capsule),
+                    borderRadius: BorderRadius.circular(AppRadii.capsule),
                     child: const LinearProgressIndicator(minHeight: 6),
                   ),
-                  const SizedBox(height: GlassSpacing.sm),
+                  const SizedBox(height: AppSpacing.sm),
                   Text(
                     '正在准备安装…',
-                    style: GlassType.footnote.copyWith(
-                      color: palette.secondaryLabel,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: palette.onSurfaceVariant),
                   ),
                 ],
                 if (status == UpdateStatus.error &&
                     state.errorMessage != null) ...<Widget>[
-                  const SizedBox(height: GlassSpacing.lg),
+                  const SizedBox(height: AppSpacing.lg),
                   Text(
                     state.errorMessage!,
-                    style: GlassType.footnote.copyWith(color: palette.red),
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: palette.error),
                   ),
                 ],
                 if (status == UpdateStatus.available &&
                     asset == null) ...<Widget>[
-                  const SizedBox(height: GlassSpacing.lg),
+                  const SizedBox(height: AppSpacing.lg),
                   Text(
                     '当前平台暂未提供安装包，请打开下载页手动下载。',
-                    style: GlassType.footnote.copyWith(
-                      color: palette.secondaryLabel,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: palette.onSurfaceVariant),
                   ),
                 ],
               ],
@@ -213,25 +200,22 @@ class UpdateDialog extends ConsumerWidget {
     WidgetRef ref,
     UpdateState state,
   ) {
-    final UpdateController controller =
-        ref.read(updateControllerProvider.notifier);
+    final UpdateController controller = ref.read(
+      updateControllerProvider.notifier,
+    );
 
-    GlassButton secondary(String label, VoidCallback? onPressed) => GlassButton(
-          label: label,
-          variant: GlassButtonVariant.plain,
-          onPressed: onPressed,
-        );
+    AppButton secondary(String label, VoidCallback? onPressed) => AppButton(
+      label: label,
+      variant: AppButtonVariant.plain,
+      onPressed: onPressed,
+    );
 
-    GlassButton primary(String label, VoidCallback? onPressed) => GlassButton(
-          label: label,
-          onPressed: onPressed,
-        );
+    AppButton primary(String label, VoidCallback? onPressed) =>
+        AppButton(label: label, onPressed: onPressed);
 
     switch (state.status) {
       case UpdateStatus.downloading:
-        return <Widget>[
-          secondary('取消下载', controller.cancelDownload),
-        ];
+        return <Widget>[secondary('取消下载', controller.cancelDownload)];
       case UpdateStatus.downloaded:
         return <Widget>[
           secondary('稍后', () => _dismissAndClose(context, ref)),
@@ -239,20 +223,14 @@ class UpdateDialog extends ConsumerWidget {
         ];
       case UpdateStatus.error:
         return <Widget>[
-          secondary(
-            '打开下载页',
-            () => unawaited(controller.openReleasePage()),
-          ),
+          secondary('打开下载页', () => unawaited(controller.openReleasePage())),
           primary('重试', () => unawaited(controller.retryDownload())),
         ];
       case UpdateStatus.available:
         if (state.asset == null) {
           return <Widget>[
             secondary('关闭', () => _popDialog(context)),
-            primary(
-              '打开下载页',
-              () => unawaited(controller.openReleasePage()),
-            ),
+            primary('打开下载页', () => unawaited(controller.openReleasePage())),
           ];
         }
         return <Widget>[

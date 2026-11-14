@@ -17,9 +17,9 @@ class MpTransferJob {
     return MpTransferJob(
       season: asInt(json['season']),
       media: media.isEmpty ? null : MpDownloadMedia.fromJson(media),
-      tasks: asMapList(
-        json['tasks'],
-      ).map(MpTransferTask.fromJson).toList(growable: false),
+      tasks: asMapList(json['tasks'])
+          .map(MpTransferTask.fromJson)
+          .toList(growable: false),
     );
   }
 

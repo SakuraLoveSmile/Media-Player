@@ -19,7 +19,10 @@ Future<UpdateChannel> _load(ProviderContainer container) =>
 
 void main() {
   test('defaults to the stable channel', () async {
-    expect(await _load(_container(InMemoryKeyValueStore())), UpdateChannel.stable);
+    expect(
+      await _load(_container(InMemoryKeyValueStore())),
+      UpdateChannel.stable,
+    );
   });
 
   test('loads a persisted preview selection', () async {
@@ -43,8 +46,10 @@ void main() {
         .read(updateChannelControllerProvider.notifier)
         .setChannel(UpdateChannel.preview);
     expect(await store.read(updateChannelStorageKey), 'preview');
-    expect(container.read(updateChannelControllerProvider).value,
-        UpdateChannel.preview);
+    expect(
+      container.read(updateChannelControllerProvider).value,
+      UpdateChannel.preview,
+    );
 
     await container
         .read(updateChannelControllerProvider.notifier)
@@ -62,8 +67,10 @@ void main() {
           .setChannel(UpdateChannel.preview),
       throwsA(isA<UpdateChannelSettingsException>()),
     );
-    expect(container.read(updateChannelControllerProvider).value,
-        UpdateChannel.stable);
+    expect(
+      container.read(updateChannelControllerProvider).value,
+      UpdateChannel.stable,
+    );
   });
 }
 

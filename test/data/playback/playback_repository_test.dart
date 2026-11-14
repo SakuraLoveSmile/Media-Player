@@ -95,9 +95,8 @@ void main() {
     return auth;
   }
 
-  int playbackInfoCount() => server.requestLog
-      .where((line) => line.endsWith('/PlaybackInfo'))
-      .length;
+  int playbackInfoCount() =>
+      server.requestLog.where((line) => line.endsWith('/PlaybackInfo')).length;
 
   setUp(() async {
     server = FakeEmbyServer();
@@ -150,10 +149,9 @@ void main() {
 
   test('carries the top level PlaySessionId into the plan', () async {
     server.playbackInfoResponses.add(
-      playbackInfo(
-        <Map<String, dynamic>>[directSource()],
-        playSessionId: 'ps-1',
-      ),
+      playbackInfo(<Map<String, dynamic>>[
+        directSource(),
+      ], playSessionId: 'ps-1'),
     );
 
     final plan = await lanPlayback.resolve(
@@ -166,57 +164,103 @@ void main() {
     expect(plan.startAt, const Duration(seconds: 42));
   });
 
-  test('keeps a relative DirectStreamUrl verbatim after absolutizing',
-      () async {
-    final relative = '/videos/ts-1/stream.mkv?MediaSourceId=ms-1&Static=true'
-        '&UserId=user-1&api_key=${server.token}';
+  test('a picked version is requested and selected (S7)', () async {
     server.playbackInfoResponses.add(
       playbackInfo(<Map<String, dynamic>>[
-        directSource(directStreamUrl: relative),
+        directSource(),
+        directStreamOnlySource(),
       ]),
     );
 
-    final plan = await lanPlayback.resolve('ts-1');
+    final plan = await lanPlayback.resolve('movie-1', mediaSourceId: 'ms-2');
 
-    expect(plan.mode, PlaybackMode.direct);
-    expect(plan.mediaSourceId, 'ms-1');
-    expect(plan.url, '${server.base}$relative');
-
-    final uri = Uri.parse(plan.url);
-    final base = Uri.parse(server.base);
-    expect(uri.scheme, 'http');
-    expect(uri.host, base.host);
-    expect(uri.port, base.port);
-    expect(uri.path, '/videos/ts-1/stream.mkv');
-    expect(uri.queryParameters, <String, String>{
-      'MediaSourceId': 'ms-1',
-      'Static': 'true',
-      'UserId': 'user-1',
-      'api_key': server.token,
-    });
-  });
-
-  test('builds a static stream URL when only DirectStream is supported',
-      () async {
-    server.playbackInfoResponses.add(
-      playbackInfo(<Map<String, dynamic>>[directStreamOnlySource()]),
-    );
-
-    final plan = await lanPlayback.resolve('mv-2');
-
-    expect(plan.mode, PlaybackMode.direct);
+    expect(server.playbackInfoBodies.single['MediaSourceId'], 'ms-2');
     expect(plan.mediaSourceId, 'ms-2');
-    final uri = Uri.parse(plan.url);
-    expect(uri.path, '/Videos/mv-2/stream');
-    expect(uri.queryParameters, <String, String>{
-      'Static': 'true',
-      'MediaSourceId': 'ms-2',
-      'DeviceId': 'device-1',
-      'api_key': server.token,
-    });
-    expect(plan.headers[EmbyHeaders.token], server.token);
     expect(playbackInfoCount(), 1);
   });
+
+  test('an unknown picked version falls back to the first source', () async {
+    server.playbackInfoResponses.add(
+      playbackInfo(<Map<String, dynamic>>[
+        directSource(),
+        directStreamOnlySource(),
+      ]),
+    );
+
+    final plan = await lanPlayback.resolve('movie-1', mediaSourceId: 'gone');
+
+    expect(plan.mediaSourceId, 'ms-1');
+  });
+
+  test('the default negotiation body omits MediaSourceId', () async {
+    server.playbackInfoResponses.add(
+      playbackInfo(<Map<String, dynamic>>[directSource()]),
+    );
+
+    await lanPlayback.resolve('movie-1');
+
+    expect(
+      server.playbackInfoBodies.single.containsKey('MediaSourceId'),
+      isFalse,
+    );
+  });
+
+  test(
+    'keeps a relative DirectStreamUrl verbatim after absolutizing',
+    () async {
+      final relative =
+          '/videos/ts-1/stream.mkv?MediaSourceId=ms-1&Static=true'
+          '&UserId=user-1&api_key=${server.token}';
+      server.playbackInfoResponses.add(
+        playbackInfo(<Map<String, dynamic>>[
+          directSource(directStreamUrl: relative),
+        ]),
+      );
+
+      final plan = await lanPlayback.resolve('ts-1');
+
+      expect(plan.mode, PlaybackMode.direct);
+      expect(plan.mediaSourceId, 'ms-1');
+      expect(plan.url, '${server.base}$relative');
+
+      final uri = Uri.parse(plan.url);
+      final base = Uri.parse(server.base);
+      expect(uri.scheme, 'http');
+      expect(uri.host, base.host);
+      expect(uri.port, base.port);
+      expect(uri.path, '/videos/ts-1/stream.mkv');
+      expect(uri.queryParameters, <String, String>{
+        'MediaSourceId': 'ms-1',
+        'Static': 'true',
+        'UserId': 'user-1',
+        'api_key': server.token,
+      });
+    },
+  );
+
+  test(
+    'builds a static stream URL when only DirectStream is supported',
+    () async {
+      server.playbackInfoResponses.add(
+        playbackInfo(<Map<String, dynamic>>[directStreamOnlySource()]),
+      );
+
+      final plan = await lanPlayback.resolve('mv-2');
+
+      expect(plan.mode, PlaybackMode.direct);
+      expect(plan.mediaSourceId, 'ms-2');
+      final uri = Uri.parse(plan.url);
+      expect(uri.path, '/Videos/mv-2/stream');
+      expect(uri.queryParameters, <String, String>{
+        'Static': 'true',
+        'MediaSourceId': 'ms-2',
+        'DeviceId': 'device-1',
+        'api_key': server.token,
+      });
+      expect(plan.headers[EmbyHeaders.token], server.token);
+      expect(playbackInfoCount(), 1);
+    },
+  );
 
   test('uses TranscodingUrl on WAN and appends a missing api_key', () async {
     server.playbackInfoResponses.add(
@@ -246,10 +290,7 @@ void main() {
         ]),
       );
     final withKey = await wanPlayback.resolve('ts-1');
-    expect(
-      withKey.url,
-      '${server.base}/videos/ts-1/master.m3u8?api_key=kept',
-    );
+    expect(withKey.url, '${server.base}/videos/ts-1/master.m3u8?api_key=kept');
   });
 
   test('empty MediaSources maps to playbackUnsupported', () async {
@@ -259,84 +300,105 @@ void main() {
 
     await expectLater(
       wanPlayback.resolve('ts-1'),
-      throwsA(isA<EmbyException>()
-          .having((e) => e.code, 'code', AppErrorCode.playbackUnsupported)),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.code,
+          'code',
+          AppErrorCode.playbackUnsupported,
+        ),
+      ),
     );
     expect(playbackInfoCount(), 1);
   });
 
-  test('LAN retries once without transcoding, then fails as directPlayDenied',
-      () async {
-    server.playbackInfoResponses.add(
-      playbackInfo(<Map<String, dynamic>>[transcodeSource()]),
-    );
-    server.playbackInfoResponses.add(
-      playbackInfo(<Map<String, dynamic>>[
-        directSource(directStreamUrl: '/videos/ts-1/stream.mkv?api_key=x'),
-      ]),
-    );
+  test(
+    'LAN retries once without transcoding, then fails as directPlayDenied',
+    () async {
+      server.playbackInfoResponses.add(
+        playbackInfo(<Map<String, dynamic>>[transcodeSource()]),
+      );
+      server.playbackInfoResponses.add(
+        playbackInfo(<Map<String, dynamic>>[
+          directSource(directStreamUrl: '/videos/ts-1/stream.mkv?api_key=x'),
+        ]),
+      );
 
-    final plan = await lanPlayback.resolve('ts-1');
+      final plan = await lanPlayback.resolve('ts-1');
 
-    expect(plan.mode, PlaybackMode.direct);
-    expect(playbackInfoCount(), 2);
-    expect(server.playbackInfoBodies, hasLength(2));
-    expect(server.playbackInfoBodies[1]['EnableTranscoding'], isFalse);
-    expect(server.playbackInfoBodies[1]['EnableDirectPlay'], isTrue);
-    expect(server.playbackInfoBodies[1]['EnableDirectStream'], isTrue);
-    expect(server.playbackInfoBodies[1]['MaxStreamingBitrate'], 1000000000);
+      expect(plan.mode, PlaybackMode.direct);
+      expect(playbackInfoCount(), 2);
+      expect(server.playbackInfoBodies, hasLength(2));
+      expect(server.playbackInfoBodies[1]['EnableTranscoding'], isFalse);
+      expect(server.playbackInfoBodies[1]['EnableDirectPlay'], isTrue);
+      expect(server.playbackInfoBodies[1]['EnableDirectStream'], isTrue);
+      expect(server.playbackInfoBodies[1]['MaxStreamingBitrate'], 1000000000);
 
-    server.playbackInfoResponses
-      ..clear()
-      ..add(playbackInfo(<Map<String, dynamic>>[transcodeSource()]))
-      ..add(playbackInfo(<Map<String, dynamic>>[transcodeSource()]));
-    server.playbackInfoBodies.clear();
-    server.requestLog.clear();
+      server.playbackInfoResponses
+        ..clear()
+        ..add(playbackInfo(<Map<String, dynamic>>[transcodeSource()]))
+        ..add(playbackInfo(<Map<String, dynamic>>[transcodeSource()]));
+      server.playbackInfoBodies.clear();
+      server.requestLog.clear();
 
-    await expectLater(
-      lanPlayback.resolve('ts-1'),
-      throwsA(isA<EmbyException>()
-          .having((e) => e.code, 'code', AppErrorCode.directPlayDenied)),
-    );
-    expect(playbackInfoCount(), 2);
-  });
+      await expectLater(
+        lanPlayback.resolve('ts-1'),
+        throwsA(
+          isA<EmbyException>().having(
+            (e) => e.code,
+            'code',
+            AppErrorCode.directPlayDenied,
+          ),
+        ),
+      );
+      expect(playbackInfoCount(), 2);
+    },
+  );
 
-  test('LAN sends a single request when the server offers direct play',
-      () async {
-    server.playbackInfoResponses.add(
-      playbackInfo(<Map<String, dynamic>>[
-        directSource(directStreamUrl: '/videos/ts-1/stream.mkv?api_key=x'),
-      ]),
-    );
+  test(
+    'LAN sends a single request when the server offers direct play',
+    () async {
+      server.playbackInfoResponses.add(
+        playbackInfo(<Map<String, dynamic>>[
+          directSource(directStreamUrl: '/videos/ts-1/stream.mkv?api_key=x'),
+        ]),
+      );
 
-    await lanPlayback.resolve('ts-1');
+      await lanPlayback.resolve('ts-1');
 
-    expect(playbackInfoCount(), 1);
-    expect(server.playbackInfoBodies, hasLength(1));
-  });
+      expect(playbackInfoCount(), 1);
+      expect(server.playbackInfoBodies, hasLength(1));
+    },
+  );
 
-  test('headers carry the token and a logged out session is unauthorized',
-      () async {
-    server.playbackInfoResponses.add(
-      playbackInfo(<Map<String, dynamic>>[
-        directSource(directStreamUrl: '/videos/ts-1/stream.mkv?api_key=x'),
-      ]),
-    );
+  test(
+    'headers carry the token and a logged out session is unauthorized',
+    () async {
+      server.playbackInfoResponses.add(
+        playbackInfo(<Map<String, dynamic>>[
+          directSource(directStreamUrl: '/videos/ts-1/stream.mkv?api_key=x'),
+        ]),
+      );
 
-    final plan = await lanPlayback.resolve('ts-1');
-    expect(plan.headers, <String, String>{EmbyHeaders.token: server.token});
-    expect(server.lastPlaybackInfoToken, server.token);
+      final plan = await lanPlayback.resolve('ts-1');
+      expect(plan.headers, <String, String>{EmbyHeaders.token: server.token});
+      expect(server.lastPlaybackInfoToken, server.token);
 
-    await lanAuth.logout();
-    server.requestLog.clear();
+      await lanAuth.logout();
+      server.requestLog.clear();
 
-    await expectLater(
-      lanPlayback.resolve('ts-1'),
-      throwsA(isA<EmbyException>()
-          .having((e) => e.code, 'code', AppErrorCode.unauthorized)),
-    );
-    expect(server.requestLog, isEmpty);
-  });
+      await expectLater(
+        lanPlayback.resolve('ts-1'),
+        throwsA(
+          isA<EmbyException>().having(
+            (e) => e.code,
+            'code',
+            AppErrorCode.unauthorized,
+          ),
+        ),
+      );
+      expect(server.requestLog, isEmpty);
+    },
+  );
 
   test('negotiation logs the path only, never api_key or the token', () async {
     server.playbackInfoResponses.add(
@@ -357,4 +419,61 @@ void main() {
     expect(joined, isNot(contains('api_key')));
     expect(joined, isNot(contains(server.token)));
   });
+
+  test('the plan carries the negotiated subtitle streams', () async {
+    // STRM sources are probed by PlaybackInfo; the detail response can still
+    // carry pre-probe indices, so the menu must follow the plan (S3-fix).
+    server.playbackInfoResponses.add(
+      playbackInfo(<Map<String, dynamic>>[
+        <String, dynamic>{
+          ...directSource(),
+          'MediaStreams': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'Type': 'Subtitle',
+              'Index': 9,
+              'Codec': 'ass',
+              'IsExternal': true,
+              'Language': 'zh-CN',
+            },
+          ],
+        },
+      ]),
+    );
+
+    final plan = await lanPlayback.resolve('ts-1');
+
+    expect(plan.subtitles, hasLength(1));
+    expect(plan.subtitles.single.index, 9);
+    expect(plan.subtitles.single.isExternal, isTrue);
+    expect(plan.subtitles.single.language, 'zh-CN');
+  });
+
+  test(
+    'direct-stream audio transcode keeps the server URL, not Static',
+    () async {
+      // The server pairs video copy with a decodable audio codec here; forcing
+      // Static=true would play the original undecodable track silent (S27).
+      server.playbackInfoResponses.add(
+        playbackInfo(<Map<String, dynamic>>[
+          <String, dynamic>{
+            'Id': 'ms-1',
+            'Container': 'mkv',
+            'Bitrate': 12000000,
+            'SupportsDirectPlay': false,
+            'SupportsDirectStream': true,
+            'TranscodingUrl': '/videos/ts-1/master.m3u8?MediaSourceId=ms-1',
+          },
+        ]),
+      );
+
+      final plan = await lanPlayback.resolve('ts-1');
+
+      expect(
+        plan.url,
+        '${server.base}/videos/ts-1/master.m3u8?MediaSourceId=ms-1'
+        '&api_key=${server.token}',
+      );
+      expect(plan.mode, PlaybackMode.direct);
+    },
+  );
 }

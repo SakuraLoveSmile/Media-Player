@@ -1,7 +1,8 @@
 import 'dart:async';
 
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:feedback_widget/feedback_widget.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,9 +12,10 @@ import '../core/config/app_config.dart';
 import '../core/router/app_routes.dart';
 import '../data/moviepilot/progress/request_notification.dart';
 import '../data/notifications/local_notification_sink.dart';
-import '../ui/glass/glass_theme.dart';
+import '../ui/theme/app_theme.dart';
 import '../features/request/request_controller.dart';
 import '../features/settings/update_dialog.dart';
+import 'accent_settings.dart';
 import 'feedback_config.dart';
 import 'feedback_layer.dart';
 import 'feedback_orb_settings.dart';
@@ -21,6 +23,7 @@ import 'moviepilot_providers.dart';
 import 'request_notification_banner.dart';
 import 'request_notification_settings.dart';
 import 'router.dart';
+import 'theme_mode_settings.dart';
 import 'update_providers.dart';
 
 class MediaPlayerApp extends ConsumerStatefulWidget {
@@ -37,8 +40,9 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
   // navigation.
   final GlobalKey<NavigatorState> _feedbackNavigatorKey =
       GlobalKey<NavigatorState>();
-  final ValueNotifier<String> _feedbackPageLabel =
-      ValueNotifier<String>('startup');
+  final ValueNotifier<String> _feedbackPageLabel = ValueNotifier<String>(
+    'startup',
+  );
   late final FeedbackController _feedbackController;
   GoRouter? _router;
   bool _updateDialogOpen = false;
@@ -104,7 +108,8 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
   void _attachRequestNotifications() {
     ref.listenManual<AsyncValue<RequestController?>>(
       requestControllerProvider,
-      (_, AsyncValue<RequestController?> next) => _bindRequestController(next.value),
+      (_, AsyncValue<RequestController?> next) =>
+          _bindRequestController(next.value),
       fireImmediately: true,
     );
   }
@@ -135,7 +140,7 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
   ) async {
     final RequestNotificationSettings settings =
         ref.read(requestNotificationSettingsProvider).value ??
-            RequestNotificationSettings.defaults;
+        RequestNotificationSettings.defaults;
     if (settings.system) {
       try {
         await sink.show(event);
@@ -168,9 +173,9 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
   /// navigation handles the event.
   @override
   Future<bool> didPopRoute() async => handleFeedbackBackPop(
-        navigatorKey: _feedbackNavigatorKey,
-        controller: _feedbackController,
-      );
+    navigatorKey: _feedbackNavigatorKey,
+    controller: _feedbackController,
+  );
 
   void _onRouteChanged() {
     // The delegate notifies during the router's notify phase; defer the
@@ -183,8 +188,9 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
   void _syncFeedbackPageLabel() {
     final router = _router;
     if (router == null) return;
-    _feedbackPageLabel.value =
-        feedbackPageLabelFromUri(router.routerDelegate.currentConfiguration.uri);
+    _feedbackPageLabel.value = feedbackPageLabelFromUri(
+      router.routerDelegate.currentConfiguration.uri,
+    );
   }
 
   @override
@@ -210,73 +216,120 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
       });
     });
 
-    final FeedbackServiceConfig? feedbackService =
-        ref.watch(feedbackServiceConfigProvider);
+    final FeedbackServiceConfig? feedbackService = ref.watch(
+      feedbackServiceConfigProvider,
+    );
+    // Persisted appearance choice (设置 → 外观). While the store is still
+    // resolving the app follows the system, which is also the default.
+    final ThemeMode themeMode =
+        ref.watch(themeModeControllerProvider).value ?? ThemeMode.system;
+    // Persisted accent choice (设置 → 外观 → 主题色). Monet is opt-in; while the
+    // store is still resolving the brand default applies.
+    final AccentPreference accentPreference =
+        ref.watch(accentControllerProvider).value ?? AccentPreference.defaults;
     // Host-managed orb preferences: watched only when the layer is mounted so
     // debug builds and tests never touch the bootstrap/store providers.
     final FeedbackOrbSettings orbSettings = feedbackService == null
         ? FeedbackOrbSettings.defaults
         : ref.watch(feedbackOrbSettingsProvider).value ??
-            FeedbackOrbSettings.defaults;
+              FeedbackOrbSettings.defaults;
     // Only resolve the package version when the feedback layer actually needs
     // it; tests in debug mode keep the provider untouched.
     final String? feedbackAppVersion = feedbackService == null
         ? null
         : _formatVersion(ref.watch(appVersionProvider).value);
 
-    return MaterialApp.router(
-      title: AppConfig.appName,
-      debugShowCheckedModeBanner: false,
-      // Liquid Glass appearance: iOS system palette, SF text metrics and
-      // continuous corners in both light and dark mode.
-      theme: buildGlassTheme(Brightness.light),
-      darkTheme: buildGlassTheme(Brightness.dark),
-      themeMode: ThemeMode.system,
-      routerConfig: ref.watch(appRouterProvider),
-      // Mount the long-lived feedback layer above the router subtree so the orb
-      // is present on every page and the draft survives navigation. The orb is
-      // hidden on the player page, where it would cover video controls.
-      builder: (BuildContext context, Widget? child) {
-        Widget routerChild = child ?? const SizedBox.shrink();
-        // The 求片 banner sits above every page (including the player) but
-        // below the feedback layer, so the orb's capture boundary stays intact.
-        routerChild = _withRequestBanner(routerChild);
-        if (feedbackService == null) return routerChild;
-        return ValueListenableBuilder<String>(
-          valueListenable: _feedbackPageLabel,
-          builder: (BuildContext context, String pageLabel, Widget? _) {
-            return FeedbackOverlay(
-              controller: _feedbackController,
-              navigatorKey: _feedbackNavigatorKey,
-              config: buildFeedbackConfig(
-                service: feedbackService,
-                pageLabel: pageLabel,
-                appVersion: feedbackAppVersion,
-                showLauncher: pageLabel != 'player',
-              ),
-              orbIdleStyle: orbSettings.idleStyle,
-              onOrbIdleStyleChanged: (FeedbackOrbIdleStyle style) {
-                unawaited(
-                  _persistOrbSettings(
-                    ref
-                        .read(feedbackOrbSettingsProvider.notifier)
-                        .setIdleStyle(style),
-                  ),
-                );
-              },
-              wakeGestures: orbSettings.wakeGestures,
-              onWakeGesturesChanged: (Set<FeedbackWakeGesture> gestures) {
-                unawaited(
-                  _persistOrbSettings(
-                    ref
-                        .read(feedbackOrbSettingsProvider.notifier)
-                        .setWakeGestures(gestures),
-                  ),
-                );
-              },
-              child: routerChild,
-            );
-          },
+    // Builds the root MaterialApp with the resolved per-brightness accents.
+    // Kept as a closure so the Monet and non-Monet paths share one definition.
+    Widget buildMaterialApp(Color? lightAccent, Color? darkAccent) {
+      return MaterialApp.router(
+        title: AppConfig.appName,
+        debugShowCheckedModeBanner: false,
+        // Material 3 appearance in both light and dark mode. Which one is used
+        // app-wide follows the persisted 主题模式 preference; the player page
+        // still forces its own dark theme for the video overlays. The seed
+        // follows the persisted 主题色 preference (preset or Monet).
+        theme: buildAppTheme(Brightness.light, accent: lightAccent),
+        darkTheme: buildAppTheme(Brightness.dark, accent: darkAccent),
+        themeMode: themeMode,
+        routerConfig: ref.watch(appRouterProvider),
+        // Mount the long-lived feedback layer above the router subtree so the orb
+        // is present on every page and the draft survives navigation. The orb is
+        // hidden on the player page, where it would cover video controls.
+        builder: (BuildContext context, Widget? child) {
+          Widget routerChild = child ?? const SizedBox.shrink();
+          // The 求片 banner sits above every page (including the player) but
+          // below the feedback layer, so the orb's capture boundary stays intact.
+          routerChild = _withRequestBanner(routerChild);
+          if (feedbackService == null) return routerChild;
+          return ValueListenableBuilder<String>(
+            valueListenable: _feedbackPageLabel,
+            builder: (BuildContext context, String pageLabel, Widget? _) {
+              return FeedbackOverlay(
+                controller: _feedbackController,
+                navigatorKey: _feedbackNavigatorKey,
+                config: buildFeedbackConfig(
+                  service: feedbackService,
+                  pageLabel: pageLabel,
+                  appVersion: feedbackAppVersion,
+                  showLauncher: pageLabel != 'player',
+                ),
+                orbIdleStyle: orbSettings.idleStyle,
+                onOrbIdleStyleChanged: (FeedbackOrbIdleStyle style) {
+                  unawaited(
+                    _persistOrbSettings(
+                      ref
+                          .read(feedbackOrbSettingsProvider.notifier)
+                          .setIdleStyle(style),
+                    ),
+                  );
+                },
+                wakeGestures: orbSettings.wakeGestures,
+                onWakeGesturesChanged: (Set<FeedbackWakeGesture> gestures) {
+                  unawaited(
+                    _persistOrbSettings(
+                      ref
+                          .read(feedbackOrbSettingsProvider.notifier)
+                          .setWakeGestures(gestures),
+                    ),
+                  );
+                },
+                child: routerChild,
+              );
+            },
+          );
+        },
+      );
+    }
+
+    // Monet is opt-in. Only touch the dynamic_color platform channel when the
+    // user actually enabled 跟随系统, so the default path stays plugin-free (and
+    // widget tests that never enable Monet never mount the channel builder).
+    if (accentPreference.mode != AccentMode.monet) {
+      return buildMaterialApp(
+        resolveAccentColor(accentPreference, null),
+        resolveAccentColor(accentPreference, null),
+      );
+    }
+
+    // Monet (跟随系统) reads the Android 12+ system palette here; the builder
+    // re-runs when the OS accent changes. On other platforms the schemes stay
+    // null and the chosen preset/default keeps tinting the app.
+    return DynamicColorBuilder(
+      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        // dynamic_color also reports desktop accent colours; Monet is an
+        // Android-only option, so ignore them everywhere else.
+        final bool monetSupported =
+            defaultTargetPlatform == TargetPlatform.android;
+        return buildMaterialApp(
+          resolveAccentColor(
+            accentPreference,
+            monetSupported ? lightDynamic : null,
+          ),
+          resolveAccentColor(
+            accentPreference,
+            monetSupported ? darkDynamic : null,
+          ),
         );
       },
     );

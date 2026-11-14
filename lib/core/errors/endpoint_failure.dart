@@ -19,6 +19,5 @@ class EndpointFailure {
   final String message;
 
   @override
-  String toString() =>
-      'EndpointFailure(${kind.name}, $baseUrl, ${code.name})';
+  String toString() => 'EndpointFailure(${kind.name}, $baseUrl, ${code.name})';
 }

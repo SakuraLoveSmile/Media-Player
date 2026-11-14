@@ -9,8 +9,7 @@
 /// Note: a source the app plays as an opaque direct link (a strm pointing at a
 /// CDN) is not transcoded by the server no matter what is declared here; the
 /// decoder fix is what covers those.
-const String _kDirectPlayAudioCodecs =
-    'aac,ac3,eac3,dts,flac,opus,vorbis,mp3';
+const String _kDirectPlayAudioCodecs = 'aac,ac3,eac3,dts,flac,opus,vorbis,mp3';
 
 /// DeviceProfile sent with PlaybackInfo and `/Sessions/Capabilities/Full`
 /// (contract §3.2). Verified in B2 against Emby 4.10.1: H.264 1080p,

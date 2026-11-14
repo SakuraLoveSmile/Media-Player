@@ -307,43 +307,45 @@ void main() {
       expect(seasonTwo.map((t) => t.hash), <String>['s2']);
     });
 
-    test('a task without media matches a series only when the season agrees',
-        () {
-      final matcher = RequestMatcher(
-        PollSnapshot(
-          downloads: <MpDownloaderTorrent>[
-            torrent(
-              withMedia: false,
-              seasonEpisode: 'S02E03',
-              title: 'Some.Show',
-            ),
-          ],
-        ),
-      );
+    test(
+      'a task without media matches a series only when the season agrees',
+      () {
+        final matcher = RequestMatcher(
+          PollSnapshot(
+            downloads: <MpDownloaderTorrent>[
+              torrent(
+                withMedia: false,
+                seasonEpisode: 'S02E03',
+                title: 'Some.Show',
+              ),
+            ],
+          ),
+        );
 
-      expect(
-        matcher.downloads(
-          request(
-            type: MpMediaType.series,
-            season: 2,
-            title: 'Some Show',
-            year: '',
+        expect(
+          matcher.downloads(
+            request(
+              type: MpMediaType.series,
+              season: 2,
+              title: 'Some Show',
+              year: '',
+            ),
           ),
-        ),
-        hasLength(1),
-      );
-      expect(
-        matcher.downloads(
-          request(
-            type: MpMediaType.series,
-            season: 1,
-            title: 'Some Show',
-            year: '',
+          hasLength(1),
+        );
+        expect(
+          matcher.downloads(
+            request(
+              type: MpMediaType.series,
+              season: 1,
+              title: 'Some Show',
+              year: '',
+            ),
           ),
-        ),
-        isEmpty,
-      );
-    });
+          isEmpty,
+        );
+      },
+    );
 
     test('a task with another identity never matches, even by title', () {
       final matcher = RequestMatcher(
@@ -383,9 +385,9 @@ void main() {
 
     test('only successful transfers count', () {
       final failed = RequestMatcher(
-        PollSnapshot(transferHistory: <MpTransferHistory>[
-          transfer(status: false),
-        ]),
+        PollSnapshot(
+          transferHistory: <MpTransferHistory>[transfer(status: false)],
+        ),
       );
       final succeeded = RequestMatcher(
         PollSnapshot(transferHistory: <MpTransferHistory>[transfer()]),
@@ -397,9 +399,11 @@ void main() {
 
     test('a transfer for another season does not match', () {
       final matcher = RequestMatcher(
-        PollSnapshot(transferHistory: <MpTransferHistory>[
-          transfer(mediaId: '1399', seasons: 'S01'),
-        ]),
+        PollSnapshot(
+          transferHistory: <MpTransferHistory>[
+            transfer(mediaId: '1399', seasons: 'S01'),
+          ],
+        ),
       );
 
       expect(
@@ -416,9 +420,7 @@ void main() {
       final matcher = RequestMatcher(
         PollSnapshot(
           movieHistory: <MpSubscribe>[active(id: 1)],
-          seriesHistory: <MpSubscribe>[
-            active(id: 2, type: MpMediaType.series),
-          ],
+          seriesHistory: <MpSubscribe>[active(id: 2, type: MpMediaType.series)],
         ),
       );
 

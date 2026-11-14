@@ -36,19 +36,16 @@ void main() {
     });
 
     test('drops the scheme-default port', () {
-      expect(
-        UrlNormalizer.normalize('http://host:80'),
-        'http://host',
-      );
+      expect(UrlNormalizer.normalize('http://host:80'), 'http://host');
     });
   });
 
   group('UrlNormalizer.candidates', () {
     test('adds a /emby candidate', () {
-      expect(
-        UrlNormalizer.candidates('192.168.1.10:8096'),
-        <String>['http://192.168.1.10:8096', 'http://192.168.1.10:8096/emby'],
-      );
+      expect(UrlNormalizer.candidates('192.168.1.10:8096'), <String>[
+        'http://192.168.1.10:8096',
+        'http://192.168.1.10:8096/emby',
+      ]);
     });
 
     test('does not duplicate /emby', () {

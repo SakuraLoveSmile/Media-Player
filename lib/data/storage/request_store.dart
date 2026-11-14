@@ -25,8 +25,7 @@ class RequestStore {
     final decoded = _decode(raw);
     if (decoded == null) return const <MediaRequest>[];
     return <MediaRequest>[
-      for (final map in _maps(decoded['requests']))
-        ?MediaRequest.fromJson(map),
+      for (final map in _maps(decoded['requests'])) ?MediaRequest.fromJson(map),
     ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
@@ -44,10 +43,7 @@ class RequestStore {
     }
   }
 
-  Future<void> write(
-    List<MediaRequest> requests, {
-    PollSnapshot? snapshot,
-  }) {
+  Future<void> write(List<MediaRequest> requests, {PollSnapshot? snapshot}) {
     return _store.write(
       key,
       jsonEncode(<String, dynamic>{

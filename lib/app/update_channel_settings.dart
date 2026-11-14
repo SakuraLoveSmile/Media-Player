@@ -23,9 +23,9 @@ class UpdateChannelSettingsException implements Exception {
 /// second backend. Tests override it with an in-memory store.
 final FutureProvider<KeyValueStore?> updateChannelStoreProvider =
     FutureProvider<KeyValueStore?>((Ref ref) async {
-  final services = await ref.watch(bootstrapProvider.future);
-  return services.store;
-});
+      final services = await ref.watch(bootstrapProvider.future);
+      return services.store;
+    });
 
 /// Loads and persists which update channel the user opted into.
 ///
@@ -35,8 +35,9 @@ final FutureProvider<KeyValueStore?> updateChannelStoreProvider =
 class UpdateChannelController extends AsyncNotifier<UpdateChannel> {
   @override
   Future<UpdateChannel> build() async {
-    final KeyValueStore? store =
-        await ref.watch(updateChannelStoreProvider.future);
+    final KeyValueStore? store = await ref.watch(
+      updateChannelStoreProvider.future,
+    );
     if (store == null) return UpdateChannel.stable;
     try {
       return UpdateChannel.fromId(await store.read(updateChannelStorageKey));
@@ -46,11 +47,11 @@ class UpdateChannelController extends AsyncNotifier<UpdateChannel> {
   }
 
   Future<void> setChannel(UpdateChannel channel) async {
-    final UpdateChannel current =
-        state.value ?? UpdateChannel.stable;
+    final UpdateChannel current = state.value ?? UpdateChannel.stable;
     if (current == channel) return;
-    final KeyValueStore? store =
-        await ref.read(updateChannelStoreProvider.future);
+    final KeyValueStore? store = await ref.read(
+      updateChannelStoreProvider.future,
+    );
     if (store != null) {
       try {
         await store.write(updateChannelStorageKey, channel.id);
@@ -64,7 +65,7 @@ class UpdateChannelController extends AsyncNotifier<UpdateChannel> {
 
 /// Selected update channel; defaults to the stable channel.
 final AsyncNotifierProvider<UpdateChannelController, UpdateChannel>
-    updateChannelControllerProvider =
+updateChannelControllerProvider =
     AsyncNotifierProvider<UpdateChannelController, UpdateChannel>(
-  UpdateChannelController.new,
-);
+      UpdateChannelController.new,
+    );

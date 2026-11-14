@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/core/errors/app_error.dart';
 import 'package:media_player/core/errors/emby_exception.dart';
 import 'package:media_player/data/models/media_item.dart';
+import 'package:media_player/data/models/person.dart';
 import 'package:media_player/features/series/series_controller.dart';
 
 import '../../support/fake_library_service.dart';
@@ -579,4 +580,196 @@ void main() {
       },
     );
   }
+
+  group('S78 series layout data', () {
+    test(
+      'parses ChildCount and exposes seasonCounts keyed by season id',
+      () async {
+        final MediaItem counted = MediaItem.fromJson(<String, dynamic>{
+          'Id': 'a',
+          'Name': 'Season 1',
+          'Type': 'Season',
+          'IndexNumber': 1,
+          'ChildCount': 52,
+        });
+        expect(counted.childCount, 52);
+        expect(MediaItem.fromJson(<String, dynamic>{'Id': 'x'}).childCount, 0);
+        library.seasonsBySeries[_series.id] = <MediaItem>[
+          counted,
+          _season('empty', 2),
+        ];
+
+        await controller.load();
+
+        expect(controller.state.seasonCounts, <String, int>{'a': 52});
+        expect(controller.state.selectedSeasonId, 'a');
+      },
+    );
+
+    test('load fills 推荐 and a failing 推荐 call stays non-fatal', () async {
+      library.similarResults = <MediaItem>[
+        const MediaItem(id: 'sim', name: '相似影片', type: 'Movie'),
+      ];
+
+      await controller.load();
+
+      expect(controller.state.similar.map((item) => item.id), <String>['sim']);
+      expect(library.similarRequests.single.itemId, _series.id);
+
+      library.similarFailure = EmbyException(AppErrorCode.networkUnreachable);
+      final SeriesController second = SeriesController(
+        seriesId: _series.id,
+        library: library,
+      );
+      addTearDown(second.dispose);
+      await second.load();
+      expect(second.state.error, isNull);
+      expect(second.state.similar, isEmpty);
+      expect(second.state.episodes, isNotEmpty);
+    });
+
+    test(
+      'playTarget prefers progress, then first unwatched, then first',
+      () async {
+        _ControlledLibrary local = _ControlledLibrary();
+        SeriesController localController = SeriesController(
+          seriesId: _series.id,
+          library: local,
+        );
+        addTearDown(localController.dispose);
+        local.episodesBySeason['a'] = <MediaItem>[
+          _episode('watched', 1, played: true),
+          _episode('progress', 2, ticks: 100000000),
+          _episode('next', 3),
+        ];
+        await localController.load();
+        expect(localController.state.playTarget!.id, 'progress');
+        expect(
+          localController.state.resumableEpisodes.map((item) => item.id),
+          <String>['progress'],
+        );
+
+        local.episodesBySeason['a'] = <MediaItem>[
+          _episode('watched', 1, played: true),
+          _episode('next', 2),
+        ];
+        await localController.refreshEpisodes();
+        expect(localController.state.playTarget!.id, 'next');
+        expect(localController.state.resumableEpisodes, isEmpty);
+
+        local.episodesBySeason['a'] = <MediaItem>[
+          _episode('watched', 1, played: true),
+        ];
+        await localController.refreshEpisodes();
+        expect(localController.state.playTarget!.id, 'watched');
+      },
+    );
+
+    test('favorite and played toggles are optimistic with rollback', () async {
+      await controller.load();
+
+      await controller.toggleFavorite();
+      expect(controller.state.series!.userData.isFavorite, isTrue);
+      expect(library.favoriteWrites.single, (
+        itemId: _series.id,
+        favorite: true,
+      ));
+      expect(controller.state.favoriteBusy, isFalse);
+
+      await controller.togglePlayed();
+      expect(controller.state.series!.userData.played, isTrue);
+      expect(library.playedWrites.single, (itemId: _series.id, played: true));
+
+      library.writeFailure = EmbyException(AppErrorCode.networkUnreachable);
+      await controller.toggleFavorite();
+      expect(
+        controller.state.series!.userData.isFavorite,
+        isTrue,
+        reason: 'a failed write rolls the optimistic mark back',
+      );
+      expect(controller.state.favoriteBusy, isFalse);
+      expect(controller.state.writeError, '收藏更新失败，请稍后重试');
+    });
+
+    test('refresh keeps the selected season and re-reads 推荐', () async {
+      library.similarResults = <MediaItem>[
+        const MediaItem(id: 'old', name: '旧推荐', type: 'Movie'),
+      ];
+      await controller.load();
+      await controller.selectSeason('b');
+      library.similarResults = <MediaItem>[
+        const MediaItem(id: 'new', name: '新推荐', type: 'Movie'),
+      ];
+
+      await controller.refresh();
+
+      expect(controller.state.selectedSeasonId, 'b');
+      expect(controller.state.similar.single.id, 'new');
+      expect(controller.state.loading, isFalse);
+      expect(controller.state.episodes.single.id, 'b-1');
+    });
+
+    test('an unauthorized 推荐 call still expires the session', () async {
+      library.similarFailure = EmbyException(AppErrorCode.unauthorized);
+
+      await controller.load();
+
+      expect(controller.state.unauthorized, isTrue);
+      expect(controller.state.error, isNull);
+      expect(library.episodeRequests, isEmpty);
+    });
+
+    test('image helpers answer null without a poster cache', () async {
+      await controller.load();
+
+      expect(controller.backdropImage(_series), isNull);
+      expect(controller.posterImage('a'), isNull);
+      expect(controller.episodeImage(_episode('a-1', 1)), isNull);
+      expect(controller.personImage(const Person(name: '演员')), isNull);
+    });
+
+    test(
+      'continueWatchingEpisodes previews the next unstarted episode',
+      () async {
+        _ControlledLibrary local = _ControlledLibrary();
+        SeriesController localController = SeriesController(
+          seriesId: _series.id,
+          library: local,
+        );
+        addTearDown(localController.dispose);
+
+        local.episodesBySeason['a'] = <MediaItem>[
+          _episode('watched', 1, played: true),
+          _episode('progress-1', 2, ticks: 100000000),
+          _episode('progress-2', 3, ticks: 100000000),
+          _episode('next', 4),
+          _episode('after', 5),
+        ];
+        await localController.load();
+
+        expect(
+          localController.state.continueWatchingEpisodes.map(
+            (MediaItem item) => item.id,
+          ),
+          <String>['progress-1', 'progress-2', 'next'],
+        );
+
+        // More than four in-progress episodes are capped at four cards.
+        local.episodesBySeason['a'] = <MediaItem>[
+          for (int index = 0; index < 6; index++)
+            _episode('progress-$index', index + 1, ticks: 100000000),
+        ];
+        await localController.refreshEpisodes();
+        expect(localController.state.continueWatchingEpisodes, hasLength(4));
+
+        // Nothing started: no row at all.
+        local.episodesBySeason['a'] = <MediaItem>[
+          _episode('watched', 1, played: true),
+          _episode('next', 2),
+        ];
+        await localController.refreshEpisodes();
+        expect(localController.state.continueWatchingEpisodes, isEmpty);
+      },
+    );
+  });
 }

@@ -95,8 +95,7 @@ class MpMediaRef {
 
   /// The key two entries must share to be the same media. Null when the entry
   /// is not identified, so callers fall back to title/year matching instead.
-  String? get identityKey =>
-      isIdentified ? '${source.wire}:$mediaId' : null;
+  String? get identityKey => isIdentified ? '${source.wire}:$mediaId' : null;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'media_source': source.wire,

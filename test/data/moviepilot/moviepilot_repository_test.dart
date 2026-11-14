@@ -51,10 +51,7 @@ void main() {
           ),
         ),
       );
-      await expectLater(
-        repository.poll(),
-        throwsA(isA<MoviePilotException>()),
-      );
+      await expectLater(repository.poll(), throwsA(isA<MoviePilotException>()));
     });
 
     test('testConnection still uses the passed config', () async {
@@ -299,10 +296,7 @@ void main() {
       server.existingItem = <String, dynamic>{'id': 'emby-42'};
 
       final id = await repository.existingItemId(
-        ref: const MpMediaRef(
-          source: MpMediaSource.tmdb,
-          mediaId: '693134',
-        ),
+        ref: const MpMediaRef(source: MpMediaSource.tmdb, mediaId: '693134'),
         type: MpMediaType.movie,
       );
 
@@ -315,24 +309,21 @@ void main() {
       expect(id, 'emby-42');
     });
 
-    test('passes the season for a series and reports absence as null', () async {
-      await configure();
+    test(
+      'passes the season for a series and reports absence as null',
+      () async {
+        await configure();
 
-      final id = await repository.existingItemId(
-        ref: const MpMediaRef(
-          source: MpMediaSource.tmdb,
-          mediaId: '1399',
-        ),
-        type: MpMediaType.series,
-        season: 2,
-      );
+        final id = await repository.existingItemId(
+          ref: const MpMediaRef(source: MpMediaSource.tmdb, mediaId: '1399'),
+          type: MpMediaType.series,
+          season: 2,
+        );
 
-      expect(
-        server.lastQuery['/api/v1/mediaserver/exists']!['season'],
-        '2',
-      );
-      expect(id, isNull);
-    });
+        expect(server.lastQuery['/api/v1/mediaserver/exists']!['season'], '2');
+        expect(id, isNull);
+      },
+    );
   });
 
   group('subscriptions', () {
@@ -482,15 +473,17 @@ void main() {
       expect(server.requestsTo('/api/v1/download/'), 1);
     });
 
-    test('a broken task endpoint fails the round rather than half-filling it',
-        () async {
-      await configure();
-      server.failingPaths.add('/api/v1/transfer/queue');
+    test(
+      'a broken task endpoint fails the round rather than half-filling it',
+      () async {
+        await configure();
+        server.failingPaths.add('/api/v1/transfer/queue');
 
-      await expectLater(
-        repository.poll(),
-        throwsA(isA<MoviePilotException>()),
-      );
-    });
+        await expectLater(
+          repository.poll(),
+          throwsA(isA<MoviePilotException>()),
+        );
+      },
+    );
   });
 }

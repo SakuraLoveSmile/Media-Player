@@ -125,16 +125,20 @@ class LocalRequestNotificationSink implements RequestNotificationSink {
     if (!isSupportedPlatform) return false;
     await _ensureInitialized();
     return switch (defaultTargetPlatform) {
-      TargetPlatform.android => await _plugin
-              .resolvePlatformSpecificImplementation<
-                  AndroidFlutterLocalNotificationsPlugin>()
-              ?.requestNotificationsPermission() ??
-          false,
-      TargetPlatform.macOS => await _plugin
-              .resolvePlatformSpecificImplementation<
-                  MacOSFlutterLocalNotificationsPlugin>()
-              ?.requestPermissions(alert: true, badge: true, sound: true) ??
-          false,
+      TargetPlatform.android =>
+        await _plugin
+                .resolvePlatformSpecificImplementation<
+                  AndroidFlutterLocalNotificationsPlugin
+                >()
+                ?.requestNotificationsPermission() ??
+            false,
+      TargetPlatform.macOS =>
+        await _plugin
+                .resolvePlatformSpecificImplementation<
+                  MacOSFlutterLocalNotificationsPlugin
+                >()
+                ?.requestPermissions(alert: true, badge: true, sound: true) ??
+            false,
       // Windows has no permission prompt: toast notifications need no consent.
       _ => true,
     };

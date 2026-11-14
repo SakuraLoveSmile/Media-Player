@@ -29,4 +29,8 @@ abstract interface class ApiSession {
   /// Mirror of [authorizedGet] for POST; PlaybackInfo (§3.1) and the three
   /// session reports (§3.6) are all POST.
   Future<Map<String, dynamic>> authorizedPost(Uri url, {Object? body});
+
+  /// Mirror of [authorizedGet] for DELETE; clearing a favorite or played mark
+  /// (S8) is a DELETE.
+  Future<Map<String, dynamic>> authorizedDelete(Uri url);
 }

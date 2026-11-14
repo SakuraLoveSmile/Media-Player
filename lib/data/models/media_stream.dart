@@ -13,6 +13,20 @@ class MediaStream {
     this.isDefault = false,
     this.isExternal = false,
     this.deliveryUrl,
+    this.title,
+    this.displayLanguage,
+    this.videoRange,
+    this.profile,
+    this.width,
+    this.height,
+    this.frameRate,
+    this.bitRate,
+    this.bitDepth,
+    this.colorSpace,
+    this.pixelFormat,
+    this.channels,
+    this.channelLayout,
+    this.isForced = false,
   });
 
   factory MediaStream.fromJson(Map<String, dynamic> json) {
@@ -25,6 +39,20 @@ class MediaStream {
       isDefault: asBool(json['IsDefault']),
       isExternal: asBool(json['IsExternal']),
       deliveryUrl: asString(json['DeliveryUrl']),
+      title: asString(json['Title']),
+      displayLanguage: asString(json['DisplayLanguage']),
+      videoRange: asString(json['VideoRange']),
+      profile: asString(json['Profile']),
+      width: asIntOrNull(json['Width']),
+      height: asIntOrNull(json['Height']),
+      frameRate: asDoubleOrNull(json['FrameRate']),
+      bitRate: asIntOrNull(json['BitRate']),
+      bitDepth: asIntOrNull(json['BitDepth']),
+      colorSpace: asString(json['ColorSpace']),
+      pixelFormat: asString(json['PixelFormat']),
+      channels: asIntOrNull(json['Channels']),
+      channelLayout: asString(json['ChannelLayout']),
+      isForced: asBool(json['IsForced']),
     );
   }
 
@@ -36,6 +64,23 @@ class MediaStream {
   final bool isDefault;
   final bool isExternal;
   final String? deliveryUrl;
+
+  /// Detail/媒体信息 fields (S28): everything the server publishes about a
+  /// stream. All optional; the detail page only renders what it received.
+  final String? title;
+  final String? displayLanguage;
+  final String? videoRange;
+  final String? profile;
+  final int? width;
+  final int? height;
+  final double? frameRate;
+  final int? bitRate;
+  final int? bitDepth;
+  final String? colorSpace;
+  final String? pixelFormat;
+  final int? channels;
+  final String? channelLayout;
+  final bool isForced;
 
   static MediaStreamType _typeFromName(String? name) {
     switch (name?.toLowerCase()) {

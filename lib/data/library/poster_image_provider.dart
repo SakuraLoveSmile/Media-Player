@@ -20,6 +20,7 @@ class PosterImageProvider extends ImageProvider<PosterImageProvider> {
     required this.url,
     this.tag,
     this.maxWidth,
+    this.variant = '',
   });
 
   final PosterCache cache;
@@ -27,6 +28,9 @@ class PosterImageProvider extends ImageProvider<PosterImageProvider> {
   final Uri url;
   final String? tag;
   final int? maxWidth;
+
+  /// Distinguishes image kinds of one item (`Primary` vs `Backdrop`).
+  final String variant;
 
   @override
   Future<PosterImageProvider> obtainKey(ImageConfiguration configuration) =>
@@ -53,6 +57,7 @@ class PosterImageProvider extends ImageProvider<PosterImageProvider> {
       key.url,
       tag: key.tag,
       maxWidth: key.maxWidth,
+      variant: key.variant,
     );
     if (bytes.isEmpty) {
       throw StateError('poster unavailable');
@@ -67,13 +72,15 @@ class PosterImageProvider extends ImageProvider<PosterImageProvider> {
       other.itemId == itemId &&
       other.tag == tag &&
       other.maxWidth == maxWidth &&
+      other.variant == variant &&
       other.url.host == url.host &&
       other.url.port == url.port;
 
   @override
   int get hashCode =>
-      Object.hash(cache, itemId, tag, maxWidth, url.host, url.port);
+      Object.hash(cache, itemId, tag, maxWidth, variant, url.host, url.port);
 
   @override
-  String toString() => 'PosterImageProvider($itemId, tag: $tag, w: $maxWidth)';
+  String toString() =>
+      'PosterImageProvider($itemId, $variant, tag: $tag, w: $maxWidth)';
 }

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/app/request_notification_banner.dart';
 import 'package:media_player/data/moviepilot/progress/request_notification.dart';
-import 'package:media_player/ui/glass/glass_theme.dart';
+import 'package:media_player/ui/theme/app_theme.dart';
 
 const RequestNotification _event = RequestNotification(
   requestId: 'req-1',
@@ -14,7 +14,7 @@ const RequestNotification _event = RequestNotification(
 
 Widget _wrap(Widget child) {
   return MaterialApp(
-    theme: buildGlassTheme(Brightness.light),
+    theme: buildAppTheme(Brightness.light),
     home: Scaffold(body: child),
   );
 }
@@ -35,7 +35,9 @@ void main() {
     expect(find.text('第 2 季 已入库，可以播放'), findsOneWidget);
   });
 
-  testWidgets('the open action and the dismiss action both fire', (tester) async {
+  testWidgets('the open action and the dismiss action both fire', (
+    tester,
+  ) async {
     var opened = 0;
     var dismissed = 0;
     await tester.pumpWidget(
@@ -55,7 +57,9 @@ void main() {
     expect(dismissed, 1);
   });
 
-  testWidgets('a long title is truncated instead of overflowing', (tester) async {
+  testWidgets('a long title is truncated instead of overflowing', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(

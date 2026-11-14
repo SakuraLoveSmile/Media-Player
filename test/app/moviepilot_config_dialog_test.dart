@@ -290,11 +290,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      scoped(
-        const MaterialApp(
-          home: Scaffold(body: MoviePilotSettingsTile()),
-        ),
-      ),
+      scoped(const MaterialApp(home: Scaffold(body: MoviePilotSettingsTile()))),
     );
     await tester.pumpAndSettle();
 

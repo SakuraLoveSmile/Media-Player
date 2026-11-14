@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../data/moviepilot/progress/request_notification.dart';
-import '../../ui/glass/glass_surface.dart';
-import '../../ui/glass/glass_theme.dart';
-import '../../ui/glass/glass_tokens.dart';
+import '../ui/app_controls.dart';
+import '../ui/theme/app_tokens.dart';
 
 /// In-app banner for a finished 求片.
 ///
@@ -24,32 +23,32 @@ class RequestNotificationBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
 
     return SafeArea(
       minimum: const EdgeInsets.fromLTRB(
-        GlassSpacing.lg,
-        GlassSpacing.lg,
-        GlassSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
         0,
       ),
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
-          child: GlassSurface(
-            radius: GlassRadii.card,
+          child: AppCard(
+            radius: AppRadii.card,
             padding: const EdgeInsets.fromLTRB(
-              GlassSpacing.lg,
-              GlassSpacing.md,
-              GlassSpacing.sm,
-              GlassSpacing.md,
+              AppSpacing.lg,
+              AppSpacing.md,
+              AppSpacing.sm,
+              AppSpacing.md,
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Icon(Icons.check_circle_outline, color: palette.green, size: 22),
-                const SizedBox(width: GlassSpacing.md),
+                Icon(Icons.check_circle_outline, color: Colors.green, size: 22),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -60,35 +59,34 @@ class RequestNotificationBanner extends StatelessWidget {
                         key: const Key('request-banner-title'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GlassType.subheadline.copyWith(
-                          color: palette.label,
+                        style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                          color: palette.onSurface,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: GlassSpacing.xxs),
+                      const SizedBox(height: AppSpacing.xxs),
                       Text(
                         event.body,
                         key: const Key('request-banner-body'),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: GlassType.footnote.copyWith(
-                          color: palette.secondaryLabel,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall!
+                            .copyWith(color: palette.onSurfaceVariant),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: GlassSpacing.sm),
+                const SizedBox(width: AppSpacing.sm),
                 _BannerAction(
                   key: const Key('request-banner-open'),
                   label: '查看',
-                  color: palette.tint,
+                  color: palette.primary,
                   onPressed: onTap,
                 ),
                 _BannerAction(
                   key: const Key('request-banner-dismiss'),
                   icon: Icons.close,
-                  color: palette.tertiaryLabel,
+                  color: palette.outline,
                   onPressed: onDismiss,
                 ),
               ],
@@ -123,10 +121,8 @@ class _BannerAction extends StatelessWidget {
         ? Icon(icon, size: 18, color: color)
         : Text(
             label!,
-            style: GlassType.footnote.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: color, fontWeight: FontWeight.w600),
           );
     return Semantics(
       button: true,
@@ -135,7 +131,7 @@ class _BannerAction extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onPressed,
         child: Padding(
-          padding: const EdgeInsets.all(GlassSpacing.sm),
+          padding: const EdgeInsets.all(AppSpacing.sm),
           child: child,
         ),
       ),

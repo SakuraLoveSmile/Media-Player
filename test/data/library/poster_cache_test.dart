@@ -142,29 +142,32 @@ void main() {
     expect(fetched, hasLength(1));
   });
 
-  test('the budget holds across a run of writes and across a relaunch', () async {
-    final budget = poster.length * 3;
-    final cache = buildCache(maxBytes: budget);
-    for (var i = 0; i < 8; i++) {
-      await cache.load('item-$i', url(), maxWidth: 400);
-    }
+  test(
+    'the budget holds across a run of writes and across a relaunch',
+    () async {
+      final budget = poster.length * 3;
+      final cache = buildCache(maxBytes: budget);
+      for (var i = 0; i < 8; i++) {
+        await cache.load('item-$i', url(), maxWidth: 400);
+      }
 
-    Future<void> expectBudget() async {
-      final remaining = await files();
-      expect(remaining, hasLength(3));
-      expect(
-        remaining.fold<int>(0, (sum, f) => sum + f.lengthSync()),
-        lessThanOrEqualTo(budget),
-      );
-    }
+      Future<void> expectBudget() async {
+        final remaining = await files();
+        expect(remaining, hasLength(3));
+        expect(
+          remaining.fold<int>(0, (sum, f) => sum + f.lengthSync()),
+          lessThanOrEqualTo(budget),
+        );
+      }
 
-    await expectBudget();
-    expect(fetched, hasLength(8));
+      await expectBudget();
+      expect(fetched, hasLength(8));
 
-    // A new instance must re-measure the directory rather than assume empty.
-    await buildCache(maxBytes: budget).load('item-9', url(), maxWidth: 400);
-    await expectBudget();
-  });
+      // A new instance must re-measure the directory rather than assume empty.
+      await buildCache(maxBytes: budget).load('item-9', url(), maxWidth: 400);
+      await expectBudget();
+    },
+  );
 
   test('a fetch failure propagates and leaves no entry behind', () async {
     final cache = FilePosterCache(

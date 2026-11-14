@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/errors/app_error.dart';
 import '../../../data/moviepilot/models/mp_media_info.dart';
-import '../../../ui/glass/glass_controls.dart';
-import '../../../ui/glass/glass_theme.dart';
-import '../../../ui/glass/glass_tokens.dart';
+import '../../../ui/app_controls.dart';
+import '../../../ui/theme/app_tokens.dart';
 
 /// One `/media/search` hit (求片 plan S11).
 ///
@@ -35,7 +34,7 @@ class SearchResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
     final poster = media.posterUri;
     final subtitle = <String>[
       if (media.year.isNotEmpty) media.year,
@@ -44,13 +43,13 @@ class SearchResultCard extends StatelessWidget {
         '${media.numberOfSeasons} 季',
     ].join(' · ');
 
-    return GlassCard(
-      padding: const EdgeInsets.all(GlassSpacing.md),
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _Poster(uri: poster),
-          const SizedBox(width: GlassSpacing.md),
+          const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -60,8 +59,8 @@ class SearchResultCard extends StatelessWidget {
                   media.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: GlassType.body.copyWith(
-                    color: palette.label,
+                  style: Theme.of(context).textTheme.bodyLarge!.copyWith(
+                    color: palette.onSurface,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -69,45 +68,44 @@ class SearchResultCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: GlassType.caption1.copyWith(
-                      color: palette.secondaryLabel,
-                    ),
+                    style: Theme.of(context).textTheme.labelMedium!
+                        .copyWith(color: palette.onSurfaceVariant),
                   ),
                 ],
                 if (media.vote > 0) ...<Widget>[
-                  const SizedBox(height: GlassSpacing.sm),
+                  const SizedBox(height: AppSpacing.sm),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      GlassTag(
+                      AppTag(
                         label: media.vote.toStringAsFixed(1),
                         dense: true,
-                        color: palette.orange,
+                        color: Colors.orange,
                         icon: const Icon(Icons.star_rounded),
                       ),
                       if (media.isSeries) ...<Widget>[
-                        const SizedBox(width: GlassSpacing.xs),
-                        GlassTag(
+                        const SizedBox(width: AppSpacing.xs),
+                        AppTag(
                           label: '剧集',
                           dense: true,
-                          color: palette.indigo,
+                          color: palette.secondary,
                         ),
                       ],
                     ],
                   ),
                 ],
-                const SizedBox(height: GlassSpacing.sm),
+                const SizedBox(height: AppSpacing.sm),
                 Align(
                   alignment: Alignment.centerRight,
                   child: alreadyInLibrary
-                      ? GlassButton(
+                      ? AppButton(
                           key: Key('search-play-${media.ref.mediaId}'),
                           label: '去播放',
-                          variant: GlassButtonVariant.tinted,
+                          variant: AppButtonVariant.tinted,
                           height: 36,
                           onPressed: onPlay,
                         )
-                      : GlassButton(
+                      : AppButton(
                           key: Key('search-request-${media.ref.mediaId}'),
                           label: media.isSeries ? '选择季' : '求片',
                           height: 36,
@@ -131,18 +129,14 @@ class _Poster extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
     final Widget placeholder = ColoredBox(
-      color: palette.fill,
-      child: Icon(
-        Icons.movie_outlined,
-        color: palette.tertiaryLabel,
-        size: 28,
-      ),
+      color: palette.surfaceContainerHighest,
+      child: Icon(Icons.movie_outlined, color: palette.outline, size: 28),
     );
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(GlassRadii.extraSmall),
+      borderRadius: BorderRadius.circular(AppRadii.extraSmall),
       child: SizedBox(
         width: 68,
         height: 102,

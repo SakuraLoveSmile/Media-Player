@@ -60,7 +60,8 @@ class FakeMoviePilotServer {
       <String, Map<String, dynamic>>{};
 
   /// Last seen form body per path (the login endpoint sends one).
-  final Map<String, Map<String, String>> lastForm = <String, Map<String, String>>{};
+  final Map<String, Map<String, String>> lastForm =
+      <String, Map<String, String>>{};
 
   /// `Authorization` header of the most recent request.
   String? lastAuthorization;
@@ -263,29 +264,27 @@ class FakeMoviePilotServer {
     }
   }
 
-  Future<void> _login(
-    HttpResponse response,
-    Map<String, String> form,
-  ) async {
+  Future<void> _login(HttpResponse response, Map<String, String> form) async {
     final otp = form['otp_password'] ?? '';
     if (mfaRequired && otp != validOtp) {
       response.statusCode = 401;
       response.headers.set('X-MFA-Required', 'true');
       response.headers.contentType = ContentType.json;
-      response.write(jsonEncode(<String, dynamic>{
-        'success': false,
-        'message': '需要二次验证',
-        'data': <String, dynamic>{
-          'mfa_methods': <String>['otp'],
-        },
-      }));
+      response.write(
+        jsonEncode(<String, dynamic>{
+          'success': false,
+          'message': '需要二次验证',
+          'data': <String, dynamic>{
+            'mfa_methods': <String>['otp'],
+          },
+        }),
+      );
       await response.close();
       return;
     }
-    if (form['username'] != loginUsername || form['password'] != loginPassword) {
-      await _reply(response, 401, <String, dynamic>{
-        'detail': '用户名或密码错误',
-      });
+    if (form['username'] != loginUsername ||
+        form['password'] != loginPassword) {
+      await _reply(response, 401, <String, dynamic>{'detail': '用户名或密码错误'});
       return;
     }
     await _reply(response, 200, <String, dynamic>{
@@ -334,7 +333,10 @@ class FakeMoviePilotServer {
     });
   }
 
-  Future<void> _payload(HttpResponse response, Map<String, dynamic> data) async {
+  Future<void> _payload(
+    HttpResponse response,
+    Map<String, dynamic> data,
+  ) async {
     if (!envelope) {
       await _reply(response, 200, data);
       return;

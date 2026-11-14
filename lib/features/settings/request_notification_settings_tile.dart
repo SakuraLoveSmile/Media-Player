@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/request_notification_settings.dart';
 import '../../data/notifications/local_notification_sink.dart';
-import '../../ui/glass/glass_theme.dart';
 
 /// Settings entry for the 求片 notifications.
 ///
@@ -17,9 +16,10 @@ class RequestNotificationSwitchTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final palette = context.glass;
-    final AsyncValue<RequestNotificationSettings> async =
-        ref.watch(requestNotificationSettingsProvider);
+    final ColorScheme palette = Theme.of(context).colorScheme;
+    final AsyncValue<RequestNotificationSettings> async = ref.watch(
+      requestNotificationSettingsProvider,
+    );
     final RequestNotificationSettings? settings = async.value;
 
     return Column(
@@ -29,15 +29,13 @@ class RequestNotificationSwitchTile extends ConsumerWidget {
           key: const Key('settings-request-notify-system'),
           leading: Icon(
             Icons.notifications_active_outlined,
-            color: palette.tint,
+            color: palette.primary,
           ),
           title: const Text('系统通知'),
           subtitle: Text(
             settings == null
                 ? (async.hasError ? '读取失败，点击重试' : '读取中…')
-                : (settings.system
-                      ? '求片入库时弹出系统通知'
-                      : '已关闭，只在应用内提示'),
+                : (settings.system ? '求片入库时弹出系统通知' : '已关闭，只在应用内提示'),
           ),
           trailing: settings == null
               ? (async.isLoading
@@ -58,14 +56,12 @@ class RequestNotificationSwitchTile extends ConsumerWidget {
         ),
         ListTile(
           key: const Key('settings-request-notify-inapp'),
-          leading: Icon(Icons.campaign_outlined, color: palette.purple),
+          leading: Icon(Icons.campaign_outlined, color: palette.tertiary),
           title: const Text('应用内横幅'),
           subtitle: Text(
             settings == null
                 ? ''
-                : (settings.inApp
-                      ? '在任何页面顶部提示，点一下进入我的求片'
-                      : '已关闭'),
+                : (settings.inApp ? '在任何页面顶部提示，点一下进入我的求片' : '已关闭'),
           ),
           trailing: settings == null
               ? null

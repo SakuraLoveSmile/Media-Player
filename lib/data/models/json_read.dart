@@ -36,7 +36,8 @@ double? asDoubleOrNull(Object? value) {
 double asDouble(Object? value, {double fallback = 0}) =>
     asDoubleOrNull(value) ?? fallback;
 
-String asStringOr(Object? value, String fallback) => asString(value) ?? fallback;
+String asStringOr(Object? value, String fallback) =>
+    asString(value) ?? fallback;
 
 bool asBool(Object? value, {bool fallback = false}) =>
     value is bool ? value : fallback;
@@ -62,5 +63,8 @@ Map<String, dynamic> asMap(Object? value) {
 
 List<Map<String, dynamic>> asMapList(Object? value) {
   if (value is! List) return const <Map<String, dynamic>>[];
-  return value.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  return value
+      .whereType<Map>()
+      .map((e) => Map<String, dynamic>.from(e))
+      .toList();
 }

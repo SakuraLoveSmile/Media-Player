@@ -103,7 +103,10 @@ class RequestMatcher {
         final season = torrent.season;
         // A series download is only attributable when it names the season.
         if (season == 0 || !_seasonBelongs(season, request)) return false;
-        return _titleLooksLike(torrent.title.isNotEmpty ? torrent.title : torrent.name, request);
+        return _titleLooksLike(
+          torrent.title.isNotEmpty ? torrent.title : torrent.name,
+          request,
+        );
       }
       if (torrent.season != 0) return false;
       return _titleBelongs(torrent.title, torrent.name, torrent.year, request);

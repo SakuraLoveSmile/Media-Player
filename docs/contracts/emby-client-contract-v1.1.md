@@ -155,6 +155,11 @@ Content-Type: application/json
 
 - 登录后额外调用一次 `POST /Sessions/Capabilities/Full` 上报同一份能力；请求体为 `ClientCapabilities`，含 `PlayableMediaTypes`、`SupportedCommands`、`DeviceProfile`（已由官方文档确认）。它与 PlaybackInfo 内 DeviceProfile 哪个最终生效、是否被服务端缓存，仍需实测。
 - 直连片源不得因 DeviceProfile 缺项被服务端转码；T2 以真实片源验证。
+- **内核解码白名单（S27 实测）**：media_kit Android 自带 libmpv 的 ffmpeg configure 白名单含
+  aac/ac3/eac3/dca/ass/subrip 等，但**不含 truehd 与 hdmv_pgs_subtitle 解码器**（.so 内 configure 串实证）。
+  DeviceProfile 的音频列表与之对齐；UI 对不可解码音频/PGS 出非致命提示。完整解码器依赖 M3 自编译内核。
+- **STRM 约束（S27 实测）**：`IsRemote=true` 的 STRM 片源 Emby 不做转码（`SupportsTranscoding=false`、
+  强制 `SupportsDirectPlay=true`），DeviceProfile 缺项不会触发服务端回退；此类片源的解码缺口只能客户端解决。
 
 ### 3.3 码率与直连策略
 
@@ -193,6 +198,8 @@ URL 生成顺序：
 
 1. `SupportsDirectPlay == true && DirectStreamUrl != null` → 用 `DirectStreamUrl`（绝对化）。
 2. 否则 `{base}/Videos/{itemId}/stream?Static=true&MediaSourceId={id}&DeviceId={deviceId}&api_key={token}`。
+   **例外（S27）**：`SupportsDirectPlay=false` 且服务器给了 `TranscodingUrl`（直连流+音频转码）时
+   优先用该 URL；`Static=true` 会把不可解码的原始音频强塞回播放器导致无声。
 3. 否则 `{base}{TranscodingUrl}`（相对路径拼接；缺 token 时补 `api_key`）。
 4. 都不可用 → `PlaybackUnsupported`。
 
@@ -242,10 +249,13 @@ Body 关键字段：
 ### 3.7 字幕
 
 - 优先 `MediaStreams[]` 中字幕流的 `DeliveryUrl`；相对路径拼 `base`；缺 `api_key` 时补。
-- 回退：`/Videos/{itemId}/{mediaSourceId}/Subtitles/{index}/Stream.{format}?api_key=`（路径待实测）。
-- 统一由客户端下载到临时文件后交给播放内核挂载（避免播放器鉴权差异）；按 item + streamIndex 缓存。
+- 回退：`/Videos/{itemId}/{mediaSourceId}/Subtitles/{index}/Stream.{format}?api_key=`（已实测 200）。
+- **流表以 PlaybackInfo 为准**：STRM 等懒探测片源在起播前 detail 的 `MediaStreams` 索引可能过期
+  （实测外挂字幕 0/1 → 探测后 9/10）；按过期索引请求字幕会得 **200 空体**。字幕菜单与下载索引
+  必须取协商响应（`PlaybackPlan.subtitles`），不得取 detail。
+- 统一由客户端下载到临时文件后交给播放内核挂载（避免播放器鉴权差异）；按 item + source + streamIndex 缓存。
 - 内嵌 PGS/ASS 由 mpv 直接渲染；外挂 SRT/ASS 走文件挂载。
-- 字幕下载失败只提示，不中断视频。
+- 字幕下载失败只提示，不中断视频；空字节视为失败。
 
 ## 4. 内部模型
 
@@ -552,4 +562,54 @@ abstract class PlaybackEngine {
 - 处理：`EmbyHttpClient` 把顶层数组规整成 `{"Items": [...]}` 信封，与 `Views` / `Items` / `Seasons` / `Episodes` 的响应形状统一；调用方一律读 `json['Items']`。
 - 这是传输层对响应形状的**唯一**例外：其余非对象、非数组的响应体仍按 §10.4 映射为 `serverError`。
 - 不新增 `authorizedGetList` 之类的第二条读取通道，避免 `ApiSession` 出现两套语义。
+
+## 11. v1.2 增补（P0 S5/S7/S8，2026-11-12）
+
+### 11.1 收藏 / 观看写（S8）
+
+- `ApiSession` 增 `authorizedDelete(Uri)`（AuthRepository 实现，与 GET/POST 同 401 登出与错误映射）；
+  `EmbyHttpClient` 增 `deleteJson`（复用 `_send`，method=DELETE）。
+- 收藏列表：`GET /Users/{userId}/Items`，`Filters=IsFavorite`、`Recursive=true`、`IncludeItemTypes`、
+  `Fields=listFields`、`SortBy/SortOrder/StartIndex/Limit`；返回 `ItemsPage`。
+- 置收藏：`POST /Users/{userId}/FavoriteItems/{itemId}`；取消：`DELETE` 同路径。
+- 置已看：`POST /Users/{userId}/PlayedItems/{itemId}`；取消：`DELETE` 同路径。
+- `UserItemData` 增 `isFavorite`（`IsFavorite`）。写操作乐观更新 UI，失败回滚并出非致命提示。
+
+### 11.2 详情字段（S7）
+
+- `detailFields` 增 `Tagline,CommunityRating,OfficialRating,ProductionYear,RunTimeTicks,RemoteTrailer`
+  （`People,Genres` 原有）。`MediaItem` 增对应可空字段 + `Person{name,role,type,id,imageTag}`。
+- 版本选择：`playerFor(id, source:)` 携带 `MediaSourceId` → PlaybackInfo 请求体 `MediaSourceId`；
+  未知 id 回退首个 source，缺省请求体不变（§3.1）。
+- 预告片仅 `RemoteTrailer` 非空时显示，经既有 url_launcher 打开；不新增依赖。
+
+### 11.3 轨道偏好（S5）
+
+- `TrackPrefs{audioLanguage,subtitleLanguage}`（空=自动）持久化 `player.trackPrefs.v1`（KeyValueStore）。
+- 语言匹配大小写不敏感并归一 ISO 别名（zho/zh→chi、en→eng）。起播自动匹配首选语言；显式选择
+  （含"关"）置会话标记，自动匹配与 `setTrackPrefs` 均不覆盖。`PlaybackPlan` 增 `audios`（同 `subtitles`）。
+
+### 11.4 章节跳过（S12）
+
+- `detailFields` 增 `Chapters`；`MediaItem` 增 `chapters: List<Chapter>`，`Chapter{name,startTicks}`
+  （`StartPositionTicks`），`start`  getter 换算 Duration。
+- 跳过范围由纯函数 `resolveChapterSkip(chapters,{isEpisode,duration})` 解析：名称匹配
+  intro/opening/片头/OP 与 credits/ending/片尾/ED（短 token 整词匹配）；仅分集启用位置兜底
+  （首章≤5s→片头、末章≥80% 片长→片尾），电影仅名称匹配；片头终点触及片长则拒绝。
+- 控制器随 position 实时置 `canSkipIntro/canSkipCredits`；`skipIntro()` seek 到片头终点，
+  `skipCredits()` seek 到片长（触发完成→自动连播）。Trickplay 缩略图预览不在本契约（需服务端文件）。
+
+### 11.5 DLNA 投屏（S19）
+
+- 新增 `data/cast/`：`DlnaDevice{id,name,controlUrl,address}`；`DlnaCastService` 抽象
+  （discover/cast/stop/pause/play）+ `DlnaCastServiceImpl`，注入 `DlnaTransport`
+  （search/get/post）以便协议逻辑脱离真实 LAN 单测。
+- 发现：SSDP `M-SEARCH`（ST=MediaRenderer:1）→ 响应 `LOCATION` 取设备描述 XML，解析
+  `friendlyName` 与 AVTransport `controlURL`（相对路径按 LOCATION 解析、XML 实体反转义），按 USN 去重。
+- 控制：SOAP `SetAVTransportURI`（CurrentURI + DIDL-Lite 标题，URL/标题 XML 转义）后 `Play`；
+  `Stop/Pause/Play` 各自动作。`IoDlnaTransport` 用 RawDatagramSocket + HttpClient；M-SEARCH 响应为
+  单播，无需 MulticastLock（Android 多播加固列为后续）。
+- 投屏 URL 必须带 `api_key`（渲染器无法发送鉴权头）：缺省时按 `X-Emby-Token` 头追加，复用 §3.4
+  回退口径；URL 与 token 不落日志（§10.6）。投屏成功后暂停本地播放避免双声；失败为 picker 文案，
+  非播放错误。Chromecast 不在本契约（需 Google Cast SDK）。
 

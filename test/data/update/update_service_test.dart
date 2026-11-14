@@ -232,51 +232,56 @@ void main() {
   });
 
   group('checkForUpdate preview channel', () {
-    test('offers the newest prerelease build above the installed one', () async {
-      github.releases = <Map<String, dynamic>>[
-        _releaseJson(version: '0.2.0', tagName: 'v0.2.0'),
-        _releaseJson(
-          version: '0.2.2',
-          tagName: 'v0.2.2-pilot.200',
-          prerelease: true,
-        ),
-        _releaseJson(
-          version: '0.2.1',
-          tagName: 'v0.2.1-pilot.100',
-          prerelease: true,
-        ),
-      ];
-      final AppRelease? release = await buildService().checkForUpdate(
-        platform: 'macos',
-        channel: UpdateChannel.preview,
-      );
-      expect(release, isNotNull);
-      expect(release!.tagName, 'v0.2.2-pilot.200');
-      expect(release.isPrerelease, isTrue);
-      expect(release.buildNumber, 200);
-      expect(github.requestPaths.last, contains('/releases'));
-    });
+    test(
+      'offers the newest prerelease build above the installed one',
+      () async {
+        github.releases = <Map<String, dynamic>>[
+          _releaseJson(version: '0.2.0', tagName: 'v0.2.0'),
+          _releaseJson(
+            version: '0.2.2',
+            tagName: 'v0.2.2-pilot.200',
+            prerelease: true,
+          ),
+          _releaseJson(
+            version: '0.2.1',
+            tagName: 'v0.2.1-pilot.100',
+            prerelease: true,
+          ),
+        ];
+        final AppRelease? release = await buildService().checkForUpdate(
+          platform: 'macos',
+          channel: UpdateChannel.preview,
+        );
+        expect(release, isNotNull);
+        expect(release!.tagName, 'v0.2.2-pilot.200');
+        expect(release.isPrerelease, isTrue);
+        expect(release.buildNumber, 200);
+        expect(github.requestPaths.last, contains('/releases'));
+      },
+    );
 
-    test('ignores a preview build that is not newer than the installed build',
-        () async {
-      packageInfo = PackageInfo(
-        appName: 'Media Player',
-        packageName: 'media_player',
-        version: '0.2.2',
-        buildNumber: '300',
-      );
-      github.releases = <Map<String, dynamic>>[
-        _releaseJson(
+    test(
+      'ignores a preview build that is not newer than the installed build',
+      () async {
+        packageInfo = PackageInfo(
+          appName: 'Media Player',
+          packageName: 'media_player',
           version: '0.2.2',
-          tagName: 'v0.2.2-pilot.200',
-          prerelease: true,
-        ),
-      ];
-      expect(
-        await buildService().checkForUpdate(channel: UpdateChannel.preview),
-        isNull,
-      );
-    });
+          buildNumber: '300',
+        );
+        github.releases = <Map<String, dynamic>>[
+          _releaseJson(
+            version: '0.2.2',
+            tagName: 'v0.2.2-pilot.200',
+            prerelease: true,
+          ),
+        ];
+        expect(
+          await buildService().checkForUpdate(channel: UpdateChannel.preview),
+          isNull,
+        );
+      },
+    );
 
     test('prefers a newer stable release over an older preview', () async {
       github.releases = <Map<String, dynamic>>[
@@ -315,11 +320,13 @@ void main() {
       );
     });
 
-    test('stable channel still ignores prereleases on the same endpoint',
-        () async {
-      github.mode = 'prerelease';
-      expect(await buildService().checkForUpdate(), isNull);
-    });
+    test(
+      'stable channel still ignores prereleases on the same endpoint',
+      () async {
+        github.mode = 'prerelease';
+        expect(await buildService().checkForUpdate(), isNull);
+      },
+    );
   });
 
   group('checkForUpdate', () {

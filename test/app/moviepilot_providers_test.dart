@@ -112,11 +112,7 @@ void main() {
 
       final saved = await c
           .read(moviePilotSettingsProvider.notifier)
-          .login(
-            baseUrl: 'http://nas:3002',
-            username: 'admin',
-            password: 'pw',
-          );
+          .login(baseUrl: 'http://nas:3002', username: 'admin', password: 'pw');
 
       expect(saved.baseUrl, 'http://nas:3002');
       expect(saved.username, 'admin');
@@ -177,11 +173,7 @@ void main() {
       await c.read(moviePilotSettingsProvider.future);
       await c
           .read(moviePilotSettingsProvider.notifier)
-          .login(
-            baseUrl: 'http://nas:3002',
-            username: 'admin',
-            password: 'pw',
-          );
+          .login(baseUrl: 'http://nas:3002', username: 'admin', password: 'pw');
       final requestStore = await c.read(requestStoreProvider.future);
       await requestStore!.write(const []);
 

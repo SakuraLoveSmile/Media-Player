@@ -96,7 +96,10 @@ void main() {
 
       await kv.write(
         ProfileStore.key,
-        jsonEncode(<String, dynamic>{'schemaVersion': 99, 'profile': <String, dynamic>{}}),
+        jsonEncode(<String, dynamic>{
+          'schemaVersion': 99,
+          'profile': <String, dynamic>{},
+        }),
       );
       expect(await store.read(), isNull);
 

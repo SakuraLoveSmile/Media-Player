@@ -17,16 +17,19 @@ class LibraryRepository implements LibraryService {
 
   final ApiSession _session;
 
+  /// List fields (S28): `CommunityRating` feeds the poster badge, `Genres`
+  /// the banner pill and `Status` / `EndDate` the series year range.
   static const String listFields =
-      'Overview,PrimaryImageAspectRatio,UserData,ProductionYear,RunTimeTicks';
+      'Overview,PrimaryImageAspectRatio,UserData,ProductionYear,RunTimeTicks,'
+      'CommunityRating,Genres,Status,EndDate,PremiereDate,ParentIndexNumber';
   static const String detailFields =
-      'Overview,MediaSources,MediaStreams,People,Genres,UserData';
+      'Overview,MediaSources,MediaStreams,People,Genres,UserData,Chapters,'
+      'Tagline,CommunityRating,OfficialRating,ProductionYear,RunTimeTicks,'
+      'RemoteTrailer,Studios,ExternalUrls,RemoteTrailers,Status,EndDate';
 
   @override
   Future<List<LibraryView>> views() async {
-    final json = await _session.authorizedGet(
-      _uri('/Users/$_userId/Views'),
-    );
+    final json = await _session.authorizedGet(_uri('/Users/$_userId/Views'));
     return asMapList(json['Items'])
         .map(LibraryView.fromJson)
         .toList(growable: false);
@@ -37,6 +40,16 @@ class LibraryRepository implements LibraryService {
     String viewId, {
     int startIndex = 0,
     int limit = 60,
+    String sortBy = 'SortName',
+    String sortOrder = 'Ascending',
+    String? genreId,
+    String? genre,
+    int? year,
+    String? tag,
+    String? includeItemTypes,
+    String? filters,
+    String? studioId,
+    String? studio,
   }) async {
     if (startIndex < 0) {
       throw ArgumentError.value(startIndex, 'startIndex', 'must be >= 0');
@@ -49,15 +62,94 @@ class LibraryRepository implements LibraryService {
       _uri('/Users/$_userId/Items', <String, String>{
         'ParentId': viewId,
         'Recursive': 'true',
-        'IncludeItemTypes': 'Movie,Series',
+        'IncludeItemTypes': includeItemTypes ?? 'Movie,Series',
         'Fields': listFields,
-        'SortBy': 'SortName',
-        'SortOrder': 'Ascending',
+        'SortBy': sortBy,
+        'SortOrder': sortOrder,
+        'StartIndex': '$startIndex',
+        'Limit': '$limit',
+        // An exact genre id wins over the name; both are optional (S10).
+        if (genreId != null && genreId.isNotEmpty)
+          'GenreIds': genreId
+        else if (genre != null && genre.isNotEmpty)
+          'Genres': genre,
+        if (year != null) 'Years': '$year',
+        if (tag != null && tag.isNotEmpty) 'Tags': tag,
+        if (filters != null && filters.isNotEmpty) 'Filters': filters,
+        // Emby accepts ids or, when the detail payload has none, names (S60).
+        if (studioId != null && studioId.isNotEmpty)
+          'StudioIds': studioId
+        else if (studio != null && studio.isNotEmpty)
+          'Studios': studio,
+      }),
+    );
+    return ItemsPage.fromJson(json, fallbackStartIndex: startIndex);
+  }
+
+  @override
+  Future<ItemsPage> collections({
+    int startIndex = 0,
+    int limit = 60,
+    String sortBy = 'SortName',
+    String sortOrder = 'Ascending',
+  }) async {
+    if (startIndex < 0) {
+      throw ArgumentError.value(startIndex, 'startIndex', 'must be >= 0');
+    }
+    if (limit <= 0) {
+      throw ArgumentError.value(limit, 'limit', 'must be > 0');
+    }
+
+    final json = await _session.authorizedGet(
+      _uri('/Users/$_userId/Items', <String, String>{
+        'Recursive': 'true',
+        'IncludeItemTypes': 'BoxSet',
+        'Fields': listFields,
+        'SortBy': sortBy,
+        'SortOrder': sortOrder,
         'StartIndex': '$startIndex',
         'Limit': '$limit',
       }),
     );
     return ItemsPage.fromJson(json, fallbackStartIndex: startIndex);
+  }
+
+  @override
+  Future<List<String>> genres() => _facetNames('/Genres');
+
+  @override
+  Future<List<String>> tags() => _facetNames('/Tags');
+
+  /// `GET /Genres` / `GET /Tags` answer `Items[].Name` (S10). Blank names are
+  /// dropped so a chip row never renders an empty label.
+  Future<List<String>> _facetNames(String path) async {
+    final json = await _session.authorizedGet(
+      _uri(path, <String, String>{'UserId': _userId}),
+    );
+    return asMapList(json['Items'])
+        .map((item) => asStringOr(item['Name'], ''))
+        .where((name) => name.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<ItemsPage> resumable({int limit = 20}) async {
+    if (limit <= 0) {
+      throw ArgumentError.value(limit, 'limit', 'must be > 0');
+    }
+
+    final json = await _session.authorizedGet(
+      _uri('/Users/$_userId/Items', <String, String>{
+        'Filters': 'IsResumable',
+        'Recursive': 'true',
+        'IncludeItemTypes': 'Movie,Episode',
+        'Fields': listFields,
+        'SortBy': 'DatePlayed',
+        'SortOrder': 'Descending',
+        'Limit': '$limit',
+      }),
+    );
+    return ItemsPage.fromJson(json);
   }
 
   @override
@@ -71,10 +163,165 @@ class LibraryRepository implements LibraryService {
   }
 
   @override
+  Future<List<MediaItem>> similar(String itemId, {int limit = 12}) async {
+    if (itemId.isEmpty || limit <= 0) return const <MediaItem>[];
+    final json = await _session.authorizedGet(
+      _uri('/Items/$itemId/Similar', <String, String>{
+        'UserId': _userId,
+        'Limit': '$limit',
+        'Fields': listFields,
+      }),
+    );
+    return asMapList(json['Items'])
+        .map(MediaItem.fromJson)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<ItemsPage> collectionItems(
+    String collectionId, {
+    int limit = 60,
+  }) async {
+    if (collectionId.isEmpty || limit <= 0) {
+      return const ItemsPage(
+        items: <MediaItem>[],
+        totalRecordCount: 0,
+        startIndex: 0,
+      );
+    }
+    final json = await _session.authorizedGet(
+      _uri('/Users/$_userId/Items', <String, String>{
+        'ParentId': collectionId,
+        'Recursive': 'true',
+        'IncludeItemTypes': 'Movie,Series',
+        'Fields': listFields,
+        'SortBy': 'SortName',
+        'SortOrder': 'Ascending',
+        'Limit': '$limit',
+      }),
+    );
+    return ItemsPage.fromJson(json);
+  }
+
+  @override
+  Future<ItemsPage> itemsByPerson(String personId, {int limit = 60}) async {
+    if (personId.isEmpty || limit <= 0) {
+      return const ItemsPage(
+        items: <MediaItem>[],
+        totalRecordCount: 0,
+        startIndex: 0,
+      );
+    }
+    final json = await _session.authorizedGet(
+      _uri('/Users/$_userId/Items', <String, String>{
+        'PersonIds': personId,
+        'Recursive': 'true',
+        'IncludeItemTypes': 'Movie,Series',
+        'Fields': listFields,
+        'SortBy': 'SortName',
+        'SortOrder': 'Ascending',
+        'Limit': '$limit',
+      }),
+    );
+    return ItemsPage.fromJson(json);
+  }
+
+  @override
+  Future<String> serverName() async {
+    final json = await _session.authorizedGet(_uri('/System/Info/Public'));
+    return asStringOr(json['ServerName'], '');
+  }
+
+  @override
+  Future<ItemsPage> search(
+    String term, {
+    String types = 'Movie,Series',
+    int limit = 60,
+  }) async {
+    final String query = term.trim();
+    if (query.isEmpty) {
+      return const ItemsPage(
+        items: <MediaItem>[],
+        totalRecordCount: 0,
+        startIndex: 0,
+      );
+    }
+    final json = await _session.authorizedGet(
+      _uri('/Users/$_userId/Items', <String, String>{
+        'Recursive': 'true',
+        'IncludeItemTypes': types,
+        'SearchTerm': query,
+        'Fields': listFields,
+        'SortBy': 'SortName',
+        'SortOrder': 'Ascending',
+        'Limit': '$limit',
+      }),
+    );
+    return ItemsPage.fromJson(json);
+  }
+
+  @override
+  Future<ItemsPage> favorites({
+    String types = 'Movie,Series',
+    int startIndex = 0,
+    int limit = 60,
+    String sortBy = 'SortName',
+    String sortOrder = 'Ascending',
+    String? genre,
+    int? year,
+  }) async {
+    if (startIndex < 0) {
+      throw ArgumentError.value(startIndex, 'startIndex', 'must be >= 0');
+    }
+    if (limit <= 0) {
+      throw ArgumentError.value(limit, 'limit', 'must be > 0');
+    }
+
+    final json = await _session.authorizedGet(
+      _uri('/Users/$_userId/Items', <String, String>{
+        'Filters': 'IsFavorite',
+        'Recursive': 'true',
+        'IncludeItemTypes': types,
+        'Fields': listFields,
+        'SortBy': sortBy,
+        'SortOrder': sortOrder,
+        'StartIndex': '$startIndex',
+        'Limit': '$limit',
+        if (genre != null && genre.isNotEmpty) 'Genres': genre,
+        if (year != null) 'Years': '$year',
+      }),
+    );
+    return ItemsPage.fromJson(json, fallbackStartIndex: startIndex);
+  }
+
+  @override
+  Future<void> setFavorite(String itemId, bool favorite) async {
+    final url = _uri('/Users/$_userId/FavoriteItems/$itemId');
+    if (favorite) {
+      await _session.authorizedPost(url);
+    } else {
+      await _session.authorizedDelete(url);
+    }
+  }
+
+  @override
+  Future<void> setPlayed(String itemId, bool played) async {
+    final url = _uri('/Users/$_userId/PlayedItems/$itemId');
+    if (played) {
+      await _session.authorizedPost(url);
+    } else {
+      await _session.authorizedDelete(url);
+    }
+  }
+
+  @override
   Future<List<MediaItem>> seasons(String seriesId) async {
     final json = await _session.authorizedGet(
       _uri('/Shows/$seriesId/Seasons', <String, String>{
         'UserId': _userId,
+        // S78: the episode count shown on a season card; the series page must
+        // not fetch every season's episodes just to count them.
+        'Fields': 'ChildCount',
       }),
     );
     return asMapList(json['Items'])
@@ -176,19 +423,31 @@ class LibraryRepository implements LibraryService {
   }
 
   @override
-  Uri? imageUrl(String itemId, {String? tag, int? maxWidth}) {
+  Uri? imageUrl(
+    String itemId, {
+    String? tag,
+    int? maxWidth,
+    String type = 'Primary',
+    int? index,
+  }) {
     final endpoint = _session.endpoint;
     final token = _session.accessToken;
     if (endpoint == null || token == null) return null;
 
+    // Backdrop and other multi-image kinds take an index; Primary does not.
+    final String path = index == null
+        ? '/Items/$itemId/Images/$type'
+        : '/Items/$itemId/Images/$type/$index';
     return endpoint
-        .resolve('/Items/$itemId/Images/Primary')
-        .replace(queryParameters: <String, String>{
-      if (maxWidth != null) 'maxWidth': '$maxWidth',
-      if (tag != null && tag.isNotEmpty) 'tag': tag,
-      'quality': '90',
-      'api_key': token,
-    });
+        .resolve(path)
+        .replace(
+          queryParameters: <String, String>{
+            if (maxWidth != null) 'maxWidth': '$maxWidth',
+            if (tag != null && tag.isNotEmpty) 'tag': tag,
+            'quality': '90',
+            'api_key': token,
+          },
+        );
   }
 
   String get _userId {

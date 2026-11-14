@@ -76,10 +76,7 @@ class MoviePilotConfig {
         _ => null,
       };
       if (seconds == null || seconds <= 0) return null;
-      return DateTime.fromMillisecondsSinceEpoch(
-        seconds * 1000,
-        isUtc: true,
-      );
+      return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
     } on FormatException {
       return null;
     }

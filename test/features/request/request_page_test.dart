@@ -60,10 +60,7 @@ void main() {
   /// The router of the page under test, so navigation can be asserted.
   GoRouter? router;
 
-  Future<void> pumpPage(
-    WidgetTester tester, {
-    bool configured = true,
-  }) async {
+  Future<void> pumpPage(WidgetTester tester, {bool configured = true}) async {
     await tester.binding.setSurfaceSize(const Size(900, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -165,10 +162,7 @@ void main() {
 
     await search(tester, '沙丘');
 
-    expect(
-      find.byKey(const Key('request-search-error')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('request-search-error')), findsOneWidget);
     expect(find.textContaining('无法连接'), findsOneWidget);
   });
 
@@ -191,11 +185,7 @@ void main() {
   testWidgets('a series asks for a season first', (tester) async {
     service.searchResults = <String, List<MpMediaInfo>>{
       'show': <MpMediaInfo>[
-        fakeMedia(
-          mediaId: '1399',
-          type: MpMediaType.series,
-          title: 'Show',
-        ),
+        fakeMedia(mediaId: '1399', type: MpMediaType.series, title: 'Show'),
       ],
     };
     service.seasonsByMediaId = <String, List<MpSeason>>{
@@ -224,9 +214,7 @@ void main() {
     service.searchResults = <String, List<MpMediaInfo>>{
       '沙丘': <MpMediaInfo>[fakeMedia()],
     };
-    service.existingItems = <String, String>{
-      'themoviedb:693134#s0': 'emby-42',
-    };
+    service.existingItems = <String, String>{'themoviedb:693134#s0': 'emby-42'};
     await pumpPage(tester);
     await search(tester, '沙丘');
 
@@ -238,5 +226,4 @@ void main() {
     expect(service.createRequests, isEmpty);
     expect(router!.state.matchedLocation, '/request/mine');
   });
-
 }

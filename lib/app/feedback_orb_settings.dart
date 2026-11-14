@@ -46,15 +46,14 @@ class FeedbackOrbSettings {
 
   @override
   int get hashCode => Object.hash(
-        idleStyle,
-        Object.hashAll(FeedbackWakeGesture.values.where(wakeGestures.contains)),
-      );
+    idleStyle,
+    Object.hashAll(FeedbackWakeGesture.values.where(wakeGestures.contains)),
+  );
 
   static bool _sameGestures(
     Set<FeedbackWakeGesture> a,
     Set<FeedbackWakeGesture> b,
-  ) =>
-      a.length == b.length && a.containsAll(b);
+  ) => a.length == b.length && a.containsAll(b);
 }
 
 /// Raised when the host preferences cannot be persisted.
@@ -73,9 +72,9 @@ class FeedbackOrbSettingsException implements Exception {
 /// second credential backend. Tests override it with an in-memory store.
 final FutureProvider<KeyValueStore?> feedbackOrbStoreProvider =
     FutureProvider<KeyValueStore?>((Ref ref) async {
-  final services = await ref.watch(bootstrapProvider.future);
-  return services.store;
-});
+      final services = await ref.watch(bootstrapProvider.future);
+      return services.store;
+    });
 
 /// Loads and persists the host-managed orb style / wake gestures.
 ///
@@ -85,10 +84,14 @@ final FutureProvider<KeyValueStore?> feedbackOrbStoreProvider =
 class FeedbackOrbSettingsController extends AsyncNotifier<FeedbackOrbSettings> {
   @override
   Future<FeedbackOrbSettings> build() async {
-    final KeyValueStore? store = await ref.watch(feedbackOrbStoreProvider.future);
+    final KeyValueStore? store = await ref.watch(
+      feedbackOrbStoreProvider.future,
+    );
     if (store == null) return FeedbackOrbSettings.defaults;
     return FeedbackOrbSettings(
-      idleStyle: _decodeIdleStyle(await _readQuietly(store, feedbackOrbIdleStorageKey)),
+      idleStyle: _decodeIdleStyle(
+        await _readQuietly(store, feedbackOrbIdleStorageKey),
+      ),
       wakeGestures: _decodeWakeGestures(
         await _readQuietly(store, feedbackWakeGesturesStorageKey),
       ),
@@ -119,14 +122,11 @@ class FeedbackOrbSettingsController extends AsyncNotifier<FeedbackOrbSettings> {
     }
     await _persist(
       feedbackWakeGesturesStorageKey,
-      jsonEncode(
-        <String>[
-          for (final FeedbackWakeGesture gesture in FeedbackWakeGesture.values)
-            if (normalized.contains(gesture)) gesture.id,
-        ],
-      ),
-      (FeedbackOrbSettings latest) =>
-          latest.copyWith(wakeGestures: normalized),
+      jsonEncode(<String>[
+        for (final FeedbackWakeGesture gesture in FeedbackWakeGesture.values)
+          if (normalized.contains(gesture)) gesture.id,
+      ]),
+      (FeedbackOrbSettings latest) => latest.copyWith(wakeGestures: normalized),
     );
   }
 
@@ -152,7 +152,9 @@ class FeedbackOrbSettingsController extends AsyncNotifier<FeedbackOrbSettings> {
     String value,
     FeedbackOrbSettings Function(FeedbackOrbSettings latest) update,
   ) async {
-    final KeyValueStore? store = await ref.read(feedbackOrbStoreProvider.future);
+    final KeyValueStore? store = await ref.read(
+      feedbackOrbStoreProvider.future,
+    );
     if (store == null) {
       throw const FeedbackOrbSettingsException('本机存储不可用，设置未保存');
     }
@@ -199,7 +201,7 @@ Set<FeedbackWakeGesture> _decodeWakeGestures(String? raw) {
 }
 
 final AsyncNotifierProvider<FeedbackOrbSettingsController, FeedbackOrbSettings>
-    feedbackOrbSettingsProvider =
+feedbackOrbSettingsProvider =
     AsyncNotifierProvider<FeedbackOrbSettingsController, FeedbackOrbSettings>(
-  FeedbackOrbSettingsController.new,
-);
+      FeedbackOrbSettingsController.new,
+    );

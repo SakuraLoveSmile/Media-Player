@@ -13,7 +13,21 @@ typedef PosterFetcher = Future<Uint8List> Function(Uri url);
 /// entries are named by a hash of the item identity plus the server host. That
 /// also keeps the cache valid across a token rotation, which changes every URL.
 abstract interface class PosterCache {
-  Future<Uint8List> load(String itemId, Uri url, {String? tag, int? maxWidth});
+  /// [variant] keeps different images of the same item apart (a `Primary`
+  /// poster and a `Backdrop` share item id, tag prefix and width otherwise).
+  Future<Uint8List> load(
+    String itemId,
+    Uri url, {
+    String? tag,
+    int? maxWidth,
+    String variant = '',
+  });
+
+  /// Bytes currently held on disk, for the 通用 → 图片缓存 row (S32).
+  Future<int> sizeBytes();
+
+  /// Drops every cached image; the next view re-downloads what it shows.
+  Future<void> clear();
 }
 
 /// Poster bytes under a dedicated directory, evicted oldest-first past a budget.
@@ -38,8 +52,11 @@ class FilePosterCache implements PosterCache {
     Uri url, {
     String? tag,
     int? maxWidth,
+    String variant = '',
   }) async {
-    final file = File('${directory.path}/${_key(itemId, url, tag, maxWidth)}');
+    final file = File(
+      '${directory.path}/${_key(itemId, url, tag, maxWidth, variant)}',
+    );
     final cached = await _read(file);
     if (cached != null) return cached;
 
@@ -47,6 +64,41 @@ class FilePosterCache implements PosterCache {
     if (bytes.isEmpty) return bytes;
     await _write(file, bytes);
     return bytes;
+  }
+
+  @override
+  Future<int> sizeBytes() async {
+    var total = 0;
+    try {
+      await for (final entity in directory.list()) {
+        if (entity is! File) continue;
+        try {
+          total += (await entity.stat()).size;
+        } on FileSystemException {
+          // Gone while listing: it contributes nothing.
+        }
+      }
+    } on FileSystemException {
+      return 0;
+    }
+    return total;
+  }
+
+  @override
+  Future<void> clear() async {
+    try {
+      await for (final entity in directory.list()) {
+        if (entity is! File) continue;
+        try {
+          await entity.delete();
+        } on FileSystemException {
+          // Already gone; clearing continues.
+        }
+      }
+    } on FileSystemException {
+      // No directory: nothing cached.
+    }
+    _total = 0;
   }
 
   /// A truncated or unreadable entry is a miss, not a failure: the poster must
@@ -107,9 +159,15 @@ class FilePosterCache implements PosterCache {
     _total = total;
   }
 
-  static String _key(String itemId, Uri url, String? tag, int? maxWidth) {
+  static String _key(
+    String itemId,
+    Uri url,
+    String? tag,
+    int? maxWidth,
+    String variant,
+  ) {
     final identity =
-        '$itemId|${tag ?? ''}|${maxWidth ?? ''}|${url.host}:${url.port}';
+        '$itemId|${tag ?? ''}|${maxWidth ?? ''}|$variant|${url.host}:${url.port}';
     return sha256.convert(utf8.encode(identity)).toString();
   }
 }

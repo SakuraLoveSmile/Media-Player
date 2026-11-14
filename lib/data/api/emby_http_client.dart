@@ -58,6 +58,16 @@ class EmbyHttpClient {
     );
   }
 
+  /// Mirror of [postJson] for DELETE; removing a favorite or played mark (S8)
+  /// is a DELETE with no body.
+  Future<Map<String, dynamic>> deleteJson(
+    Uri url, {
+    String? token,
+    Duration? timeout,
+  }) {
+    return _send(method: 'DELETE', url: url, token: token, timeout: timeout);
+  }
+
   /// Raw response body, for poster bytes. A second request path rather than a
   /// flag on [_send]: image endpoints answer with binary, so the JSON accept
   /// headers and [_decode] must not run. Error mapping, redacted logging and
@@ -160,14 +170,17 @@ class EmbyHttpClient {
     return const <String, dynamic>{};
   }
 
-  static Map<String, dynamic> _items(List<dynamic> list) =>
-      <String, dynamic>{'Items': List<Object?>.from(list)};
+  static Map<String, dynamic> _items(List<dynamic> list) => <String, dynamic>{
+    'Items': List<Object?>.from(list),
+  };
 
   EmbyException _map(DioException error) {
     switch (error.type) {
       case DioExceptionType.badCertificate:
-        return EmbyException(AppErrorCode.tlsUntrusted,
-            message: 'bad certificate');
+        return EmbyException(
+          AppErrorCode.tlsUntrusted,
+          message: 'bad certificate',
+        );
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
@@ -177,13 +190,17 @@ class EmbyHttpClient {
           message: error.type.name,
         );
       case DioExceptionType.cancel:
-        return EmbyException(AppErrorCode.networkUnreachable,
-            message: 'cancelled');
+        return EmbyException(
+          AppErrorCode.networkUnreachable,
+          message: 'cancelled',
+        );
       case DioExceptionType.connectionError:
       case DioExceptionType.unknown:
         if (_isTls(error.error)) {
-          return EmbyException(AppErrorCode.tlsUntrusted,
-              message: 'TLS handshake failed');
+          return EmbyException(
+            AppErrorCode.tlsUntrusted,
+            message: 'TLS handshake failed',
+          );
         }
         return EmbyException(
           AppErrorCode.networkUnreachable,

@@ -26,10 +26,7 @@ class FakeProbe implements EndpointProbe {
 void main() {
   late DateTime now;
 
-  EndpointResolver buildResolver(
-    FakeProbe probe, {
-    Duration? timeout,
-  }) {
+  EndpointResolver buildResolver(FakeProbe probe, {Duration? timeout}) {
     return EndpointResolver(
       probe,
       clock: () => now,
@@ -82,7 +79,10 @@ void main() {
 
     expect(resolved.kind, EndpointKind.wan);
     expect(resolved.baseUrl, 'https://emby.example.com');
-    expect(stopwatch.elapsed, greaterThanOrEqualTo(const Duration(milliseconds: 50)));
+    expect(
+      stopwatch.elapsed,
+      greaterThanOrEqualTo(const Duration(milliseconds: 50)),
+    );
   });
 
   test('aggregates a failure for every candidate', () async {
@@ -92,10 +92,12 @@ void main() {
 
     await expectLater(
       buildResolver(probe).resolve(profile),
-      throwsA(isA<EmbyException>()
-          .having((e) => e.code, 'code', AppErrorCode.networkUnreachable)
-          .having((e) => e.failures.length, 'failures', 4)
-          .having((e) => e.failures.first.message, 'message', 'boom')),
+      throwsA(
+        isA<EmbyException>()
+            .having((e) => e.code, 'code', AppErrorCode.networkUnreachable)
+            .having((e) => e.failures.length, 'failures', 4)
+            .having((e) => e.failures.first.message, 'message', 'boom'),
+      ),
     );
   });
 
@@ -128,11 +130,13 @@ void main() {
 
     await expectLater(
       buildResolver(probe).resolve(profile),
-      throwsA(isA<EmbyException>().having(
-        (e) => e.failures.every((f) => f.code == AppErrorCode.serverMismatch),
-        'all mismatched',
-        isTrue,
-      )),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.failures.every((f) => f.code == AppErrorCode.serverMismatch),
+          'all mismatched',
+          isTrue,
+        ),
+      ),
     );
   });
 
@@ -156,11 +160,13 @@ void main() {
     await expectLater(
       buildResolver(probe)
           .resolve(const ServerProfile(serverId: 's1', name: 'Home')),
-      throwsA(isA<EmbyException>().having(
-        (e) => e.message,
-        'message',
-        'no address configured',
-      )),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.message,
+          'message',
+          'no address configured',
+        ),
+      ),
     );
     expect(probe.calls, 0);
   });

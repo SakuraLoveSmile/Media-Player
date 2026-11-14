@@ -13,7 +13,10 @@ class HttpEndpointProbe implements EndpointProbe {
   final EmbyHttpClient _client;
 
   @override
-  Future<String?> fetchServerId(String base, {required Duration timeout}) async {
+  Future<String?> fetchServerId(
+    String base, {
+    required Duration timeout,
+  }) async {
     final json = await _client.getJson(
       Uri.parse('$base/System/Info/Public'),
       timeout: timeout,

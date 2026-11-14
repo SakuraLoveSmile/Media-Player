@@ -151,7 +151,9 @@ class MpSubscribe {
   /// falling back to `total - lack` for older payloads.
   int get effectiveCompletedEpisode {
     if (completedEpisode > 0) return completedEpisode;
-    if (totalEpisode > 0) return (totalEpisode - lackEpisode).clamp(0, totalEpisode);
+    if (totalEpisode > 0) {
+      return (totalEpisode - lackEpisode).clamp(0, totalEpisode);
+    }
     return 0;
   }
 
@@ -194,10 +196,7 @@ class MpSubscribeDraft {
     this.season = 0,
   });
 
-  factory MpSubscribeDraft.fromMedia(
-    MpMediaInfo media, {
-    int season = 0,
-  }) {
+  factory MpSubscribeDraft.fromMedia(MpMediaInfo media, {int season = 0}) {
     final type = media.type;
     if (type == null) {
       throw ArgumentError.value(media, 'media', 'missing movie/series type');

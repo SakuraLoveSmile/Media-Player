@@ -101,22 +101,26 @@ class RequestController extends ChangeNotifier {
     final config = await _configStore.read();
     await _restore();
     if (config == null) {
-      _set(_state.copyWith(
-        configured: false,
-        loaded: true,
-        polling: false,
-        configInvalid: false,
-        unauthorizedToken: false,
-      ));
+      _set(
+        _state.copyWith(
+          configured: false,
+          loaded: true,
+          polling: false,
+          configInvalid: false,
+          unauthorizedToken: false,
+        ),
+      );
       return;
     }
 
-    _set(_state.copyWith(
-      configured: true,
-      loaded: true,
-      configInvalid: false,
-      unauthorizedToken: false,
-    ));
+    _set(
+      _state.copyWith(
+        configured: true,
+        loaded: true,
+        configInvalid: false,
+        unauthorizedToken: false,
+      ),
+    );
     _start();
     await _enqueue(_pollOnceGuarded);
   }
@@ -262,10 +266,7 @@ class RequestController extends ChangeNotifier {
       _handlePollFailure(error);
       return;
     } catch (_) {
-      _set(_state.copyWith(
-        polling: false,
-        pollError: '进度同步失败，正在重试',
-      ));
+      _set(_state.copyWith(polling: false, pollError: '进度同步失败，正在重试'));
       return;
     }
 
@@ -319,11 +320,7 @@ class RequestController extends ChangeNotifier {
     // _state.requests may have been changed by an action while the round was in
     // flight, and the events must describe the transition, not the race.
     final events = requestNotificationsFor(before: requests, after: kept);
-    _set(_state.copyWith(
-      requests: kept,
-      polling: false,
-      pollError: null,
-    ));
+    _set(_state.copyWith(requests: kept, polling: false, pollError: null));
     await _persist(kept);
     for (final event in events) {
       _notify(event);
@@ -383,42 +380,50 @@ class RequestController extends ChangeNotifier {
   void _handlePollFailure(MoviePilotException error) {
     switch (error.code) {
       case AppErrorCode.notConfigured:
-        _set(_state.copyWith(
-          configured: false,
-          polling: false,
-          configInvalid: true,
-          unauthorizedToken: false,
-        ));
+        _set(
+          _state.copyWith(
+            configured: false,
+            polling: false,
+            configInvalid: true,
+            unauthorizedToken: false,
+          ),
+        );
         unawaited(_ticks?.cancel().then((_) => _ticks = null));
         _started = false;
       case AppErrorCode.unauthorized:
         // The session will never work again without a new login: stop the
         // heartbeat and send the user to the settings dialog.
-        _set(_state.copyWith(
-          polling: false,
-          configInvalid: true,
-          unauthorizedToken: true,
-          pollError: 'MoviePilot 登录已失效，请重新登录',
-        ));
+        _set(
+          _state.copyWith(
+            polling: false,
+            configInvalid: true,
+            unauthorizedToken: true,
+            pollError: 'MoviePilot 登录已失效，请重新登录',
+          ),
+        );
         _stopBeat();
       case AppErrorCode.forbidden:
         // The account signed in, but the instance will not hand over the
         // download and transfer data the progress needs. Retrying cannot grant
         // a role, so stop and say what is missing.
-        _set(_state.copyWith(
-          polling: false,
-          unauthorizedToken: false,
-          pollError: 'MoviePilot 账号权限不足，无法读取下载与整理进度',
-        ));
+        _set(
+          _state.copyWith(
+            polling: false,
+            unauthorizedToken: false,
+            pollError: 'MoviePilot 账号权限不足，无法读取下载与整理进度',
+          ),
+        );
         _stopBeat();
       default:
         // Everything else is transient: keep the last snapshot and retry.
-        _set(_state.copyWith(
-          polling: false,
-          pollError: error.code == AppErrorCode.networkUnreachable
-              ? '无法连接 MoviePilot，请检查网络'
-              : '进度同步失败，正在重试',
-        ));
+        _set(
+          _state.copyWith(
+            polling: false,
+            pollError: error.code == AppErrorCode.networkUnreachable
+                ? '无法连接 MoviePilot，请检查网络'
+                : '进度同步失败，正在重试',
+          ),
+        );
     }
   }
 
@@ -431,40 +436,48 @@ class RequestController extends ChangeNotifier {
     if (query.isEmpty || _disposed) return;
 
     final generation = _state.searchGeneration + 1;
-    _set(_state.copyWith(
-      query: query,
-      searching: true,
-      searchError: null,
-      searchResults: const <MpMediaInfo>[],
-      searchGeneration: generation,
-    ));
+    _set(
+      _state.copyWith(
+        query: query,
+        searching: true,
+        searchError: null,
+        searchResults: const <MpMediaInfo>[],
+        searchGeneration: generation,
+      ),
+    );
 
     try {
       final results = await _service.search(query);
       if (_disposed || _state.searchGeneration != generation) return;
-      _set(_state.copyWith(
-        searching: false,
-        searchResults: results.take(_searchPageSize).toList(growable: false),
-      ));
+      _set(
+        _state.copyWith(
+          searching: false,
+          searchResults: results.take(_searchPageSize).toList(growable: false),
+        ),
+      );
     } on MoviePilotException catch (error) {
       if (_disposed || _state.searchGeneration != generation) return;
       if (error.code == AppErrorCode.notConfigured ||
           error.code == AppErrorCode.unauthorized) {
-        _set(_state.copyWith(
-          searching: false,
-          configured: error.code == AppErrorCode.notConfigured
-              ? false
-              : _state.configured,
-          configInvalid: true,
-          unauthorizedToken: error.code == AppErrorCode.unauthorized,
-          searchError: requestErrorMessage(error.code),
-        ));
+        _set(
+          _state.copyWith(
+            searching: false,
+            configured: error.code == AppErrorCode.notConfigured
+                ? false
+                : _state.configured,
+            configInvalid: true,
+            unauthorizedToken: error.code == AppErrorCode.unauthorized,
+            searchError: requestErrorMessage(error.code),
+          ),
+        );
         return;
       }
-      _set(_state.copyWith(
-        searching: false,
-        searchError: requestErrorMessage(error.code),
-      ));
+      _set(
+        _state.copyWith(
+          searching: false,
+          searchError: requestErrorMessage(error.code),
+        ),
+      );
     } catch (_) {
       if (_disposed || _state.searchGeneration != generation) return;
       _set(_state.copyWith(searching: false, searchError: '搜索失败，请稍后重试'));
@@ -513,7 +526,11 @@ class RequestController extends ChangeNotifier {
       );
       if (_disposed) return null;
       if (alreadyThere != null && alreadyThere.isNotEmpty) {
-        final record = _newRequest(media, season: season, embyItemId: alreadyThere);
+        final record = _newRequest(
+          media,
+          season: season,
+          embyItemId: alreadyThere,
+        );
         final updated = record.copyWith(
           stage: RequestStage.inLibrary,
           message: '媒体库已有该片，可直接播放',
@@ -561,17 +578,19 @@ class RequestController extends ChangeNotifier {
     final id = request.subscribeId;
     if (id == null || _disposed) return;
 
-    _set(_state.copyWith(
-      busyRequestIds: Set<String>.of(_state.busyRequestIds)..add(request.id),
-    ));
+    _set(
+      _state.copyWith(
+        busyRequestIds: Set<String>.of(_state.busyRequestIds)..add(request.id),
+      ),
+    );
     try {
       await _service.searchNow(id);
       if (_disposed) return;
-      _set(_state.copyWith(
-        requests: _replace(
-          request.copyWith(message: '已请求 MoviePilot 立即搜索'),
+      _set(
+        _state.copyWith(
+          requests: _replace(request.copyWith(message: '已请求 MoviePilot 立即搜索')),
         ),
-      ));
+      );
       unawaited(pollRound());
     } on MoviePilotException catch (error) {
       _warn(request.id, requestErrorMessage(error.code));
@@ -593,9 +612,11 @@ class RequestController extends ChangeNotifier {
   /// one, then removes the local record (plan S8 `cancel`).
   Future<void> cancel(MediaRequest request) async {
     if (_disposed) return;
-    _set(_state.copyWith(
-      busyRequestIds: Set<String>.of(_state.busyRequestIds)..add(request.id),
-    ));
+    _set(
+      _state.copyWith(
+        busyRequestIds: Set<String>.of(_state.busyRequestIds)..add(request.id),
+      ),
+    );
 
     try {
       final id = request.subscribeId;
@@ -649,12 +670,14 @@ class RequestController extends ChangeNotifier {
       // stop the poll on the next round with the same message, just later.
       final verified = await _service.testConnection(config);
       await _configStore.write(verified);
-      _set(_state.copyWith(
-        configured: true,
-        configInvalid: false,
-        unauthorizedToken: false,
-        pollError: null,
-      ));
+      _set(
+        _state.copyWith(
+          configured: true,
+          configInvalid: false,
+          unauthorizedToken: false,
+          pollError: null,
+        ),
+      );
       await reconnect();
       return MoviePilotConnectionResult.success(verified);
     } on MoviePilotException catch (error) {
@@ -671,20 +694,18 @@ class RequestController extends ChangeNotifier {
     await _configStore.delete();
     _stopBeat();
     if (_disposed) return;
-    _set(_state.copyWith(
-      configured: false,
-      configInvalid: true,
-      unauthorizedToken: false,
-      polling: false,
-      pollError: null,
-    ));
+    _set(
+      _state.copyWith(
+        configured: false,
+        configInvalid: true,
+        unauthorizedToken: false,
+        polling: false,
+        pollError: null,
+      ),
+    );
   }
 
-  MediaRequest? _findExisting(
-    MpMediaRef ref,
-    MpMediaType? type,
-    int season,
-  ) {
+  MediaRequest? _findExisting(MpMediaRef ref, MpMediaType? type, int season) {
     for (final request in _state.requests) {
       if (request.season != season) continue;
       if (type != null && request.type != type) continue;
@@ -765,15 +786,17 @@ class RequestController extends ChangeNotifier {
 
   void _warn(String requestId, String message) {
     if (_disposed) return;
-    _set(_state.copyWith(
-      requests: <MediaRequest>[
-        for (final request in _state.requests)
-          if (request.id == requestId)
-            request.copyWith(message: message)
-          else
-            request,
-      ],
-    ));
+    _set(
+      _state.copyWith(
+        requests: <MediaRequest>[
+          for (final request in _state.requests)
+            if (request.id == requestId)
+              request.copyWith(message: message)
+            else
+              request,
+        ],
+      ),
+    );
   }
 
   /// Serializes work so a heartbeat tick cannot interleave with an action.

@@ -14,17 +14,22 @@
     <!-- Cleartext is allowed app-wide because Network Security Config cannot
          express RFC1918 ranges. WAN endpoints must stay HTTPS; see README
          "约束". -->
+    <!-- S65: Yamby's 预测性返回动画. Enabling the callback lets Android 14+
+         preview the previous route during the back gesture; Flutter maps it to
+         the same PopScope handlers the app already uses. -->
     <application
         android:label="Media Player"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
+            android:supportsPictureInPicture="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">

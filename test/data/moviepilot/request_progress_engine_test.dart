@@ -157,12 +157,7 @@ RequestProgress derive(
   PollSnapshot snapshot, {
   String? embyItemId,
 }) {
-  return engine.derive(
-    record,
-    snapshot,
-    now: now,
-    embyItemId: embyItemId,
-  );
+  return engine.derive(record, snapshot, now: now, embyItemId: embyItemId);
 }
 
 void main() {
@@ -252,28 +247,27 @@ void main() {
       expect(progress.eta, '10m');
     });
 
-    test('a completed download still reports downloading until it organizes',
-        () {
+    test(
+      'a completed download still reports downloading until it organizes',
+      () {
+        final progress = derive(
+          request(),
+          PollSnapshot(
+            subscribes: <MpSubscribe>[active()],
+            downloads: <MpDownloaderTorrent>[torrent(progress: 1)],
+          ),
+        );
+
+        expect(progress.stage, RequestStage.downloading);
+        expect(progress.progress, 1);
+        expect(progress.message, '下载完成，等待整理');
+      },
+    );
+
+    test('submitted downloads that are not listed yet are downloading', () {
       final progress = derive(
         request(),
-        PollSnapshot(
-          subscribes: <MpSubscribe>[active()],
-          downloads: <MpDownloaderTorrent>[torrent(progress: 1)],
-        ),
-      );
-
-      expect(progress.stage, RequestStage.downloading);
-      expect(progress.progress, 1);
-      expect(progress.message, '下载完成，等待整理');
-    });
-
-    test('submitted downloads that are not listed yet are downloading',
-        () {
-      final progress = derive(
-        request(),
-        PollSnapshot(
-          subscribes: <MpSubscribe>[active(submittedCount: 2)],
-        ),
+        PollSnapshot(subscribes: <MpSubscribe>[active(submittedCount: 2)]),
       );
 
       expect(progress.stage, RequestStage.downloading);
@@ -357,9 +351,7 @@ void main() {
     test('a round that errored is noResource with a retry hint', () {
       final progress = derive(
         request(),
-        PollSnapshot(
-          subscribes: <MpSubscribe>[active(error: '没有可用的站点')],
-        ),
+        PollSnapshot(subscribes: <MpSubscribe>[active(error: '没有可用的站点')]),
       );
 
       expect(progress.stage, RequestStage.noResource);
@@ -394,12 +386,30 @@ void main() {
             active(type: MpMediaType.series, season: 2, mediaId: '1399'),
           ],
           downloads: <MpDownloaderTorrent>[
-            torrent(hash: 'a', type: MpMediaType.series, mediaId: '1399',
-                mediaSeason: 2, seasonEpisode: 'S02E01', progress: 1),
-            torrent(hash: 'b', type: MpMediaType.series, mediaId: '1399',
-                mediaSeason: 2, seasonEpisode: 'S02E02', progress: 1),
-            torrent(hash: 'c', type: MpMediaType.series, mediaId: '1399',
-                mediaSeason: 2, seasonEpisode: 'S02E03', progress: 0.1),
+            torrent(
+              hash: 'a',
+              type: MpMediaType.series,
+              mediaId: '1399',
+              mediaSeason: 2,
+              seasonEpisode: 'S02E01',
+              progress: 1,
+            ),
+            torrent(
+              hash: 'b',
+              type: MpMediaType.series,
+              mediaId: '1399',
+              mediaSeason: 2,
+              seasonEpisode: 'S02E02',
+              progress: 1,
+            ),
+            torrent(
+              hash: 'c',
+              type: MpMediaType.series,
+              mediaId: '1399',
+              mediaSeason: 2,
+              seasonEpisode: 'S02E03',
+              progress: 0.1,
+            ),
           ],
         ),
       );
@@ -446,32 +456,34 @@ void main() {
 
   group('real v3 execution status', () {
     // Values observed on a live MoviePilot 3.2.5 instance.
-    test('a finished round that submitted nothing is noResource, not submitted',
-        () {
-      final subscribe = active();
-      final withCompleted = MpSubscribe(
-        id: subscribe.id,
-        ref: subscribe.ref,
-        type: subscribe.type,
-        name: subscribe.name,
-        year: subscribe.year,
-        state: 'R',
-        executionStatus: const MpExecutionStatus(
-          state: 'completed',
-          phase: 'completed',
-          submittedCount: 0,
-        ),
-      );
+    test(
+      'a finished round that submitted nothing is noResource, not submitted',
+      () {
+        final subscribe = active();
+        final withCompleted = MpSubscribe(
+          id: subscribe.id,
+          ref: subscribe.ref,
+          type: subscribe.type,
+          name: subscribe.name,
+          year: subscribe.year,
+          state: 'R',
+          executionStatus: const MpExecutionStatus(
+            state: 'completed',
+            phase: 'completed',
+            submittedCount: 0,
+          ),
+        );
 
-      final progress = derive(
-        request(),
-        PollSnapshot(subscribes: <MpSubscribe>[withCompleted]),
-      );
+        final progress = derive(
+          request(),
+          PollSnapshot(subscribes: <MpSubscribe>[withCompleted]),
+        );
 
-      expect(progress.stage, RequestStage.noResource);
-      expect(progress.message, contains('没有找到资源'));
-      expect(progress.canSearchNow, isTrue);
-    });
+        expect(progress.stage, RequestStage.noResource);
+        expect(progress.message, contains('没有找到资源'));
+        expect(progress.canSearchNow, isTrue);
+      },
+    );
 
     test('a running round in the submitting phase says so', () {
       final subscribe = active();
@@ -546,10 +558,7 @@ void main() {
     test('adding a matching download moves organizing back to downloading', () {
       final record = request();
       final queue = <MpTransferJob>[job()];
-      final organizing = derive(
-        record,
-        PollSnapshot(transferQueue: queue),
-      );
+      final organizing = derive(record, PollSnapshot(transferQueue: queue));
       final downloading = derive(
         record,
         PollSnapshot(
@@ -647,15 +656,11 @@ void main() {
     test('progress reaching 100% changes the message, not the stage', () {
       final halfway = derive(
         request(),
-        PollSnapshot(
-          downloads: <MpDownloaderTorrent>[torrent(progress: 0.5)],
-        ),
+        PollSnapshot(downloads: <MpDownloaderTorrent>[torrent(progress: 0.5)]),
       );
       final complete = derive(
         request(),
-        PollSnapshot(
-          downloads: <MpDownloaderTorrent>[torrent(progress: 1)],
-        ),
+        PollSnapshot(downloads: <MpDownloaderTorrent>[torrent(progress: 1)]),
       );
 
       expect(halfway.message, '正在下载');
@@ -666,9 +671,7 @@ void main() {
     test('an Emby id appearing moves anything to inLibrary', () {
       final before = derive(
         request(),
-        PollSnapshot(
-          subscribes: <MpSubscribe>[active(submittedCount: 1)],
-        ),
+        PollSnapshot(subscribes: <MpSubscribe>[active(submittedCount: 1)]),
       );
       final after = derive(
         request(),

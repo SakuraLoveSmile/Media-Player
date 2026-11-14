@@ -42,14 +42,12 @@ LoginFormResult validateLoginForm({
     return const LoginFormInvalid('请至少填写一个服务器地址');
   }
 
-  final normalizedLan =
-      rawLan.isEmpty ? null : UrlNormalizer.normalize(rawLan);
+  final normalizedLan = rawLan.isEmpty ? null : UrlNormalizer.normalize(rawLan);
   if (rawLan.isNotEmpty && normalizedLan == null) {
     return const LoginFormInvalid('局域网地址格式不正确，需要 http:// 或 https://');
   }
 
-  final normalizedWan =
-      rawWan.isEmpty ? null : UrlNormalizer.normalize(rawWan);
+  final normalizedWan = rawWan.isEmpty ? null : UrlNormalizer.normalize(rawWan);
   if (rawWan.isNotEmpty && normalizedWan == null) {
     return const LoginFormInvalid('公网地址格式不正确，需要 https://');
   }

@@ -55,7 +55,11 @@ void main() {
     test('a series names the season in the body', () {
       final events = requestNotificationsFor(
         before: <MediaRequest>[
-          _request(type: MpMediaType.series, season: 2, stage: RequestStage.organizing),
+          _request(
+            type: MpMediaType.series,
+            season: 2,
+            stage: RequestStage.organizing,
+          ),
         ],
         after: <MediaRequest>[
           _request(
@@ -71,18 +75,21 @@ void main() {
       expect(events.single.isSeries, isTrue);
     });
 
-    test('a request already in the library when the app starts is not news', () {
-      final events = requestNotificationsFor(
-        before: <MediaRequest>[
-          _request(stage: RequestStage.inLibrary, embyItemId: 'emby-9'),
-        ],
-        after: <MediaRequest>[
-          _request(stage: RequestStage.inLibrary, embyItemId: 'emby-9'),
-        ],
-      );
+    test(
+      'a request already in the library when the app starts is not news',
+      () {
+        final events = requestNotificationsFor(
+          before: <MediaRequest>[
+            _request(stage: RequestStage.inLibrary, embyItemId: 'emby-9'),
+          ],
+          after: <MediaRequest>[
+            _request(stage: RequestStage.inLibrary, embyItemId: 'emby-9'),
+          ],
+        );
 
-      expect(events, isEmpty);
-    });
+        expect(events, isEmpty);
+      },
+    );
 
     test('a newly created request announces nothing', () {
       // The user is looking at the page that just created it.
@@ -127,20 +134,23 @@ void main() {
       expect(events, isEmpty);
     });
 
-    test('several requests finishing in one round each get an event, in order', () {
-      final events = requestNotificationsFor(
-        before: <MediaRequest>[
-          _request(id: 'a', stage: RequestStage.organizing),
-          _request(id: 'b', stage: RequestStage.downloading),
-        ],
-        after: <MediaRequest>[
-          _request(id: 'a', stage: RequestStage.inLibrary, embyItemId: 'e-a'),
-          _request(id: 'b', stage: RequestStage.inLibrary, embyItemId: 'e-b'),
-        ],
-      );
+    test(
+      'several requests finishing in one round each get an event, in order',
+      () {
+        final events = requestNotificationsFor(
+          before: <MediaRequest>[
+            _request(id: 'a', stage: RequestStage.organizing),
+            _request(id: 'b', stage: RequestStage.downloading),
+          ],
+          after: <MediaRequest>[
+            _request(id: 'a', stage: RequestStage.inLibrary, embyItemId: 'e-a'),
+            _request(id: 'b', stage: RequestStage.inLibrary, embyItemId: 'e-b'),
+          ],
+        );
 
-      expect(events.map((e) => e.requestId), <String>['a', 'b']);
-    });
+        expect(events.map((e) => e.requestId), <String>['a', 'b']);
+      },
+    );
 
     test('a record that disappeared mid-round produces no event', () {
       final events = requestNotificationsFor(

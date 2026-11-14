@@ -9,11 +9,9 @@ import '../../core/config/app_config.dart';
 import '../../core/errors/app_error.dart';
 import '../../core/errors/emby_exception.dart';
 import '../../core/router/app_routes.dart';
-import '../../ui/glass/glass_controls.dart';
-import '../../ui/glass/glass_shell.dart';
-import '../../ui/glass/glass_surface.dart';
-import '../../ui/glass/glass_theme.dart';
-import '../../ui/glass/glass_tokens.dart';
+import '../../ui/app_controls.dart';
+import '../../ui/app_page.dart';
+import '../../ui/theme/app_tokens.dart';
 
 /// Session gate: restore the stored session, then route to library or login
 /// (contract §10.5).
@@ -40,7 +38,7 @@ class _StartupPageState extends ConsumerState<StartupPage> {
       final services = await ref.read(bootstrapProvider.future);
       final session = await services.auth.restore();
       if (!mounted) return;
-      context.go(session == null ? AppRoutes.login : AppRoutes.library);
+      context.go(session == null ? AppRoutes.login : AppRoutes.home);
     } on EmbyException catch (error) {
       if (!mounted) return;
       setState(() => _error = _messageFor(error.code));
@@ -61,18 +59,17 @@ class _StartupPageState extends ConsumerState<StartupPage> {
   @override
   Widget build(BuildContext context) {
     final String? error = _error;
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: palette.groupedBackground,
-      body: GlassCanvas(
+      backgroundColor: palette.surface,
+      body: AppCanvas(
         child: Center(
-          child: GlassSurface(
+          child: AppCard(
             radius: 34,
-            blur: 32,
             padding: const EdgeInsets.symmetric(
-              horizontal: GlassSpacing.xxxl,
-              vertical: GlassSpacing.xxl,
+              horizontal: AppSpacing.xxxl,
+              vertical: AppSpacing.xxl,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -86,8 +83,8 @@ class _StartupPageState extends ConsumerState<StartupPage> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: <Color>[
-                        palette.tint.withValues(alpha: 0.95),
-                        palette.indigo.withValues(alpha: 0.9),
+                        palette.primary.withValues(alpha: 0.95),
+                        palette.secondary.withValues(alpha: 0.9),
                       ],
                     ),
                   ),
@@ -97,12 +94,13 @@ class _StartupPageState extends ConsumerState<StartupPage> {
                     size: 30,
                   ),
                 ),
-                const SizedBox(height: GlassSpacing.lg),
+                const SizedBox(height: AppSpacing.lg),
                 Text(
                   AppConfig.appName,
-                  style: GlassType.title3.copyWith(color: palette.label),
+                  style: Theme.of(context).textTheme.titleLarge!
+                      .copyWith(color: palette.onSurface),
                 ),
-                const SizedBox(height: GlassSpacing.xl),
+                const SizedBox(height: AppSpacing.xl),
                 if (error == null)
                   const SizedBox(
                     width: 22,
@@ -113,14 +111,13 @@ class _StartupPageState extends ConsumerState<StartupPage> {
                   Text(
                     error,
                     textAlign: TextAlign.center,
-                    style: GlassType.footnote.copyWith(
-                      color: palette.secondaryLabel,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: palette.onSurfaceVariant),
                   ),
-                  const SizedBox(height: GlassSpacing.lg),
-                  GlassButton(
+                  const SizedBox(height: AppSpacing.lg),
+                  AppButton(
                     label: '重试',
-                    variant: GlassButtonVariant.tinted,
+                    variant: AppButtonVariant.tinted,
                     onPressed: _boot,
                   ),
                 ],

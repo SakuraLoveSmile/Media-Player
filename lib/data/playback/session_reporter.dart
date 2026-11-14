@@ -50,11 +50,11 @@ class SessionReporter implements PlaybackReporter {
     Future<void> Function(Duration)? delay,
     LogSink? logSink,
     bool trace = _trace,
-  })  : _heartbeat =
-            heartbeat ?? Stream<void>.periodic(const Duration(seconds: 10)),
-        _delay = delay ?? Future<void>.delayed,
-        _log = logSink ?? _discard,
-        _traceEnabled = trace;
+  }) : _heartbeat =
+           heartbeat ?? Stream<void>.periodic(const Duration(seconds: 10)),
+       _delay = delay ?? Future<void>.delayed,
+       _log = logSink ?? _discard,
+       _traceEnabled = trace;
 
   static const Duration _retryBackoff = Duration(seconds: 2);
   static const String _playingPath = '/Sessions/Playing';
@@ -92,15 +92,17 @@ class SessionReporter implements PlaybackReporter {
     _endpoint = _session.endpoint;
     _paused = false;
 
-    final first =
-        _enqueue(() => _report(plan, _playingPath, initialPosition, paused: false));
+    final first = _enqueue(
+      () => _report(plan, _playingPath, initialPosition, paused: false),
+    );
     unawaited(_ticks?.cancel());
     _ticks = _heartbeat.listen((_) {
       if (_stopped) return;
       final at = position();
       final paused = _paused;
       unawaited(
-          _enqueue(() => _report(plan, _progressPath, at, paused: paused)));
+        _enqueue(() => _report(plan, _progressPath, at, paused: paused)),
+      );
     });
     return first;
   }
@@ -114,7 +116,9 @@ class SessionReporter implements PlaybackReporter {
     if (_stopped) return Future<void>.value();
     // Update before enqueueing so subsequent heartbeats read the newest state.
     _paused = paused;
-    return _enqueue(() => _report(plan, _progressPath, position, paused: paused));
+    return _enqueue(
+      () => _report(plan, _progressPath, position, paused: paused),
+    );
   }
 
   @override
@@ -169,8 +173,9 @@ class SessionReporter implements PlaybackReporter {
   /// (contract §10.6).
   void _warn(String path, String reason) {
     final endpoint = _endpoint;
-    final target =
-        endpoint == null ? path : redactUrl(endpoint.resolve(path).toString());
+    final target = endpoint == null
+        ? path
+        : redactUrl(endpoint.resolve(path).toString());
     _log('WARN POST $target failed: $reason');
   }
 
@@ -206,8 +211,10 @@ class SessionReporter implements PlaybackReporter {
     if (!_traceEnabled) return;
     final itemId = plan.itemId;
     final prefix = itemId.length <= 6 ? itemId : itemId.substring(0, 6);
-    debugPrint('[report] $path item=$prefix posTicks=${_positionTicks(position)} '
-        'paused=$paused playMethod=${_playMethod(plan)} '
-        'playSessionId=${plan.playSessionId.length}');
+    debugPrint(
+      '[report] $path item=$prefix posTicks=${_positionTicks(position)} '
+      'paused=$paused playMethod=${_playMethod(plan)} '
+      'playSessionId=${plan.playSessionId.length}',
+    );
   }
 }

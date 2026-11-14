@@ -13,8 +13,9 @@ const String defaultReleaseOwner = 'SakuraLoveSmile';
 const String defaultReleaseRepo = 'Media-Player';
 
 final RegExp _versionPattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)$');
-final RegExp _previewTagPattern =
-    RegExp(r'^(\d+)\.(\d+)\.(\d+)-(?:pilot|preview|beta|rc|alpha)\.(\d+)$');
+final RegExp _previewTagPattern = RegExp(
+  r'^(\d+)\.(\d+)\.(\d+)-(?:pilot|preview|beta|rc|alpha)\.(\d+)$',
+);
 final RegExp _tagPrefix = RegExp(r'^[vV]');
 
 /// Update channel the user opted into.
@@ -90,6 +91,7 @@ bool isNewerThanInstalled(
   final int? candidate = release.buildNumber;
   return candidate != null && candidate > buildNumber;
 }
+
 final RegExp _sha256Pattern = RegExp(r'^[0-9a-fA-F]{64}$');
 final RegExp _leadingZeros = RegExp(r'^0+(?=\d)');
 

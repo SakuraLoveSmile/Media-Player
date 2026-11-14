@@ -3,15 +3,15 @@ import 'dart:async';
 import 'package:feedback_widget/feedback_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../app/moviepilot_providers.dart';
 import '../../core/errors/app_error.dart';
 import '../../core/errors/moviepilot_exception.dart';
 import '../../core/network/url_normalizer.dart';
 import '../../data/moviepilot/models/moviepilot_config.dart';
-import '../../ui/glass/glass_controls.dart';
-import '../../ui/glass/glass_shell.dart';
-import '../../ui/glass/glass_theme.dart';
-import '../../ui/glass/glass_tokens.dart';
+import '../../ui/app_controls.dart';
+import '../../ui/app_dialog.dart';
+import '../../ui/theme/app_tokens.dart';
 
 /// MoviePilot sign-in form (求片 plan S10, account login in S16).
 ///
@@ -63,13 +63,12 @@ class _MoviePilotConfigDialogState
 
   @override
   Widget build(BuildContext context) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
 
-    // `showGlassDialog` inserts a transparent Material for this, but the dialog
-    // may also be opened by a route that does not, so it carries its own.
+    // Keep a Material ancestor for routes that present this widget directly.
     return Material(
       type: MaterialType.transparency,
-      child: GlassDialog(
+      child: AppDialog(
         title: 'MoviePilot 登录',
         message: '使用 MoviePilot 账号登录，用于搜索片源和跟踪求片进度。密码只用于换取登录令牌，不会保存。',
         maxWidth: 380,
@@ -91,7 +90,7 @@ class _MoviePilotConfigDialogState
                 ),
               ),
             ),
-            const SizedBox(height: GlassSpacing.md),
+            const SizedBox(height: AppSpacing.md),
             FeedbackCaptureMask(
               child: TextField(
                 key: const Key('moviepilot-username'),
@@ -105,7 +104,7 @@ class _MoviePilotConfigDialogState
                 ),
               ),
             ),
-            const SizedBox(height: GlassSpacing.md),
+            const SizedBox(height: AppSpacing.md),
             FeedbackCaptureMask(
               child: TextField(
                 key: const Key('moviepilot-password'),
@@ -133,7 +132,7 @@ class _MoviePilotConfigDialogState
               ),
             ),
             if (_mfaRequired) ...<Widget>[
-              const SizedBox(height: GlassSpacing.md),
+              const SizedBox(height: AppSpacing.md),
               FeedbackCaptureMask(
                 child: TextField(
                   key: const Key('moviepilot-otp'),
@@ -152,41 +151,43 @@ class _MoviePilotConfigDialogState
               ),
             ],
             if (_error != null) ...<Widget>[
-              const SizedBox(height: GlassSpacing.md),
+              const SizedBox(height: AppSpacing.md),
               Text(
                 _error!,
                 key: const Key('moviepilot-error'),
-                style: GlassType.footnote.copyWith(color: palette.red),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: palette.error),
               ),
             ],
             if (_notice != null) ...<Widget>[
-              const SizedBox(height: GlassSpacing.md),
+              const SizedBox(height: AppSpacing.md),
               Text(
                 _notice!,
                 key: const Key('moviepilot-notice'),
-                style: GlassType.footnote.copyWith(color: palette.green),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: Colors.green),
               ),
             ],
           ],
         ),
         actions: <Widget>[
-          GlassButton(
+          AppButton(
             key: const Key('moviepilot-save'),
             label: _mfaRequired ? '验证并登录' : '登录并保存',
             loading: _saving,
             onPressed: _saving ? null : () => unawaited(_save()),
           ),
-          GlassButton(
+          AppButton(
             key: const Key('moviepilot-cancel'),
             label: '取消',
-            variant: GlassButtonVariant.plain,
+            variant: AppButtonVariant.plain,
             onPressed: _saving ? null : () => Navigator.of(context).pop(),
           ),
           if (widget.initial != null)
-            GlassButton(
+            AppButton(
               key: const Key('moviepilot-clear'),
               label: '清除连接',
-              variant: GlassButtonVariant.plain,
+              variant: AppButtonVariant.plain,
               onPressed: _saving ? null : () => unawaited(_clear()),
             ),
         ],
@@ -313,7 +314,7 @@ Future<void> showMoviePilotConfigDialog(
 ) async {
   final config = await ref.read(moviePilotSettingsProvider.future);
   if (!context.mounted) return;
-  await showGlassDialog<MoviePilotConfig>(
+  await showAppDialog<MoviePilotConfig>(
     context: context,
     builder: (_) => MoviePilotConfigDialog(initial: config),
   );
@@ -328,13 +329,13 @@ class MoviePilotSettingsTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
     final config = ref.watch(moviePilotConfigProvider).value;
     final connecting = ref.watch(moviePilotSettingsProvider).isLoading;
 
     return ListTile(
       key: const Key('settings-moviepilot'),
-      leading: Icon(Icons.cloud_outlined, color: palette.tint),
+      leading: Icon(Icons.cloud_outlined, color: palette.primary),
       title: const Text('MoviePilot 连接'),
       subtitle: Text(
         connecting
@@ -345,11 +346,7 @@ class MoviePilotSettingsTile extends ConsumerWidget {
             ? '登录已过期：请重新登录 ${config.username}'
             : '已登录 ${config.username}（${config.baseUrl}）',
       ),
-      trailing: Icon(
-        Icons.chevron_right,
-        color: palette.tertiaryLabel,
-        size: 20,
-      ),
+      trailing: Icon(Icons.chevron_right, color: palette.outline, size: 20),
       onTap: () => unawaited(showMoviePilotConfigDialog(context, ref)),
     );
   }

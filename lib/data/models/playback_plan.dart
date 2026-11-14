@@ -1,4 +1,6 @@
 import '../../core/network/endpoint_kind.dart';
+import '../api/emby_headers.dart';
+import 'media_stream.dart';
 
 /// How the server delivers the item (contract §3.4).
 enum PlaybackMode { direct, transcode }
@@ -22,6 +24,8 @@ class PlaybackPlan {
     this.videoDirect,
     this.audioTranscoded = false,
     this.transcodingReasons = const <String>[],
+    this.audios = const <MediaStream>[],
+    this.subtitles = const <MediaStream>[],
   });
 
   final String itemId;
@@ -51,6 +55,26 @@ class PlaybackPlan {
   /// unverified (contract §3.4).
   final List<String> transcodingReasons;
 
+  /// Audio streams of the negotiated source, in server order (S5). The
+  /// in-playback track panel and language auto-match follow this list.
+  final List<MediaStream> audios;
+
+  /// Subtitle streams of the negotiated source. PlaybackInfo probes lazily
+  /// probed sources (STRM), so its stream indices — not the detail response's
+  /// — are the ones the subtitle delivery URLs accept.
+  final List<MediaStream> subtitles;
+
+  /// [url] with `api_key` guaranteed in the query (S19/S38): DLNA renderers
+  /// fetch the URL themselves and cannot send the auth header.
+  String get castUrl {
+    final Uri uri = Uri.parse(url);
+    if (uri.queryParameters.containsKey('api_key')) return url;
+    final String? token = headers[EmbyHeaders.token];
+    if (token == null || token.isEmpty) return url;
+    final String separator = uri.hasQuery ? '&' : '?';
+    return '$url$separator api_key=${Uri.encodeQueryComponent(token)}';
+  }
+
   PlaybackPlan copyWith({
     String? itemId,
     PlaybackMode? mode,
@@ -63,6 +87,8 @@ class PlaybackPlan {
     bool? videoDirect,
     bool? audioTranscoded,
     List<String>? transcodingReasons,
+    List<MediaStream>? audios,
+    List<MediaStream>? subtitles,
   }) {
     return PlaybackPlan(
       itemId: itemId ?? this.itemId,
@@ -76,12 +102,15 @@ class PlaybackPlan {
       videoDirect: videoDirect ?? this.videoDirect,
       audioTranscoded: audioTranscoded ?? this.audioTranscoded,
       transcodingReasons: transcodingReasons ?? this.transcodingReasons,
+      audios: audios ?? this.audios,
+      subtitles: subtitles ?? this.subtitles,
     );
   }
 
   /// Omits [url] and [headers]: both carry the access token.
   @override
-  String toString() => 'PlaybackPlan($itemId, ${mode.name}, '
+  String toString() =>
+      'PlaybackPlan($itemId, ${mode.name}, '
       '${endpointKind.name}, source=$mediaSourceId, session=$playSessionId, '
       'startAt=$startAt, videoDirect=$videoDirect, '
       'audioTranscoded=$audioTranscoded)';

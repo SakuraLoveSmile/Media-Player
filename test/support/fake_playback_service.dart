@@ -1,4 +1,5 @@
 import 'package:media_player/core/network/endpoint_kind.dart';
+import 'package:media_player/data/models/media_stream.dart';
 import 'package:media_player/data/models/playback_plan.dart';
 import 'package:media_player/data/playback/playback_service.dart';
 
@@ -19,6 +20,10 @@ class FakePlaybackService implements PlaybackService {
 
   final List<Duration> resolveStartAts = <Duration>[];
   final List<String> resolveItemIds = <String>[];
+
+  /// Version ids requested by the detail page pass-through (S7); null entries
+  /// mean "server default".
+  final List<String?> resolveSourceIds = <String?>[];
   int confirmCalls = 0;
 
   int get resolveCalls => resolveStartAts.length;
@@ -27,12 +32,18 @@ class FakePlaybackService implements PlaybackService {
   Future<PlaybackPlan> resolve(
     String itemId, {
     Duration startAt = Duration.zero,
+    String? mediaSourceId,
   }) async {
     resolveStartAts.add(startAt);
     resolveItemIds.add(itemId);
+    resolveSourceIds.add(mediaSourceId);
     final error = failure;
     if (error != null) throw error;
-    return plan.copyWith(itemId: itemId, startAt: startAt);
+    return plan.copyWith(
+      itemId: itemId,
+      startAt: startAt,
+      mediaSourceId: mediaSourceId,
+    );
   }
 
   @override
@@ -47,6 +58,8 @@ PlaybackPlan fakePlan({
   PlaybackMode mode = PlaybackMode.direct,
   bool? videoDirect,
   bool audioTranscoded = false,
+  List<MediaStream> audios = const <MediaStream>[],
+  List<MediaStream> subtitles = const <MediaStream>[],
 }) {
   return PlaybackPlan(
     itemId: itemId,
@@ -58,5 +71,7 @@ PlaybackPlan fakePlan({
     playSessionId: 'session-1',
     videoDirect: videoDirect,
     audioTranscoded: audioTranscoded,
+    audios: audios,
+    subtitles: subtitles,
   );
 }

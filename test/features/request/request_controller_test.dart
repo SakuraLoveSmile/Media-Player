@@ -72,28 +72,27 @@ Future<void> waitFor(bool Function() predicate, {String? reason}) async {
 
 void main() {
   group('load', () {
-    test('without a connection the page reports configuration missing',
-        () async {
-      final harness = _Harness();
-      final controller = harness.build();
+    test(
+      'without a connection the page reports configuration missing',
+      () async {
+        final harness = _Harness();
+        final controller = harness.build();
 
-      await controller.load();
+        await controller.load();
 
-      expect(controller.state.configured, isFalse);
-      expect(controller.state.needsConfiguration, isTrue);
-      expect(harness.service.pollCalls, 0);
-      controller.dispose();
-    });
+        expect(controller.state.configured, isFalse);
+        expect(controller.state.needsConfiguration, isTrue);
+        expect(harness.service.pollCalls, 0);
+        controller.dispose();
+      },
+    );
 
     test('restores the stored requests before the first round', () async {
       final harness = _Harness();
       await harness.configure();
       final stored = MediaRequest(
         id: 'stored',
-        ref: const MpMediaRef(
-          source: MpMediaSource.tmdb,
-          mediaId: '693134',
-        ),
+        ref: const MpMediaRef(source: MpMediaSource.tmdb, mediaId: '693134'),
         type: MpMediaType.movie,
         title: '沙丘2',
         subscribeId: 100,
@@ -224,8 +223,8 @@ void main() {
       await controller.subscribe(controller.state.searchResults.single);
       // subscribe() schedules its own round; wait for it to derive a stage.
       await waitFor(
-        () => controller.state.requests.single.stage ==
-            RequestStage.downloading,
+        () =>
+            controller.state.requests.single.stage == RequestStage.downloading,
         reason: 'the post-subscribe round to derive downloading',
       );
       await controller.refresh();
@@ -328,7 +327,9 @@ void main() {
     test('a search failure shows copy, not the exception', () async {
       final harness = _Harness();
       await harness.configure();
-      harness.service.searchFailure = mpFailure(AppErrorCode.networkUnreachable);
+      harness.service.searchFailure = mpFailure(
+        AppErrorCode.networkUnreachable,
+      );
       final controller = harness.build();
       await controller.load();
 
@@ -435,24 +436,26 @@ void main() {
       controller.dispose();
     });
 
-    test('a title already in the library becomes playable without subscribing',
-        () async {
-      final harness = _Harness();
-      await harness.configure();
-      harness.service.existingItems = <String, String>{
-        'themoviedb:693134#s0': 'emby-42',
-      };
-      final controller = harness.build();
-      await controller.load();
+    test(
+      'a title already in the library becomes playable without subscribing',
+      () async {
+        final harness = _Harness();
+        await harness.configure();
+        harness.service.existingItems = <String, String>{
+          'themoviedb:693134#s0': 'emby-42',
+        };
+        final controller = harness.build();
+        await controller.load();
 
-      final record = await controller.subscribe(fakeMedia());
+        final record = await controller.subscribe(fakeMedia());
 
-      expect(record!.stage, RequestStage.inLibrary);
-      expect(record.embyItemId, 'emby-42');
-      expect(harness.service.createRequests, isEmpty);
-      expect(record.message, contains('媒体库已有'));
-      controller.dispose();
-    });
+        expect(record!.stage, RequestStage.inLibrary);
+        expect(record.embyItemId, 'emby-42');
+        expect(harness.service.createRequests, isEmpty);
+        expect(record.message, contains('媒体库已有'));
+        controller.dispose();
+      },
+    );
 
     test('the same media and season is not subscribed twice', () async {
       final harness = _Harness();
@@ -548,17 +551,19 @@ void main() {
       controller.dispose();
     });
 
-    test('an archived request is removed locally without a delete call',
-        () async {
-      final (controller, harness, request) = await subscribed();
-      final archived = request.copyWith(archived: true);
+    test(
+      'an archived request is removed locally without a delete call',
+      () async {
+        final (controller, harness, request) = await subscribed();
+        final archived = request.copyWith(archived: true);
 
-      await controller.cancel(archived);
+        await controller.cancel(archived);
 
-      expect(harness.service.cancelRequests, isEmpty);
-      expect(controller.state.requests, isEmpty);
-      controller.dispose();
-    });
+        expect(harness.service.cancelRequests, isEmpty);
+        expect(controller.state.requests, isEmpty);
+        controller.dispose();
+      },
+    );
 
     test('a failed cancel keeps the record so the user can retry', () async {
       final (controller, harness, request) = await subscribed();
@@ -696,19 +701,22 @@ void main() {
       controller.dispose();
     });
 
-    test('a poll that reports notConfigured becomes the config state', () async {
-      final harness = _Harness();
-      await harness.configure();
-      final controller = harness.build();
-      await controller.load();
-      harness.service.pollFailure = mpFailure(AppErrorCode.notConfigured);
+    test(
+      'a poll that reports notConfigured becomes the config state',
+      () async {
+        final harness = _Harness();
+        await harness.configure();
+        final controller = harness.build();
+        await controller.load();
+        harness.service.pollFailure = mpFailure(AppErrorCode.notConfigured);
 
-      await controller.refresh();
+        await controller.refresh();
 
-      expect(controller.state.configured, isFalse);
-      expect(controller.state.configInvalid, isTrue);
-      controller.dispose();
-    });
+        expect(controller.state.configured, isFalse);
+        expect(controller.state.configInvalid, isTrue);
+        controller.dispose();
+      },
+    );
   });
 
   group('connection', () {
@@ -755,38 +763,40 @@ void main() {
   });
 
   group('notifications', () {
-    test('a request that becomes playable notifies its subscribers once',
-        () async {
-      final library = FakeLibraryService()
-        ..lookupItems = <MediaItem>[
-          const MediaItem(
-            id: 'emby-7',
-            name: '沙丘2',
-            type: 'Movie',
-            productionYear: 2024,
-          ),
-        ];
-      final harness = _Harness(library: library);
-      await harness.configure();
-      final controller = harness.build();
-      await controller.load();
-      final events = <RequestNotification>[];
-      final unsubscribe = controller.addNotificationListener(events.add);
-      await controller.subscribe(fakeMedia());
+    test(
+      'a request that becomes playable notifies its subscribers once',
+      () async {
+        final library = FakeLibraryService()
+          ..lookupItems = <MediaItem>[
+            const MediaItem(
+              id: 'emby-7',
+              name: '沙丘2',
+              type: 'Movie',
+              productionYear: 2024,
+            ),
+          ];
+        final harness = _Harness(library: library);
+        await harness.configure();
+        final controller = harness.build();
+        await controller.load();
+        final events = <RequestNotification>[];
+        final unsubscribe = controller.addNotificationListener(events.add);
+        await controller.subscribe(fakeMedia());
 
-      harness.service.snapshot = PollSnapshot(
-        movieHistory: <MpSubscribe>[fakeSubscribe()],
-      );
-      await controller.refresh();
-      await controller.refresh();
+        harness.service.snapshot = PollSnapshot(
+          movieHistory: <MpSubscribe>[fakeSubscribe()],
+        );
+        await controller.refresh();
+        await controller.refresh();
 
-      expect(events, hasLength(1));
-      expect(events.single.requestId, controller.state.requests.single.id);
-      expect(events.single.body, '已入库，可以播放');
-      expect(events.single.embyItemId, 'emby-7');
-      unsubscribe();
-      controller.dispose();
-    });
+        expect(events, hasLength(1));
+        expect(events.single.requestId, controller.state.requests.single.id);
+        expect(events.single.body, '已入库，可以播放');
+        expect(events.single.embyItemId, 'emby-7');
+        unsubscribe();
+        controller.dispose();
+      },
+    );
 
     test('unsubscribing stops the events', () async {
       final library = FakeLibraryService()
@@ -816,61 +826,65 @@ void main() {
       controller.dispose();
     });
 
-    test('a throwing listener does not break the round or other listeners',
-        () async {
-      final library = FakeLibraryService()
-        ..lookupItems = <MediaItem>[
-          const MediaItem(
-            id: 'emby-7',
-            name: '沙丘2',
-            type: 'Movie',
-            productionYear: 2024,
-          ),
-        ];
-      final harness = _Harness(library: library);
-      await harness.configure();
-      final controller = harness.build();
-      await controller.load();
-      final events = <RequestNotification>[];
-      controller.addNotificationListener((_) => throw StateError('boom'));
-      controller.addNotificationListener(events.add);
-      await controller.subscribe(fakeMedia());
+    test(
+      'a throwing listener does not break the round or other listeners',
+      () async {
+        final library = FakeLibraryService()
+          ..lookupItems = <MediaItem>[
+            const MediaItem(
+              id: 'emby-7',
+              name: '沙丘2',
+              type: 'Movie',
+              productionYear: 2024,
+            ),
+          ];
+        final harness = _Harness(library: library);
+        await harness.configure();
+        final controller = harness.build();
+        await controller.load();
+        final events = <RequestNotification>[];
+        controller.addNotificationListener((_) => throw StateError('boom'));
+        controller.addNotificationListener(events.add);
+        await controller.subscribe(fakeMedia());
 
-      harness.service.snapshot = PollSnapshot(
-        movieHistory: <MpSubscribe>[fakeSubscribe()],
-      );
-      await controller.refresh();
+        harness.service.snapshot = PollSnapshot(
+          movieHistory: <MpSubscribe>[fakeSubscribe()],
+        );
+        await controller.refresh();
 
-      expect(events, hasLength(1));
-      expect(controller.state.polling, isFalse);
-      expect(controller.state.requests.single.stage, RequestStage.inLibrary);
-      controller.dispose();
-    });
+        expect(events, hasLength(1));
+        expect(controller.state.polling, isFalse);
+        expect(controller.state.requests.single.stage, RequestStage.inLibrary);
+        controller.dispose();
+      },
+    );
 
-    test('startWatching keeps the heartbeat running with no page open', () async {
-      final harness = _Harness();
-      await harness.configure();
-      final controller = harness.build();
-      await controller.load();
-      await controller.subscribe(fakeMedia());
+    test(
+      'startWatching keeps the heartbeat running with no page open',
+      () async {
+        final harness = _Harness();
+        await harness.configure();
+        final controller = harness.build();
+        await controller.load();
+        await controller.subscribe(fakeMedia());
 
-      await controller.startWatching();
-      final afterStart = harness.service.pollCalls;
-      // No page is mounted and none ever called resume: the tick itself must
-      // still produce a round, which is what makes an off-screen 求片 notify.
-      harness.heartbeat.add(null);
-      await waitFor(
-        () => harness.service.pollCalls > afterStart,
-        reason: 'the app-level heartbeat to poll',
-      );
+        await controller.startWatching();
+        final afterStart = harness.service.pollCalls;
+        // No page is mounted and none ever called resume: the tick itself must
+        // still produce a round, which is what makes an off-screen 求片 notify.
+        harness.heartbeat.add(null);
+        await waitFor(
+          () => harness.service.pollCalls > afterStart,
+          reason: 'the app-level heartbeat to poll',
+        );
 
-      controller.dispose();
-    });
+        controller.dispose();
+      },
+    );
   });
 
   group('Emby promotion', () {
-    test('a finished request becomes playable when Emby has the item',
-        () async {
+    test('a finished request becomes playable when Emby has the item', () async {
       final library = FakeLibraryService()
         ..lookupItems = <MediaItem>[
           const MediaItem(
@@ -901,27 +915,30 @@ void main() {
       controller.dispose();
     });
 
-    test('an unreachable Emby leaves the request pending, not broken', () async {
-      final library = FakeLibraryService()
-        ..lookupFailure = Exception('emby down');
-      final harness = _Harness(library: library);
-      await harness.configure();
-      final controller = harness.build();
-      await controller.load();
-      await controller.subscribe(fakeMedia());
+    test(
+      'an unreachable Emby leaves the request pending, not broken',
+      () async {
+        final library = FakeLibraryService()
+          ..lookupFailure = Exception('emby down');
+        final harness = _Harness(library: library);
+        await harness.configure();
+        final controller = harness.build();
+        await controller.load();
+        await controller.subscribe(fakeMedia());
 
-      harness.service.snapshot = PollSnapshot(
-        movieHistory: <MpSubscribe>[fakeSubscribe()],
-      );
-      await controller.refresh();
+        harness.service.snapshot = PollSnapshot(
+          movieHistory: <MpSubscribe>[fakeSubscribe()],
+        );
+        await controller.refresh();
 
-      expect(
-        controller.state.requests.single.stage,
-        RequestStage.organizedPendingLibrary,
-      );
-      expect(controller.state.pollError, isNull);
-      controller.dispose();
-    });
+        expect(
+          controller.state.requests.single.stage,
+          RequestStage.organizedPendingLibrary,
+        );
+        expect(controller.state.pollError, isNull);
+        controller.dispose();
+      },
+    );
 
     test('a title lookup is used when the request has no TMDB id', () async {
       final library = FakeLibraryService()

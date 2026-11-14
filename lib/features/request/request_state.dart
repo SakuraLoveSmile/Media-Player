@@ -91,12 +91,15 @@ class RequestState {
       query: query ?? this.query,
       searching: searching ?? this.searching,
       searchResults: searchResults ?? this.searchResults,
-      searchError:
-          identical(searchError, _unset) ? this.searchError : searchError as String?,
+      searchError: identical(searchError, _unset)
+          ? this.searchError
+          : searchError as String?,
       searchGeneration: searchGeneration ?? this.searchGeneration,
       requests: requests ?? this.requests,
       polling: polling ?? this.polling,
-      pollError: identical(pollError, _unset) ? this.pollError : pollError as String?,
+      pollError: identical(pollError, _unset)
+          ? this.pollError
+          : pollError as String?,
       configInvalid: configInvalid ?? this.configInvalid,
       unauthorizedToken: unauthorizedToken ?? this.unauthorizedToken,
       subscribeInFlight: subscribeInFlight ?? this.subscribeInFlight,

@@ -205,63 +205,63 @@ void main() {
       );
     });
 
-    testWidgets('host-managed orb settings reach the component; hidden hides only idle',
-        (
-      WidgetTester tester,
-    ) async {
-      final FeedbackController controller = FeedbackController();
-      addTearDown(controller.dispose);
-      final GlobalKey<NavigatorState> feedbackNavigatorKey =
-          GlobalKey<NavigatorState>();
-      final GlobalKey<NavigatorState> routerKey = GlobalKey<NavigatorState>();
-      FeedbackOrbIdleStyle? changedStyle;
-      Set<FeedbackWakeGesture>? changedGestures;
+    testWidgets(
+      'host-managed orb settings reach the component; hidden hides only idle',
+      (WidgetTester tester) async {
+        final FeedbackController controller = FeedbackController();
+        addTearDown(controller.dispose);
+        final GlobalKey<NavigatorState> feedbackNavigatorKey =
+            GlobalKey<NavigatorState>();
+        final GlobalKey<NavigatorState> routerKey = GlobalKey<NavigatorState>();
+        FeedbackOrbIdleStyle? changedStyle;
+        Set<FeedbackWakeGesture>? changedGestures;
 
-      await tester.pumpWidget(
-        _host(
-          controller: controller,
-          feedbackNavigatorKey: feedbackNavigatorKey,
-          routerKey: routerKey,
-          orbIdleStyle: FeedbackOrbIdleStyle.hidden,
-          onOrbIdleStyleChanged: (FeedbackOrbIdleStyle style) {
-            changedStyle = style;
-          },
-          wakeGestures: const <FeedbackWakeGesture>{
-            FeedbackWakeGesture.twoFingerHold,
-          },
-          onWakeGesturesChanged: (Set<FeedbackWakeGesture> gestures) {
-            changedGestures = gestures;
-          },
-        ),
-      );
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _host(
+            controller: controller,
+            feedbackNavigatorKey: feedbackNavigatorKey,
+            routerKey: routerKey,
+            orbIdleStyle: FeedbackOrbIdleStyle.hidden,
+            onOrbIdleStyleChanged: (FeedbackOrbIdleStyle style) {
+              changedStyle = style;
+            },
+            wakeGestures: const <FeedbackWakeGesture>{
+              FeedbackWakeGesture.twoFingerHold,
+            },
+            onWakeGesturesChanged: (Set<FeedbackWakeGesture> gestures) {
+              changedGestures = gestures;
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      final FeedbackWidget widget = tester.widget<FeedbackWidget>(
-        find.byType(FeedbackWidget),
-      );
-      expect(widget.orbIdleStyle, FeedbackOrbIdleStyle.hidden);
-      expect(widget.wakeGestures, <FeedbackWakeGesture>{
-        FeedbackWakeGesture.twoFingerHold,
-      });
-      // v0.8.5: the hidden style only hides the idle/collapsed entry. The full
-      // orb is shown first; after the idle timer the launcher slot disappears
-      // (the controller can still open the panel).
-      expect(find.byKey(const Key('feedback-orb')), findsOneWidget);
-      expect(find.byKey(const Key('feedback-launcher-slot')), findsOneWidget);
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pump(const Duration(milliseconds: 420));
-      expect(find.byKey(const Key('feedback-orb')), findsNothing);
-      expect(find.byKey(const Key('feedback-launcher-slot')), findsNothing);
+        final FeedbackWidget widget = tester.widget<FeedbackWidget>(
+          find.byType(FeedbackWidget),
+        );
+        expect(widget.orbIdleStyle, FeedbackOrbIdleStyle.hidden);
+        expect(widget.wakeGestures, <FeedbackWakeGesture>{
+          FeedbackWakeGesture.twoFingerHold,
+        });
+        // v0.8.5: the hidden style only hides the idle/collapsed entry. The full
+        // orb is shown first; after the idle timer the launcher slot disappears
+        // (the controller can still open the panel).
+        expect(find.byKey(const Key('feedback-orb')), findsOneWidget);
+        expect(find.byKey(const Key('feedback-launcher-slot')), findsOneWidget);
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pump(const Duration(milliseconds: 420));
+        expect(find.byKey(const Key('feedback-orb')), findsNothing);
+        expect(find.byKey(const Key('feedback-launcher-slot')), findsNothing);
 
-      widget.onOrbIdleStyleChanged!(FeedbackOrbIdleStyle.edge);
-      widget.onWakeGesturesChanged!(<FeedbackWakeGesture>{
-        FeedbackWakeGesture.twoFingerDoubleTap,
-      });
-      expect(changedStyle, FeedbackOrbIdleStyle.edge);
-      expect(changedGestures, <FeedbackWakeGesture>{
-        FeedbackWakeGesture.twoFingerDoubleTap,
-      });
-    });
+        widget.onOrbIdleStyleChanged!(FeedbackOrbIdleStyle.edge);
+        widget.onWakeGesturesChanged!(<FeedbackWakeGesture>{
+          FeedbackWakeGesture.twoFingerDoubleTap,
+        });
+        expect(changedStyle, FeedbackOrbIdleStyle.edge);
+        expect(changedGestures, <FeedbackWakeGesture>{
+          FeedbackWakeGesture.twoFingerDoubleTap,
+        });
+      },
+    );
   });
 
   group('shared controller', () {

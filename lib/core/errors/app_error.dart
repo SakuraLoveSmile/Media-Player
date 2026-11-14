@@ -25,10 +25,9 @@ enum AppErrorCode {
 
   /// Whether retrying the same operation can plausibly succeed.
   bool get retryable => switch (this) {
-        AppErrorCode.networkUnreachable ||
-        AppErrorCode.serverError ||
-        AppErrorCode.transcodeFailed =>
-          true,
-        _ => false,
-      };
+    AppErrorCode.networkUnreachable ||
+    AppErrorCode.serverError ||
+    AppErrorCode.transcodeFailed => true,
+    _ => false,
+  };
 }

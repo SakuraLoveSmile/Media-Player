@@ -72,18 +72,18 @@ void main() {
     });
 
     test('a record without id, type or title is dropped', () {
-      expect(MediaRequest.fromJson(<String, dynamic>{
-        'type': '电影',
-        'title': 'x',
-      }), isNull);
-      expect(MediaRequest.fromJson(<String, dynamic>{
-        'id': 'r',
-        'title': 'x',
-      }), isNull);
-      expect(MediaRequest.fromJson(<String, dynamic>{
-        'id': 'r',
-        'type': '电影',
-      }), isNull);
+      expect(
+        MediaRequest.fromJson(<String, dynamic>{'type': '电影', 'title': 'x'}),
+        isNull,
+      );
+      expect(
+        MediaRequest.fromJson(<String, dynamic>{'id': 'r', 'title': 'x'}),
+        isNull,
+      );
+      expect(
+        MediaRequest.fromJson(<String, dynamic>{'id': 'r', 'type': '电影'}),
+        isNull,
+      );
     });
 
     test('identityKey separates season and type but not the id', () {
@@ -170,14 +170,8 @@ void main() {
     test('round-trips the request list in newest-first order', () async {
       final kv = InMemoryKeyValueStore();
       final store = RequestStore(kv);
-      final older = request(
-        id: 'a',
-        createdAt: DateTime.utc(2026, 1, 1),
-      );
-      final newer = request(
-        id: 'b',
-        createdAt: DateTime.utc(2026, 2, 1),
-      );
+      final older = request(id: 'a', createdAt: DateTime.utc(2026, 1, 1));
+      final newer = request(id: 'b', createdAt: DateTime.utc(2026, 2, 1));
 
       await store.write(<MediaRequest>[older, newer]);
       final restored = await store.read();
@@ -220,10 +214,9 @@ void main() {
     test('writeRequests keeps the stored snapshot', () async {
       final kv = InMemoryKeyValueStore();
       final store = RequestStore(kv);
-      await store.write(
-        <MediaRequest>[request()],
-        snapshot: PollSnapshot(fetchedAt: DateTime.utc(2026)),
-      );
+      await store.write(<MediaRequest>[
+        request(),
+      ], snapshot: PollSnapshot(fetchedAt: DateTime.utc(2026)));
 
       await store.writeRequests(<MediaRequest>[request(id: 'other')]);
 
@@ -240,10 +233,7 @@ void main() {
       expect(await store.read(), isEmpty);
       expect(await store.readSnapshot(), isNull);
 
-      await kv.write(
-        RequestStore.key,
-        '{"schemaVersion":999,"requests":[]}',
-      );
+      await kv.write(RequestStore.key, '{"schemaVersion":999,"requests":[]}');
       expect(await store.read(), isEmpty);
     });
 

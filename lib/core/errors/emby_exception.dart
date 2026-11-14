@@ -21,5 +21,6 @@ class EmbyException implements Exception {
   bool get retryable => code.retryable;
 
   @override
-  String toString() => 'EmbyException(${code.name}${message.isEmpty ? '' : ': $message'})';
+  String toString() =>
+      'EmbyException(${code.name}${message.isEmpty ? '' : ': $message'})';
 }

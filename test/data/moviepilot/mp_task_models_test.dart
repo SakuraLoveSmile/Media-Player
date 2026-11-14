@@ -210,10 +210,8 @@ void main() {
 
     test('coerces the string status older payloads use', () {
       expect(
-        MpTransferHistory.fromJson(<String, dynamic>{
-          'id': 7,
-          'status': 1,
-        })!.succeeded,
+        MpTransferHistory.fromJson(<String, dynamic>{'id': 7, 'status': 1})!
+            .succeeded,
         isTrue,
       );
       expect(
@@ -224,10 +222,8 @@ void main() {
         isTrue,
       );
       expect(
-        MpTransferHistory.fromJson(<String, dynamic>{
-          'id': 9,
-          'status': '0',
-        })!.succeeded,
+        MpTransferHistory.fromJson(<String, dynamic>{'id': 9, 'status': '0'})!
+            .succeeded,
         isFalse,
       );
     });

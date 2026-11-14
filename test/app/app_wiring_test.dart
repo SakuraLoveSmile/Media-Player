@@ -47,16 +47,14 @@ class _SignedOutAuth implements AuthService {
     required String username,
     required String password,
     required ServerProfile profile,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<ServerProfile> adoptAddress({
     required ServerProfile profile,
     required EndpointKind kind,
     required String rawUrl,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<void> logout() async {}
@@ -88,8 +86,7 @@ class _FakeUpdateService implements UpdateService {
     ReleaseAsset asset, {
     ProgressCallback? onProgress,
     CancelToken? cancelToken,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 }
 
 class _FakeUpdateInstaller implements UpdateInstaller {
@@ -151,9 +148,7 @@ Future<_FakeUpdateService> _pumpApp(
             createReporter: FakePlaybackReporter.new,
           ),
         ),
-        appVersionProvider.overrideWith(
-          (ref) async => _packageInfo(),
-        ),
+        appVersionProvider.overrideWith((ref) async => _packageInfo()),
         updateServiceProvider.overrideWithValue(service),
         updateInstallerProvider.overrideWithValue(_FakeUpdateInstaller()),
         updatePlatformProvider.overrideWithValue('macos'),
@@ -182,6 +177,15 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  Future<void> scrollToAbout(WidgetTester tester) async {
+    await tester.scrollUntilVisible(
+      find.text('检查更新'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('login exposes the settings entry and the about/update rows', (
     WidgetTester tester,
   ) async {
@@ -191,6 +195,13 @@ void main() {
     await _openSettings(tester);
 
     expect(find.text('设置'), findsOneWidget);
+    // S73: 关于 sits at the bottom of 设置 now, so scroll the list first.
+    await tester.scrollUntilVisible(
+      find.text('检查更新'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('版本 0.2.0+2'), findsOneWidget);
     expect(find.text('检查更新'), findsOneWidget);
     // Feedback is compiled off in debug/tests by default.
@@ -203,6 +214,7 @@ void main() {
     final _FakeUpdateService service = await _pumpApp(tester);
     await _openSettings(tester);
 
+    await scrollToAbout(tester);
     await tester.tap(find.text('检查更新'));
     await tester.pumpAndSettle();
     expect(find.text('当前已是最新版本'), findsOneWidget);
@@ -211,6 +223,7 @@ void main() {
     // Second check returns a release: the dialog with its notes opens.
     service.release = _release;
 
+    await scrollToAbout(tester);
     await tester.tap(find.text('检查更新'));
     await tester.pumpAndSettle();
 
@@ -225,9 +238,10 @@ void main() {
   testWidgets('feedback layer is mounted when the service is configured', (
     WidgetTester tester,
   ) async {
-    // The settings list now has four sections; a 600pt window would keep the
-    // feedback rows outside the lazy ListView's build range.
-    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    // The settings list now has seven sections (S20 added 服务器); a short
+    // window would keep the feedback rows outside the lazy ListView's build
+    // range, so use a tall surface.
+    await tester.binding.setSurfaceSize(const Size(900, 2200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await _pumpApp(tester, feedbackEnabled: true);
 
@@ -257,10 +271,7 @@ void main() {
     });
     await tester.pumpAndSettle();
 
-    expect(
-      await store.read(feedbackOrbIdleStorageKey),
-      'hidden',
-    );
+    expect(await store.read(feedbackOrbIdleStorageKey), 'hidden');
     expect(
       jsonDecode((await store.read(feedbackWakeGesturesStorageKey))!),
       <String>['two-finger-hold'],

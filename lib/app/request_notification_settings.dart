@@ -32,15 +32,12 @@ final FutureProvider<KeyValueStore?> requestNotificationStoreProvider =
 /// exactly the thing they asked to be told about, and the settings toggle is
 /// there to turn it off.
 class RequestNotificationSettings {
-  const RequestNotificationSettings({
-    this.inApp = true,
-    this.system = true,
-  });
+  const RequestNotificationSettings({this.inApp = true, this.system = true});
 
   static const RequestNotificationSettings defaults =
       RequestNotificationSettings();
 
-  /// Show the in-app glass banner.
+  /// Show the in-app banner.
   final bool inApp;
 
   /// Show an OS notification (Android / macOS / Windows).
@@ -72,8 +69,9 @@ class RequestNotificationSettingsController
     extends AsyncNotifier<RequestNotificationSettings> {
   @override
   Future<RequestNotificationSettings> build() async {
-    final KeyValueStore? store =
-        await ref.watch(requestNotificationStoreProvider.future);
+    final KeyValueStore? store = await ref.watch(
+      requestNotificationStoreProvider.future,
+    );
     if (store == null) return RequestNotificationSettings.defaults;
     try {
       return _decode(await store.read(requestNotificationStorageKey));
@@ -83,11 +81,14 @@ class RequestNotificationSettingsController
   }
 
   Future<void> set({bool? inApp, bool? system}) async {
-    final next = (state.value ?? RequestNotificationSettings.defaults)
-        .copyWith(inApp: inApp, system: system);
+    final next = (state.value ?? RequestNotificationSettings.defaults).copyWith(
+      inApp: inApp,
+      system: system,
+    );
     if (next == state.value) return;
-    final KeyValueStore? store =
-        await ref.read(requestNotificationStoreProvider.future);
+    final KeyValueStore? store = await ref.read(
+      requestNotificationStoreProvider.future,
+    );
     if (store != null) {
       try {
         await store.write(requestNotificationStorageKey, _encode(next));

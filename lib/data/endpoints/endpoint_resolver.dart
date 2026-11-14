@@ -101,22 +101,26 @@ class EndpointResolver {
               .timeout(attempt.timeout + const Duration(milliseconds: 250));
 
           if (id == null) {
-            failures.add(EndpointFailure(
-              kind: attempt.kind,
-              baseUrl: base,
-              code: AppErrorCode.serverError,
-              message: 'not an Emby server',
-            ));
+            failures.add(
+              EndpointFailure(
+                kind: attempt.kind,
+                baseUrl: base,
+                code: AppErrorCode.serverError,
+                message: 'not an Emby server',
+              ),
+            );
             continue;
           }
 
           if (expectedId.isNotEmpty && id != expectedId) {
-            failures.add(EndpointFailure(
-              kind: attempt.kind,
-              baseUrl: base,
-              code: AppErrorCode.serverMismatch,
-              message: 'server id mismatch',
-            ));
+            failures.add(
+              EndpointFailure(
+                kind: attempt.kind,
+                baseUrl: base,
+                code: AppErrorCode.serverMismatch,
+                message: 'server id mismatch',
+              ),
+            );
             continue;
           }
 
@@ -131,27 +135,28 @@ class EndpointResolver {
           _cachedAt = now;
           return resolved;
         } on TimeoutException {
-          failures.add(EndpointFailure(
-            kind: attempt.kind,
-            baseUrl: base,
-            code: AppErrorCode.networkUnreachable,
-            message: 'probe timeout',
-          ));
+          failures.add(
+            EndpointFailure(
+              kind: attempt.kind,
+              baseUrl: base,
+              code: AppErrorCode.networkUnreachable,
+              message: 'probe timeout',
+            ),
+          );
         } on EmbyException catch (error) {
-          failures.add(EndpointFailure(
-            kind: attempt.kind,
-            baseUrl: base,
-            code: error.code,
-            message: error.message,
-          ));
+          failures.add(
+            EndpointFailure(
+              kind: attempt.kind,
+              baseUrl: base,
+              code: error.code,
+              message: error.message,
+            ),
+          );
         }
       }
     }
 
-    throw EmbyException(
-      AppErrorCode.networkUnreachable,
-      failures: failures,
-    );
+    throw EmbyException(AppErrorCode.networkUnreachable, failures: failures);
   }
 
   List<_Attempt> _attempts(ServerProfile profile) {

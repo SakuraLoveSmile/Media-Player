@@ -7,11 +7,10 @@ import 'package:go_router/go_router.dart';
 import '../../app/moviepilot_providers.dart';
 import '../../core/router/app_routes.dart';
 import '../../data/moviepilot/models/media_request.dart';
-import '../../ui/glass/glass_controls.dart';
-import '../../ui/glass/glass_shell.dart';
-import '../../ui/glass/glass_surface.dart';
-import '../../ui/glass/glass_theme.dart';
-import '../../ui/glass/glass_tokens.dart';
+import '../../ui/app_controls.dart';
+import '../../ui/app_loader.dart';
+import '../../ui/app_page.dart';
+import '../../ui/theme/app_tokens.dart';
 import 'request_controller.dart';
 import 'request_state.dart';
 import 'widgets/my_requests_list.dart';
@@ -86,13 +85,13 @@ class _MyRequestsPageState extends ConsumerState<MyRequestsPage> {
   Widget build(BuildContext context) {
     final controller = _controller;
     final state = controller?.state;
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
 
-    return GlassPage(
+    return AppPage(
       title: '我的求片',
       onBack: () => context.pop(),
       actions: <Widget>[
-        GlassIconButton(
+        AppIconButton(
           key: const Key('my-requests-refresh'),
           tooltip: '刷新进度',
           icon: const Icon(Icons.refresh),
@@ -101,51 +100,48 @@ class _MyRequestsPageState extends ConsumerState<MyRequestsPage> {
               : () => unawaited(controller.refresh()),
         ),
       ],
-      child: Padding(
-        padding: const EdgeInsets.only(top: GlassHeaderMetrics.expandedHeight),
-        child: controller == null || state == null
-            ? const Center(child: CircularProgressIndicator())
-            : _content(controller, state, palette),
-      ),
+      child: controller == null || state == null
+          ? const AppLoadingView()
+          : _content(controller, state, palette),
     );
   }
 
   Widget _content(
     RequestController controller,
     RequestState state,
-    GlassPalette palette,
+    ColorScheme palette,
   ) {
     if (state.requests.isEmpty) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(GlassSpacing.xxxl),
-          child: GlassSurface(
-            radius: GlassRadii.cardLarge,
-            padding: const EdgeInsets.all(GlassSpacing.xxl),
+          padding: const EdgeInsets.all(AppSpacing.xxxl),
+          child: AppCard(
+            radius: AppRadii.cardLarge,
+            padding: const EdgeInsets.all(AppSpacing.xxl),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Icon(
                   Icons.playlist_add_outlined,
                   size: 32,
-                  color: palette.tertiaryLabel,
+                  color: palette.outline,
                 ),
-                const SizedBox(height: GlassSpacing.md),
+                const SizedBox(height: AppSpacing.md),
                 Text(
                   '还没有求片',
                   key: const Key('my-requests-empty'),
-                  style: GlassType.body.copyWith(color: palette.label),
+                  style: Theme.of(context).textTheme.bodyLarge!
+                      .copyWith(color: palette.onSurface),
                 ),
-                const SizedBox(height: GlassSpacing.sm),
+                const SizedBox(height: AppSpacing.sm),
                 Text(
                   '在求片页搜索片名后点“求片”，进度会显示在这里。',
                   textAlign: TextAlign.center,
-                  style: GlassType.footnote.copyWith(
-                    color: palette.secondaryLabel,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: palette.onSurfaceVariant),
                 ),
-                const SizedBox(height: GlassSpacing.lg),
-                GlassButton(
+                const SizedBox(height: AppSpacing.lg),
+                AppButton(
                   key: const Key('my-requests-to-search'),
                   label: '去求片',
                   onPressed: () => context.go(AppRoutes.request),
@@ -161,30 +157,29 @@ class _MyRequestsPageState extends ConsumerState<MyRequestsPage> {
       onRefresh: controller.refresh,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(
-          GlassSpacing.lg,
-          GlassSpacing.md,
-          GlassSpacing.lg,
-          GlassSpacing.xxxl,
+          AppSpacing.lg,
+          AppSpacing.md,
+          AppSpacing.lg,
+          AppSpacing.xxxl,
         ),
         children: <Widget>[
           if (state.polling) ...<Widget>[
             Text(
               '同步中…',
               key: const Key('my-requests-syncing'),
-              style: GlassType.caption1.copyWith(
-                color: palette.tertiaryLabel,
-              ),
+              style: Theme.of(context).textTheme.labelMedium!
+                  .copyWith(color: palette.outline),
             ),
-            const SizedBox(height: GlassSpacing.md),
+            const SizedBox(height: AppSpacing.md),
           ],
           if (state.pollError != null) ...<Widget>[
-            GlassTag(
+            AppTag(
               key: const Key('my-requests-error'),
               label: state.pollError!,
-              color: palette.orange,
+              color: Colors.orange,
               icon: const Icon(Icons.error_outline),
             ),
-            const SizedBox(height: GlassSpacing.md),
+            const SizedBox(height: AppSpacing.md),
           ],
           MyRequestsList(
             requests: state.requests,

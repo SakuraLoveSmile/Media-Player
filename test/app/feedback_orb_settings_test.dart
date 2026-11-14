@@ -122,23 +122,25 @@ void main() {
     );
   });
 
-  test('a failing write surfaces an error and keeps the previous value',
-      () async {
-    final store = _ThrowingStore();
-    final container = _container(store);
-    await _load(container);
+  test(
+    'a failing write surfaces an error and keeps the previous value',
+    () async {
+      final store = _ThrowingStore();
+      final container = _container(store);
+      await _load(container);
 
-    await expectLater(
-      container
-          .read(feedbackOrbSettingsProvider.notifier)
-          .setIdleStyle(FeedbackOrbIdleStyle.hidden),
-      throwsA(isA<FeedbackOrbSettingsException>()),
-    );
-    expect(
-      container.read(feedbackOrbSettingsProvider).value?.idleStyle,
-      FeedbackOrbIdleStyle.handle,
-    );
-  });
+      await expectLater(
+        container
+            .read(feedbackOrbSettingsProvider.notifier)
+            .setIdleStyle(FeedbackOrbIdleStyle.hidden),
+        throwsA(isA<FeedbackOrbSettingsException>()),
+      );
+      expect(
+        container.read(feedbackOrbSettingsProvider).value?.idleStyle,
+        FeedbackOrbIdleStyle.handle,
+      );
+    },
+  );
 }
 
 class _ThrowingStore implements KeyValueStore {

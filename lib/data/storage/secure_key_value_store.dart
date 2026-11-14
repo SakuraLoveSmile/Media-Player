@@ -5,7 +5,7 @@ import 'key_value_store.dart';
 /// Keychain / Keystore / DPAPI backed store (contract §7).
 class SecureKeyValueStore implements KeyValueStore {
   SecureKeyValueStore([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
 

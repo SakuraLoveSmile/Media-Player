@@ -28,8 +28,10 @@ void main() {
       expect(info.type, MpMediaType.movie);
       expect(info.isMovie, isTrue);
       expect(info.vote, 8.2);
-      expect(info.posterUri.toString(),
-          'https://image.tmdb.org/t/p/w342/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg');
+      expect(
+        info.posterUri.toString(),
+        'https://image.tmdb.org/t/p/w342/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg',
+      );
     });
 
     test('keeps an absolute poster URL as given', () {
@@ -70,10 +72,7 @@ void main() {
         MpMediaInfo.fromJson(<String, dynamic>{'type': '音乐', 'title': 'Album'}),
         isNull,
       );
-      expect(
-        MpMediaInfo.fromJson(<String, dynamic>{'type': '电影'}),
-        isNull,
-      );
+      expect(MpMediaInfo.fromJson(<String, dynamic>{'type': '电影'}), isNull);
     });
 
     test('accepts an entry that only has a title', () {

@@ -130,7 +130,8 @@ class PollSnapshot {
           ?MpDownloaderTorrent.fromJson(raw),
       ],
       transferQueue: <MpTransferJob>[
-        for (final raw in _maps(json['transferQueue'])) MpTransferJob.fromJson(raw),
+        for (final raw in _maps(json['transferQueue']))
+          MpTransferJob.fromJson(raw),
       ],
       transferHistory: <MpTransferHistory>[
         for (final raw in _maps(json['transferHistory']))

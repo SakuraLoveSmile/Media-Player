@@ -40,11 +40,8 @@ void main() {
     );
   }
 
-  ServerProfile profileFor(FakeEmbyServer target) => ServerProfile(
-        serverId: '',
-        name: 'Home',
-        lanUrl: target.base,
-      );
+  ServerProfile profileFor(FakeEmbyServer target) =>
+      ServerProfile(serverId: '', name: 'Home', lanUrl: target.base);
 
   setUp(() async {
     server = FakeEmbyServer();
@@ -72,10 +69,7 @@ void main() {
     final storedProfile = await ProfileStore(kv).read();
     expect(storedProfile?.serverId, 'server-1');
     expect(storedProfile?.lastGoodEndpoint, EndpointKind.lan);
-    expect(
-      server.lastAuthorizationHeader,
-      contains('DeviceId="device-1"'),
-    );
+    expect(server.lastAuthorizationHeader, contains('DeviceId="device-1"'));
   });
 
   test('a bad password leaves no credentials behind', () async {
@@ -87,8 +81,13 @@ void main() {
         password: 'wrong',
         profile: profileFor(server),
       ),
-      throwsA(isA<EmbyException>()
-          .having((e) => e.code, 'code', AppErrorCode.unauthorized)),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.code,
+          'code',
+          AppErrorCode.unauthorized,
+        ),
+      ),
     );
 
     expect(await kv.read(TokenStore.key), isNull);
@@ -148,8 +147,13 @@ void main() {
         kind: EndpointKind.wan,
         rawUrl: other.base,
       ),
-      throwsA(isA<EmbyException>()
-          .having((e) => e.code, 'code', AppErrorCode.serverMismatch)),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.code,
+          'code',
+          AppErrorCode.serverMismatch,
+        ),
+      ),
     );
 
     final unchanged = await ProfileStore(kv).read();
@@ -190,8 +194,13 @@ void main() {
 
     await expectLater(
       repository.authorizedGet(Uri.parse('${server.base}/expired')),
-      throwsA(isA<EmbyException>()
-          .having((e) => e.code, 'code', AppErrorCode.unauthorized)),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.code,
+          'code',
+          AppErrorCode.unauthorized,
+        ),
+      ),
     );
 
     expect(repository.current, isNull);
@@ -253,8 +262,13 @@ void main() {
         Uri.parse('${server.base}/Users/AuthenticateByName'),
         body: <String, String>{'Pw': 'wrong'},
       ),
-      throwsA(isA<EmbyException>()
-          .having((e) => e.code, 'code', AppErrorCode.unauthorized)),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.code,
+          'code',
+          AppErrorCode.unauthorized,
+        ),
+      ),
     );
 
     expect(repository.current, isNull);
@@ -271,47 +285,56 @@ void main() {
       repository.authorizedPost(
         Uri.parse('${server.base}/Items/movie-1/PlaybackInfo'),
       ),
-      throwsA(isA<EmbyException>()
-          .having((e) => e.code, 'code', AppErrorCode.unauthorized)),
+      throwsA(
+        isA<EmbyException>().having(
+          (e) => e.code,
+          'code',
+          AppErrorCode.unauthorized,
+        ),
+      ),
     );
 
     expect(server.requestLog, isEmpty);
   });
 
-  test('authorizedPost sends the token and returns the decoded payload',
-      () async {
-    final repository = await buildRepository();
-    await repository.login(
-      username: 'test',
-      password: 'correct',
-      profile: profileFor(server),
-    );
+  test(
+    'authorizedPost sends the token and returns the decoded payload',
+    () async {
+      final repository = await buildRepository();
+      await repository.login(
+        username: 'test',
+        password: 'correct',
+        profile: profileFor(server),
+      );
 
-    // The fake server has no 200 POST route that checks `X-Emby-Token`, so
-    // this test brings its own HTTP surface instead of editing that helper.
-    String? tokenHeader;
-    final echo = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => echo.close(force: true));
-    echo.listen((request) async {
-      tokenHeader = request.headers.value('X-Emby-Token');
-      request.response.statusCode = 200;
-      request.response.headers.contentType = ContentType.json;
-      request.response.write(jsonEncode(<String, dynamic>{
-        'PlaySessionId': 'ps-1',
-        'MediaSources': <Object>[],
-      }));
-      await request.response.close();
-    });
+      // The fake server has no 200 POST route that checks `X-Emby-Token`, so
+      // this test brings its own HTTP surface instead of editing that helper.
+      String? tokenHeader;
+      final echo = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => echo.close(force: true));
+      echo.listen((request) async {
+        tokenHeader = request.headers.value('X-Emby-Token');
+        request.response.statusCode = 200;
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(
+          jsonEncode(<String, dynamic>{
+            'PlaySessionId': 'ps-1',
+            'MediaSources': <Object>[],
+          }),
+        );
+        await request.response.close();
+      });
 
-    final json = await repository.authorizedPost(
-      Uri.parse('http://127.0.0.1:${echo.port}/Items/movie-1/PlaybackInfo'),
-      body: <String, dynamic>{'StartTimeTicks': 0},
-    );
+      final json = await repository.authorizedPost(
+        Uri.parse('http://127.0.0.1:${echo.port}/Items/movie-1/PlaybackInfo'),
+        body: <String, dynamic>{'StartTimeTicks': 0},
+      );
 
-    expect(tokenHeader, server.token);
-    expect(json['PlaySessionId'], 'ps-1');
-    expect(json['MediaSources'], isEmpty);
-  });
+      expect(tokenHeader, server.token);
+      expect(json['PlaySessionId'], 'ps-1');
+      expect(json['MediaSources'], isEmpty);
+    },
+  );
 
   test('profile and deviceId follow the session lifecycle', () async {
     final first = await buildRepository();

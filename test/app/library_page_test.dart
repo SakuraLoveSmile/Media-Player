@@ -5,17 +5,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/app/app.dart';
 import 'package:media_player/app/providers.dart';
+import 'package:media_player/app/router.dart';
 import 'package:media_player/app/services.dart';
 import 'package:media_player/core/errors/app_error.dart';
 import 'package:media_player/core/errors/emby_exception.dart';
 import 'package:media_player/core/network/endpoint_kind.dart';
+import 'package:media_player/core/router/app_routes.dart';
 import 'package:media_player/data/auth/auth_service.dart';
 import 'package:media_player/data/models/auth_session.dart';
 import 'package:media_player/data/models/library_view.dart';
 import 'package:media_player/data/models/media_item.dart';
 import 'package:media_player/data/models/playback_plan.dart';
+import 'package:media_player/app/hidden_libraries.dart';
 import 'package:media_player/data/models/server_profile.dart';
+import 'package:media_player/data/storage/key_value_store.dart';
 import 'package:media_player/data/playback/playback_engine.dart';
+import 'package:media_player/ui/app_controls.dart';
 
 import '../support/fake_library_service.dart';
 import '../support/fake_playback_engine.dart';
@@ -80,6 +85,7 @@ void main() {
     FakePosterCache? posters,
     FakePlaybackEngine Function()? createEngine,
     FakePlaybackReporter Function()? createReporter,
+    KeyValueStore? store,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -94,10 +100,23 @@ void main() {
               createReporter: createReporter ?? FakePlaybackReporter.new,
             ),
           ),
+          // S32: the library page filters its view chips through this list.
+          hiddenLibrariesStoreProvider.overrideWith(
+            (ref) async => store ?? InMemoryKeyValueStore(),
+          ),
+          hiddenLibrariesControllerProvider.overrideWith(
+            () => _TestHiddenLibrariesController(store),
+          ),
         ],
         child: const MediaPlayerApp(),
       ),
     );
+    await tester.pumpAndSettle();
+    // P1: the post-login landing is the home dashboard; open the library
+    // explicitly so these tests keep exercising the library page.
+    ProviderScope.containerOf(tester.element(find.byType(MediaPlayerApp)))
+        .read(appRouterProvider)
+        .go(AppRoutes.library);
     await tester.pumpAndSettle();
   }
 
@@ -124,10 +143,114 @@ void main() {
   testWidgets('renders the view chips and the first page', (tester) async {
     await pumpLibrary(tester, buildService());
 
-    expect(find.text('媒体库'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Movies')),
+      findsOneWidget,
+    );
     expect(find.widgetWithText(ChoiceChip, 'Movies'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Shows'), findsOneWidget);
     expect(find.text('Item 1'), findsOneWidget);
+  });
+
+  testWidgets('hidden libraries never become the selected view (S32)', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    await store.write(hiddenLibrariesStorageKey, '["view-shows"]');
+    // A single visible library drops the chip row, so assert on the app-bar
+    // title and the loaded page instead: the first visible view wins and the
+    // hidden one is never requested.
+    final library = buildService();
+    await pumpLibrary(tester, library, store: store);
+
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Movies')),
+      findsOneWidget,
+    );
+    expect(
+      library.itemsRequests.map((request) => request.viewId),
+      isNot(contains('view-shows')),
+    );
+  });
+
+  testWidgets('the upcoming tab lists future premieres only (S45)', (
+    tester,
+  ) async {
+    final library = buildService(movies: 3);
+    library.itemsByView[fakeMoviesView.id] = <MediaItem>[
+      const MediaItem(
+        id: 'past',
+        name: '过去',
+        type: 'Movie',
+        premiereDate: '2020-01-01T00:00:00Z',
+      ),
+      const MediaItem(
+        id: 'future',
+        name: '未来',
+        type: 'Movie',
+        premiereDate: '2999-01-01T00:00:00Z',
+      ),
+    ];
+    await pumpLibrary(tester, library);
+
+    await tester.tap(find.byKey(const Key('library-tab-upcoming')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('未来'), findsOneWidget);
+    expect(find.text('过去'), findsNothing);
+  });
+  testWidgets('the toolbar shows the count, fullscreen and sort label', (
+    tester,
+  ) async {
+    await pumpLibrary(tester, buildService(movies: 70));
+
+    expect(find.byKey(const Key('library-count')), findsOneWidget);
+    expect(find.text('70 项'), findsOneWidget);
+    expect(find.byKey(const Key('library-fullscreen')), findsOneWidget);
+    expect(find.byKey(const Key('library-view-toggle')), findsOneWidget);
+    expect(find.byKey(const Key('library-filter')), findsOneWidget);
+    expect(find.byKey(const Key('library-random')), findsOneWidget);
+    expect(find.text('创建日期 ↓'), findsOneWidget);
+  });
+
+  testWidgets('fullscreen hides the app bar and the exit restores it', (
+    tester,
+  ) async {
+    await pumpLibrary(tester, buildService());
+
+    await tester.tap(find.byKey(const Key('library-fullscreen')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.byKey(const Key('library-fullscreen-exit')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('library-fullscreen-exit')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.byKey(const Key('library-fullscreen-exit')), findsNothing);
+  });
+
+  testWidgets('posters show the rating, count and year range', (tester) async {
+    final library = FakeLibraryService(
+      viewList: <LibraryView>[fakeShowsView],
+      itemsByView: <String, List<MediaItem>>{
+        fakeShowsView.id: <MediaItem>[
+          const MediaItem(
+            id: 'sh1',
+            name: 'Show One',
+            type: 'Series',
+            productionYear: 2004,
+            status: 'Continuing',
+            communityRating: 8.4,
+            userData: UserItemData(unplayedItemCount: 12),
+          ),
+        ],
+      },
+    );
+    await pumpLibrary(tester, library);
+
+    expect(find.text('8.4'), findsOneWidget);
+    expect(find.text('12'), findsOneWidget);
+    expect(find.text('2004 - 现在'), findsOneWidget);
   });
 
   testWidgets('switching views replaces the grid', (tester) async {
@@ -144,14 +267,34 @@ void main() {
   testWidgets(
     'series selection keeps episode identity, sessions and return positions',
     (tester) async {
+      // A phone surface keeps the series hero, the 季 row and the season
+      // page's long episode list reachable in a few scrolls.
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       final library = buildService(movies: 1, shows: 30);
       const seriesId = 's16';
-      library.seasonsBySeries[seriesId] = const [
-        MediaItem(id: 'season-2', name: '第二季', type: 'Season', indexNumber: 2),
-        MediaItem(id: 'specials', name: '特别篇', type: 'Season', indexNumber: 0),
-        MediaItem(id: 'season-1', name: '第一季', type: 'Season', indexNumber: 1),
+      const MediaItem seasonOne = MediaItem(
+        id: 'season-1',
+        name: '第一季',
+        type: 'Season',
+        seriesId: seriesId,
+        indexNumber: 1,
+      );
+      const MediaItem seasonTwo = MediaItem(
+        id: 'season-2',
+        name: '第二季',
+        type: 'Season',
+        seriesId: seriesId,
+        indexNumber: 2,
+      );
+      library.seasonsBySeries[seriesId] = const <MediaItem>[
+        seasonTwo,
+        seasonOne,
       ];
-      library.episodesBySeason['season-1'] = const [
+      library.itemsById[seasonOne.id] = seasonOne;
+      library.itemsById[seasonTwo.id] = seasonTwo;
+      library.episodesBySeason['season-1'] = const <MediaItem>[
         MediaItem(id: 'first', name: '第一季单集', type: 'Episode', indexNumber: 1),
       ];
       library.episodesBySeason['season-2'] = List.generate(
@@ -223,14 +366,42 @@ void main() {
         seriesId: seriesId,
         seasonId: 'season-1',
       ));
+
+      // The 季 row opens the season page; the series page only loads the
+      // selected season's episodes for its resume row.
+      final seriesScrollable = find
+          .descendant(
+            of: find.byKey(const Key('series-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('season-season-2')),
+        400,
+        scrollable: seriesScrollable,
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('season-season-2')));
       await tester.pumpAndSettle();
-      final episodeScrollable = find.descendant(
-        of: find.byType(ListView).last,
-        matching: find.byType(Scrollable),
+
+      expect(find.byKey(const Key('season-page')), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('season-heading'))).data,
+        '第 2 季',
       );
+      expect(library.episodeRequests.last, (
+        seriesId: seriesId,
+        seasonId: 'season-2',
+      ));
+
+      final episodeScrollable = find
+          .descendant(
+            of: find.byKey(const Key('season-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first;
       await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('episode-e75')),
+        find.byKey(const ValueKey('season-episode-e75')),
         500,
         scrollable: episodeScrollable,
       );
@@ -239,8 +410,8 @@ void main() {
           .state<ScrollableState>(episodeScrollable)
           .position
           .pixels;
-      await tester.tap(find.byKey(const ValueKey('episode-e75')));
-      await tester.tap(find.byKey(const ValueKey('episode-e75')));
+      await tester.tap(find.byKey(const ValueKey('season-episode-e75')));
+      await tester.tap(find.byKey(const ValueKey('season-episode-e75')));
       await tester.pumpAndSettle();
       expect(playback.resolveItemIds, ['e75']);
       expect(engines, hasLength(1));
@@ -275,6 +446,7 @@ void main() {
         name: '第二季第75集',
         type: 'Episode',
         indexNumber: 75,
+        runTimeTicks: const Duration(minutes: 45).inMicroseconds * 10,
         userData: UserItemData(
           positionTicks: const Duration(seconds: 150).inMicroseconds * 10,
         ),
@@ -286,21 +458,25 @@ void main() {
         seriesId: seriesId,
         seasonId: 'season-2',
       ));
-      expect(
-        tester
-            .widget<ChoiceChip>(find.byKey(const ValueKey('season-season-2')))
-            .selected,
-        isTrue,
-      );
+      // The season page kept its place and shows the refreshed progress.
+      expect(find.byKey(const Key('season-page')), findsOneWidget);
       expect(
         tester.state<ScrollableState>(episodeScrollable).position.pixels,
-        episodeOffset,
+        closeTo(episodeOffset, 0.1),
       );
-      expect(find.textContaining('已观看 02:30'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('season-episode-progress-e75')),
+        findsOneWidget,
+      );
       expect(engines.first.disposeCalls, 1);
 
-      await tester.ensureVisible(find.byKey(const ValueKey('episode-e76')));
-      await tester.tap(find.byKey(const ValueKey('episode-e76')));
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('season-episode-e76')),
+        500,
+        scrollable: episodeScrollable,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('season-episode-e76')));
       await tester.pumpAndSettle();
       expect(playback.resolveItemIds, ['e75', 'e76']);
       expect(engines, hasLength(2));
@@ -312,9 +488,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(reporters.last.stoppedItemIds, ['e76']);
       expect(reporters.first.stoppedCalls, 1);
+
+      // Back through the season page to the series page and the library.
+      await tester.tap(find.byKey(const Key('season-back')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('series-back')));
       await tester.pumpAndSettle();
-      expect(find.text('媒体库'), findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.text('Shows')),
+        findsOneWidget,
+      );
       expect(
         tester
             .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Shows'))
@@ -333,12 +516,16 @@ void main() {
   testWidgets('scrolling to the end loads the next page', (tester) async {
     final library = buildService();
     await pumpLibrary(tester, library);
-    expect(library.itemCalls, 1);
+    // The home dashboard already issued items() calls before the library
+    // opened, so measure the paging delta rather than an absolute count.
+    final int before = library.itemCalls;
 
-    await tester.drag(find.byType(GridView), const Offset(0, -4000));
+    // S15: the 800px surface now lays out 4 wider columns, so the first page
+    // is taller; drag past its end to trigger the next-page load.
+    await tester.drag(find.byType(GridView), const Offset(0, -8000));
     await tester.pumpAndSettle();
 
-    expect(library.itemCalls, greaterThanOrEqualTo(2));
+    expect(library.itemCalls, greaterThan(before));
   });
 
   testWidgets('a failure shows a retry that recovers', (tester) async {
@@ -420,4 +607,353 @@ void main() {
     expect(posters.loadCalls, 0);
     expect(find.byIcon(Icons.movie_outlined), findsWidgets);
   });
+
+  testWidgets('sub-tabs switch between all, resume and favorites', (
+    tester,
+  ) async {
+    final library = buildService();
+    library.resumableResults = <MediaItem>[fakeItem('r-1', name: '继续影片')];
+    library.favoriteResults = <MediaItem>[fakeItem('f-1', name: '收藏影片')];
+    await pumpLibrary(tester, library);
+
+    expect(find.byKey(const Key('library-tab-all')), findsOneWidget);
+    expect(find.byKey(const Key('library-tab-resume')), findsOneWidget);
+    expect(find.byKey(const Key('library-tab-favorites')), findsOneWidget);
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('library-tab-all')))
+          .selected,
+      isTrue,
+    );
+
+    await tester.tap(find.byKey(const Key('library-tab-resume')));
+    await tester.pumpAndSettle();
+    expect(find.text('继续影片'), findsOneWidget);
+    expect(find.text('Item 1'), findsNothing);
+    // View chips only scope the 全部 tab.
+    expect(find.widgetWithText(ChoiceChip, 'Movies'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('library-tab-favorites')));
+    await tester.pumpAndSettle();
+    expect(find.text('收藏影片'), findsOneWidget);
+    expect(find.text('继续影片'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('library-tab-all')));
+    await tester.pumpAndSettle();
+    expect(find.text('Item 1'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Movies'), findsOneWidget);
+  });
+
+  testWidgets('the sort picker changes the items query', (tester) async {
+    final library = buildService();
+    await pumpLibrary(tester, library);
+
+    await tester.tap(find.byKey(const Key('library-sort')));
+    await tester.pumpAndSettle();
+    // S70: the list scrolls; bring the target field into view first.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('library-sort-year')),
+      120,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('library-sort-year')));
+    await tester.pumpAndSettle();
+
+    expect(library.itemsSorts.last, (
+      sortBy: 'ProductionYear',
+      sortOrder: 'Descending',
+    ));
+
+    await tester.tap(find.byKey(const Key('library-sort')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('library-sort-asc')));
+    await tester.pumpAndSettle();
+
+    expect(library.itemsSorts.last, (
+      sortBy: 'ProductionYear',
+      sortOrder: 'Ascending',
+    ));
+  });
+
+  testWidgets('the sort dialog offers 上映日期 (S56)', (tester) async {
+    final library = buildService();
+    await pumpLibrary(tester, library);
+
+    await tester.tap(find.byKey(const Key('library-sort')));
+    await tester.pumpAndSettle();
+    final Finder premiere = find.byKey(const Key('library-sort-premiereDate'));
+    await tester.scrollUntilVisible(
+      premiere,
+      120,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    expect(premiere, findsOneWidget);
+
+    await tester.tap(premiere);
+    await tester.pumpAndSettle();
+
+    expect(library.itemsSorts.last, (
+      sortBy: 'PremiereDate',
+      sortOrder: 'Descending',
+    ));
+    expect(find.text('首映日期 ↓'), findsOneWidget);
+  });
+  testWidgets('the view toggle switches between grid and list', (tester) async {
+    final library = FakeLibraryService(
+      viewList: <LibraryView>[fakeMoviesView],
+      itemsByView: <String, List<MediaItem>>{
+        fakeMoviesView.id: <MediaItem>[
+          const MediaItem(
+            id: '1',
+            name: 'Item 1',
+            type: 'Movie',
+            productionYear: 2024,
+            userData: UserItemData(played: true),
+          ),
+        ],
+      },
+    );
+    await pumpLibrary(tester, library);
+    expect(find.byType(GridView), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('library-view-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GridView), findsNothing);
+    expect(find.byKey(const Key('library-row-1')), findsOneWidget);
+    expect(find.text('Item 1'), findsOneWidget);
+    expect(find.text('2024'), findsOneWidget);
+    expect(find.text('已看'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('library-view-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GridView), findsOneWidget);
+    expect(find.byKey(const Key('library-row-1')), findsNothing);
+  });
+
+  testWidgets('random play opens a movie detail', (tester) async {
+    final library = buildService(movies: 1);
+    library.itemsById['1'] = fakeItem('1');
+    await pumpLibrary(tester, library);
+
+    await tester.tap(find.byKey(const Key('library-random')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('detail-title')), findsOneWidget);
+  });
+
+  testWidgets('random play opens the series page for a series', (tester) async {
+    final library = FakeLibraryService(
+      viewList: <LibraryView>[fakeShowsView],
+      itemsByView: <String, List<MediaItem>>{
+        fakeShowsView.id: <MediaItem>[
+          const MediaItem(id: 's-1', name: 'Solo Show', type: 'Series'),
+        ],
+      },
+    );
+    await pumpLibrary(tester, library);
+
+    await tester.tap(find.byKey(const Key('library-random')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('series-back')), findsOneWidget);
+  });
+
+  testWidgets('random play is disabled without loaded items', (tester) async {
+    final library = FakeLibraryService(viewList: <LibraryView>[fakeMoviesView]);
+    await pumpLibrary(tester, library);
+
+    expect(
+      tester
+          .widget<AppIconButton>(find.byKey(const Key('library-random')))
+          .onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('the collections tab renders BoxSet posters', (tester) async {
+    final library = buildService();
+    library.collectionResults = <MediaItem>[
+      const MediaItem(id: 'box-1', name: '漫威合集', type: 'BoxSet'),
+    ];
+    await pumpLibrary(tester, library);
+
+    expect(find.byKey(const Key('library-tab-collections')), findsOneWidget);
+    expect(find.byKey(const Key('library-tab-type')), findsOneWidget);
+    expect(find.byKey(const Key('library-tab-tag')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('library-tab-collections')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('漫威合集'), findsOneWidget);
+    expect(find.text('Item 1'), findsNothing);
+    // Collections is a global row: the view chips stay hidden.
+    expect(find.widgetWithText(ChoiceChip, 'Movies'), findsNothing);
+    expect(library.collectionsRequests, isNotEmpty);
+  });
+
+  testWidgets('the type tab chooser filters by IncludeItemTypes', (
+    tester,
+  ) async {
+    final library = FakeLibraryService(
+      viewList: <LibraryView>[fakeMoviesView],
+      itemsByView: <String, List<MediaItem>>{
+        fakeMoviesView.id: <MediaItem>[
+          fakeItem('m-1', name: '电影一'),
+          const MediaItem(id: 't-1', name: '剧集一', type: 'Series'),
+        ],
+      },
+    );
+    await pumpLibrary(tester, library);
+
+    await tester.tap(find.byKey(const Key('library-tab-type')));
+    await tester.pumpAndSettle();
+    expect(find.text('电影一'), findsOneWidget);
+    expect(find.text('剧集一'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('library-type-movies')));
+    await tester.pumpAndSettle();
+    expect(library.itemsRequests.last.includeItemTypes, 'Movie');
+    expect(find.text('电影一'), findsOneWidget);
+    expect(find.text('剧集一'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('library-type-series')));
+    await tester.pumpAndSettle();
+    expect(library.itemsRequests.last.includeItemTypes, 'Series');
+    expect(find.text('剧集一'), findsOneWidget);
+    expect(find.text('电影一'), findsNothing);
+  });
+
+  testWidgets('the tag tab lists tags and filters by selection', (
+    tester,
+  ) async {
+    final library = FakeLibraryService(
+      viewList: <LibraryView>[fakeMoviesView],
+      itemsByView: <String, List<MediaItem>>{
+        fakeMoviesView.id: <MediaItem>[
+          const MediaItem(
+            id: 'm-1',
+            name: '4K 影片',
+            type: 'Movie',
+            tags: <String>['4K'],
+          ),
+          fakeItem('m-2', name: '普通影片'),
+        ],
+      },
+    );
+    library.tagNames = <String>['4K', '完结'];
+    await pumpLibrary(tester, library);
+
+    await tester.tap(find.byKey(const Key('library-tab-tag')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ChoiceChip, '4K'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, '完结'), findsOneWidget);
+    expect(find.text('4K 影片'), findsOneWidget);
+    expect(find.text('普通影片'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('library-tag-4K')));
+    await tester.pumpAndSettle();
+    expect(library.itemsRequests.last.tag, '4K');
+    expect(find.text('4K 影片'), findsOneWidget);
+    expect(find.text('普通影片'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('library-tag-all')));
+    await tester.pumpAndSettle();
+    expect(library.itemsRequests.last.tag, isNull);
+    expect(find.text('普通影片'), findsOneWidget);
+  });
+
+  testWidgets('a tag load failure offers a retry', (tester) async {
+    final library = buildService();
+    library.tagsFailure = EmbyException(AppErrorCode.networkUnreachable);
+    await pumpLibrary(tester, library);
+
+    await tester.tap(find.byKey(const Key('library-tab-tag')));
+    await tester.pumpAndSettle();
+    expect(find.text('无法连接服务器，请检查网络'), findsOneWidget);
+
+    library.tagsFailure = null;
+    library.tagNames = <String>['4K'];
+    await tester.tap(find.byKey(const Key('library-tags-retry')));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(ChoiceChip, '4K'), findsOneWidget);
+  });
+
+  testWidgets('the filter dialog applies genre and year', (tester) async {
+    final library = buildService();
+    library.genreNames = <String>['动作', '科幻'];
+    await pumpLibrary(tester, library);
+
+    await tester.tap(find.byKey(const Key('library-filter')));
+    await tester.pumpAndSettle();
+    expect(find.text('筛选'), findsOneWidget);
+    expect(find.byKey(const Key('library-filter-genre-动作')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('library-filter-genre-动作')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('library-filter-year')),
+      '2024',
+    );
+    await tester.tap(find.byKey(const Key('library-filter-apply')));
+    await tester.pumpAndSettle();
+
+    expect(library.itemsRequests.last.genre, '动作');
+    expect(library.itemsRequests.last.year, 2024);
+    expect(
+      find.byKey(const Key('library-filter-genre-active')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('library-filter-year-active')), findsOneWidget);
+
+    // Clearing through the dialog removes both facets in one reload.
+    await tester.tap(find.byKey(const Key('library-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('library-filter-clear')));
+    await tester.pumpAndSettle();
+
+    expect(library.itemsRequests.last.genre, isNull);
+    expect(library.itemsRequests.last.year, isNull);
+    expect(find.byKey(const Key('library-filter-genre-active')), findsNothing);
+    expect(find.byKey(const Key('library-filter-year-active')), findsNothing);
+  });
+
+  testWidgets('the filter affordance only shows on the all tab', (
+    tester,
+  ) async {
+    final library = buildService();
+    library.resumableResults = <MediaItem>[fakeItem('r-1')];
+    await pumpLibrary(tester, library);
+    expect(find.byKey(const Key('library-filter')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('library-tab-resume')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('library-filter')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('library-tab-all')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('library-filter')), findsOneWidget);
+  });
+}
+
+/// Hidden-library double (S32): seeds the state synchronously so the library
+/// page's first page already hides the requested ids.
+class _TestHiddenLibrariesController extends HiddenLibrariesController {
+  _TestHiddenLibrariesController(this._seed);
+
+  final KeyValueStore? _seed;
+
+  @override
+  Future<Set<String>> build() async {
+    if (_seed == null) return <String>{};
+    try {
+      return decodeHiddenLibraries(await _seed.read(hiddenLibrariesStorageKey));
+    } catch (_) {
+      return <String>{};
+    }
+  }
 }

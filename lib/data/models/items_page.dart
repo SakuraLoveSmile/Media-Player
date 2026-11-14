@@ -16,8 +16,9 @@ class ItemsPage {
     Map<String, dynamic> json, {
     int fallbackStartIndex = 0,
   }) {
-    final items =
-        asMapList(json['Items']).map(MediaItem.fromJson).toList(growable: false);
+    final items = asMapList(json['Items'])
+        .map(MediaItem.fromJson)
+        .toList(growable: false);
     return ItemsPage(
       items: items,
       totalRecordCount: asInt(json['TotalRecordCount'], fallback: items.length),

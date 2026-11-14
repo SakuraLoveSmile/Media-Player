@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/moviepilot/models/media_request.dart';
-import '../../../ui/glass/glass_theme.dart';
-import '../../../ui/glass/glass_tokens.dart';
+import '../../../ui/theme/app_tokens.dart';
 import 'request_progress_card.dart';
 
 /// The "我的求片" list (求片 plan S13).
@@ -27,15 +26,16 @@ class MyRequestsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
     if (requests.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.all(GlassSpacing.xxl),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Text(
           '还没有求片记录。搜索片名，点“求片”即可开始。',
           key: const Key('requests-empty'),
           textAlign: TextAlign.center,
-          style: GlassType.footnote.copyWith(color: palette.secondaryLabel),
+          style: Theme.of(context).textTheme.bodySmall!
+              .copyWith(color: palette.onSurfaceVariant),
         ),
       );
     }
@@ -45,7 +45,7 @@ class MyRequestsList extends StatelessWidget {
       children: <Widget>[
         for (final request in requests)
           Padding(
-            padding: const EdgeInsets.only(bottom: GlassSpacing.md),
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
             child: RequestProgressCard(
               request: request,
               busy: busyIds.contains(request.id),
@@ -70,20 +70,20 @@ class RequestSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        GlassSpacing.xs,
-        GlassSpacing.xl,
-        GlassSpacing.xs,
-        GlassSpacing.sm,
+        AppSpacing.xs,
+        AppSpacing.xl,
+        AppSpacing.xs,
+        AppSpacing.sm,
       ),
       child: Row(
         children: <Widget>[
           Text(
             title,
-            style: GlassType.footnote.copyWith(
-              color: palette.secondaryLabel,
+            style: Theme.of(context).textTheme.bodySmall!.copyWith(
+              color: palette.onSurfaceVariant,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.2,
             ),

@@ -8,11 +8,11 @@ import '../../app/moviepilot_providers.dart';
 import '../../core/router/app_routes.dart';
 import '../../data/moviepilot/models/media_request.dart';
 import '../../data/moviepilot/models/mp_media_info.dart';
-import '../../ui/glass/glass_controls.dart';
-import '../../ui/glass/glass_shell.dart';
-import '../../ui/glass/glass_surface.dart';
-import '../../ui/glass/glass_theme.dart';
-import '../../ui/glass/glass_tokens.dart';
+import '../../ui/app_controls.dart';
+import '../../ui/app_loader.dart';
+import '../../ui/app_dialog.dart';
+import '../../ui/app_page.dart';
+import '../../ui/theme/app_tokens.dart';
 import 'request_controller.dart';
 import 'request_state.dart';
 import 'widgets/search_result_card.dart';
@@ -100,63 +100,57 @@ class _RequestPageState extends ConsumerState<RequestPage> {
   Widget build(BuildContext context) {
     final controller = _controller;
     final state = controller?.state;
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
 
-    return GlassPage(
+    return AppPage(
       title: '求片',
       onBack: () => context.pop(),
       actions: <Widget>[
-        GlassIconButton(
+        AppIconButton(
           key: const Key('request-open-mine-top'),
           tooltip: '我的求片',
           icon: const Icon(Icons.downloading_outlined),
           onPressed: _openMine,
         ),
-        GlassIconButton(
+        AppIconButton(
           key: const Key('request-settings'),
           tooltip: 'MoviePilot 设置',
           icon: const Icon(Icons.settings_outlined),
           onPressed: () => context.push(AppRoutes.settings),
         ),
       ],
-      child: Padding(
-        padding: const EdgeInsets.only(
-          top: GlassHeaderMetrics.expandedHeight,
-        ),
-        child: _fatal != null
-            ? _ErrorView(message: _fatal!, onRetry: _bootstrap)
-            : controller == null || state == null
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: controller.refresh,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    GlassSpacing.lg,
-                    GlassSpacing.md,
-                    GlassSpacing.lg,
-                    GlassSpacing.xxxl,
-                  ),
-                  children: <Widget>[
-                    _searchBar(state, palette),
-                    if (state.polling) ...<Widget>[
-                      const SizedBox(height: GlassSpacing.sm),
-                      Text(
-                        '同步中…',
-                        key: const Key('request-syncing'),
-                        style: GlassType.caption1.copyWith(
-                          color: palette.tertiaryLabel,
-                        ),
-                      ),
-                    ],
-                    ..._body(controller, state, palette),
-                  ],
+      child: _fatal != null
+          ? _ErrorView(message: _fatal!, onRetry: _bootstrap)
+          : controller == null || state == null
+          ? const AppLoadingView()
+          : RefreshIndicator(
+              onRefresh: controller.refresh,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                  AppSpacing.lg,
+                  AppSpacing.xxxl,
                 ),
+                children: <Widget>[
+                  _searchBar(state, palette),
+                  if (state.polling) ...<Widget>[
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      '同步中…',
+                      key: const Key('request-syncing'),
+                      style: Theme.of(context).textTheme.labelMedium!
+                          .copyWith(color: palette.outline),
+                    ),
+                  ],
+                  ..._body(controller, state, palette),
+                ],
               ),
-      ),
+            ),
     );
   }
 
-  Widget _searchBar(RequestState state, GlassPalette palette) {
+  Widget _searchBar(RequestState state, ColorScheme palette) {
     return Row(
       children: <Widget>[
         Expanded(
@@ -173,8 +167,8 @@ class _RequestPageState extends ConsumerState<RequestPage> {
             ),
           ),
         ),
-        const SizedBox(width: GlassSpacing.sm),
-        GlassButton(
+        const SizedBox(width: AppSpacing.sm),
+        AppButton(
           key: const Key('request-search-button'),
           label: '搜索',
           loading: state.searching,
@@ -190,37 +184,33 @@ class _RequestPageState extends ConsumerState<RequestPage> {
   List<Widget> _body(
     RequestController controller,
     RequestState state,
-    GlassPalette palette,
+    ColorScheme palette,
   ) {
     if (state.needsConfiguration) {
       return <Widget>[
-        const SizedBox(height: GlassSpacing.xxl),
-        GlassSurface(
-          radius: GlassRadii.cardLarge,
-          padding: const EdgeInsets.all(GlassSpacing.xxl),
+        const SizedBox(height: AppSpacing.xxl),
+        AppCard(
+          radius: AppRadii.cardLarge,
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(
-                Icons.cloud_off_outlined,
-                size: 32,
-                color: palette.tertiaryLabel,
-              ),
-              const SizedBox(height: GlassSpacing.md),
+              Icon(Icons.cloud_off_outlined, size: 32, color: palette.outline),
+              const SizedBox(height: AppSpacing.md),
               Text(
                 state.configInvalid ? 'MoviePilot 连接已断开' : '还没有连接 MoviePilot',
-                style: GlassType.body.copyWith(color: palette.label),
+                style: Theme.of(context).textTheme.bodyLarge!
+                    .copyWith(color: palette.onSurface),
               ),
-              const SizedBox(height: GlassSpacing.sm),
+              const SizedBox(height: AppSpacing.sm),
               Text(
                 '在设置中登录 MoviePilot 账号后即可求片。',
                 textAlign: TextAlign.center,
-                style: GlassType.footnote.copyWith(
-                  color: palette.secondaryLabel,
-                ),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: palette.onSurfaceVariant),
               ),
-              const SizedBox(height: GlassSpacing.lg),
-              GlassButton(
+              const SizedBox(height: AppSpacing.lg),
+              AppButton(
                 key: const Key('request-go-settings'),
                 label: '去设置',
                 onPressed: () => context.push(AppRoutes.settings),
@@ -233,34 +223,35 @@ class _RequestPageState extends ConsumerState<RequestPage> {
 
     return <Widget>[
       if (state.pollError != null) ...<Widget>[
-        const SizedBox(height: GlassSpacing.md),
-        GlassTag(
+        const SizedBox(height: AppSpacing.md),
+        AppTag(
           key: const Key('request-poll-error'),
           label: state.pollError!,
-          color: palette.orange,
+          color: Colors.orange,
           icon: const Icon(Icons.error_outline),
         ),
       ],
       if (state.searchError != null) ...<Widget>[
-        const SizedBox(height: GlassSpacing.md),
+        const SizedBox(height: AppSpacing.md),
         Text(
           state.searchError!,
           key: const Key('request-search-error'),
-          style: GlassType.footnote.copyWith(color: palette.red),
+          style: Theme.of(context).textTheme.bodySmall!
+              .copyWith(color: palette.error),
         ),
       ],
       if (state.searchResults.isNotEmpty) ...<Widget>[
         Padding(
           padding: const EdgeInsets.fromLTRB(
-            GlassSpacing.xs,
-            GlassSpacing.xl,
-            GlassSpacing.xs,
-            GlassSpacing.sm,
+            AppSpacing.xs,
+            AppSpacing.xl,
+            AppSpacing.xs,
+            AppSpacing.sm,
           ),
           child: Text(
             '搜索结果',
-            style: GlassType.footnote.copyWith(
-              color: palette.secondaryLabel,
+            style: Theme.of(context).textTheme.bodySmall!.copyWith(
+              color: palette.onSurfaceVariant,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.2,
             ),
@@ -268,7 +259,7 @@ class _RequestPageState extends ConsumerState<RequestPage> {
         ),
         for (final media in state.searchResults)
           Padding(
-            padding: const EdgeInsets.only(bottom: GlassSpacing.md),
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
             child: SearchResultCard(
               media: media,
               busy: state.subscribeInFlight,
@@ -277,7 +268,7 @@ class _RequestPageState extends ConsumerState<RequestPage> {
           ),
       ],
       if (state.hasRequests) ...<Widget>[
-        const SizedBox(height: GlassSpacing.xl),
+        const SizedBox(height: AppSpacing.xl),
         _MyRequestsEntry(
           count: state.requests.length,
           inFlight: state.requests
@@ -332,9 +323,10 @@ Future<int?> showSeasonPickerFor(
     // MoviePilot would resolve on its own.
     return choice.error == null ? 1 : null;
   }
-  return showGlassDialog<int>(
+  return showAppDialog<int>(
     context: context,
-    builder: (BuildContext dialogContext) => _SeasonPickerDialog(choice: choice),
+    builder: (BuildContext dialogContext) =>
+        _SeasonPickerDialog(choice: choice),
   );
 }
 
@@ -345,10 +337,10 @@ class _SeasonPickerDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
     return Material(
       type: MaterialType.transparency,
-      child: GlassDialog(
+      child: AppDialog(
         title: choice.media.title,
         message: '选择要订阅的季',
         maxWidth: 380,
@@ -358,36 +350,35 @@ class _SeasonPickerDialog extends StatelessWidget {
             if (choice.error != null)
               Text(
                 choice.error!,
-                style: GlassType.footnote.copyWith(color: palette.red),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: palette.error),
               )
             else
               // Plain tappable rows rather than ListTile: the dialog body is a
-              // decorated glass surface, where a ListTile's own ink would be
+              // decorated Material surface, where a ListTile's own ink would be
               // hidden (and the framework asserts about it).
               for (final season in choice.seasons)
                 InkWell(
                   key: Key('season-${season.seasonNumber}'),
-                  borderRadius: BorderRadius.circular(GlassRadii.control),
-                  onTap: () =>
-                      Navigator.of(context).pop(season.seasonNumber),
+                  borderRadius: BorderRadius.circular(AppRadii.control),
+                  onTap: () => Navigator.of(context).pop(season.seasonNumber),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: GlassSpacing.sm,
-                      vertical: GlassSpacing.md,
+                      horizontal: AppSpacing.sm,
+                      vertical: AppSpacing.md,
                     ),
                     child: Row(
                       children: <Widget>[
                         Text(
                           season.label,
-                          style: GlassType.body.copyWith(
-                            color: palette.label,
-                          ),
+                          style: Theme.of(context).textTheme.bodyLarge!
+                              .copyWith(color: palette.onSurface),
                         ),
                         const Spacer(),
                         Icon(
                           Icons.chevron_right,
                           size: 18,
-                          color: palette.tertiaryLabel,
+                          color: palette.outline,
                         ),
                       ],
                     ),
@@ -396,9 +387,9 @@ class _SeasonPickerDialog extends StatelessWidget {
           ],
         ),
         actions: <Widget>[
-          GlassButton(
+          AppButton(
             label: '取消',
-            variant: GlassButtonVariant.plain,
+            variant: AppButtonVariant.plain,
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],
@@ -415,29 +406,30 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final GlassPalette palette = context.glass;
+    final ColorScheme palette = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(GlassSpacing.xxxl),
-        child: GlassSurface(
-          radius: GlassRadii.cardLarge,
-          padding: const EdgeInsets.all(GlassSpacing.xxl),
+        padding: const EdgeInsets.all(AppSpacing.xxxl),
+        child: AppCard(
+          radius: AppRadii.cardLarge,
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Icon(
                 Icons.warning_amber_rounded,
-                color: palette.secondaryLabel,
+                color: palette.onSurfaceVariant,
                 size: 28,
               ),
-              const SizedBox(height: GlassSpacing.md),
+              const SizedBox(height: AppSpacing.md),
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: GlassType.body.copyWith(color: palette.label),
+                style: Theme.of(context).textTheme.bodyLarge!
+                    .copyWith(color: palette.onSurface),
               ),
-              const SizedBox(height: GlassSpacing.lg),
-              GlassButton(label: '重试', onPressed: onRetry),
+              const SizedBox(height: AppSpacing.lg),
+              AppButton(label: '重试', onPressed: onRetry),
             ],
           ),
         ),
@@ -460,24 +452,28 @@ class _MyRequestsEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final GlassPalette palette = context.glass;
-    // A plain tappable row, not a ListTile: GlassCard paints a background, and
+    final ColorScheme palette = Theme.of(context).colorScheme;
+    // A plain tappable row, not a ListTile: AppCard paints a background, and
     // a ListTile inside it hides its own ink (the framework asserts about it).
-    return GlassCard(
+    return AppCard(
       padding: EdgeInsets.zero,
       child: InkWell(
         key: const Key('request-open-mine'),
-        borderRadius: BorderRadius.circular(GlassRadii.cardLarge),
+        borderRadius: BorderRadius.circular(AppRadii.cardLarge),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(
-            horizontal: GlassSpacing.lg,
-            vertical: GlassSpacing.md,
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
           ),
           child: Row(
             children: <Widget>[
-              Icon(Icons.downloading_outlined, color: palette.tint, size: 22),
-              const SizedBox(width: GlassSpacing.md),
+              Icon(
+                Icons.downloading_outlined,
+                color: palette.primary,
+                size: 22,
+              ),
+              const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -485,25 +481,19 @@ class _MyRequestsEntry extends StatelessWidget {
                   children: <Widget>[
                     Text(
                       '我的求片',
-                      style: GlassType.body.copyWith(color: palette.label),
+                      style: Theme.of(context).textTheme.bodyLarge!
+                          .copyWith(color: palette.onSurface),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      inFlight > 0
-                          ? '$count 个求片，$inFlight 个进行中'
-                          : '$count 个求片',
-                      style: GlassType.caption1.copyWith(
-                        color: palette.secondaryLabel,
-                      ),
+                      inFlight > 0 ? '$count 个求片，$inFlight 个进行中' : '$count 个求片',
+                      style: Theme.of(context).textTheme.labelMedium!
+                          .copyWith(color: palette.onSurfaceVariant),
                     ),
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right,
-                color: palette.tertiaryLabel,
-                size: 20,
-              ),
+              Icon(Icons.chevron_right, color: palette.outline, size: 20),
             ],
           ),
         ),

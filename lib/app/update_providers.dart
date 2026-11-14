@@ -145,9 +145,8 @@ class UpdateController extends Notifier<UpdateState> {
     state = const UpdateState(status: UpdateStatus.checking);
     try {
       final String platform = ref.read(updatePlatformProvider);
-      final UpdateChannel channel = ref
-              .read(updateChannelControllerProvider)
-              .value ??
+      final UpdateChannel channel =
+          ref.read(updateChannelControllerProvider).value ??
           UpdateChannel.stable;
       final AppRelease? release = await ref
           .read(updateServiceProvider)

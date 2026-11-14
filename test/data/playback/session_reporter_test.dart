@@ -65,9 +65,8 @@ void main() {
     return result;
   }
 
-  int reportCount(String path) => server.requestLog
-      .where((line) => line == 'POST $path')
-      .length;
+  int reportCount(String path) =>
+      server.requestLog.where((line) => line == 'POST $path').length;
 
   setUp(() async {
     server = FakeEmbyServer();
@@ -285,8 +284,9 @@ void main() {
     gate.complete();
     await Future.wait(<Future<void>>[first, second]);
 
-    final positions =
-        progressBodies().map((body) => body['PositionTicks']).toList();
+    final positions = progressBodies()
+        .map((body) => body['PositionTicks'])
+        .toList();
     expect(positions, <int>[10000000, 20000000]);
   });
 
@@ -320,9 +320,13 @@ void main() {
     final line = lines.single;
     expect(
       line,
-      matches(RegExp(r'^\[report\] /Sessions/Playing(?:/Progress|/Stopped)? '
+      matches(
+        RegExp(
+          r'^\[report\] /Sessions/Playing(?:/Progress|/Stopped)? '
           r'item=\S{1,6} posTicks=\d+ paused=(?:true|false) '
-          r'playMethod=(?:DirectPlay|Transcode) playSessionId=\d+$')),
+          r'playMethod=(?:DirectPlay|Transcode) playSessionId=\d+$',
+        ),
+      ),
     );
     expect(line, contains('item=abcdef '));
     expect(line, contains('posTicks=30000000'));

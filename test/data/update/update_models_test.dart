@@ -309,11 +309,7 @@ void main() {
 
     test('rejects tags that are not version shaped', () {
       for (final String raw in <String>['', 'latest', 'v0.2', 'v0.2.4-beta']) {
-        expect(
-          () => parseReleaseTag(raw),
-          throwsFormatException,
-          reason: raw,
-        );
+        expect(() => parseReleaseTag(raw), throwsFormatException, reason: raw);
       }
     });
 

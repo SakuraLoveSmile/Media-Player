@@ -113,11 +113,9 @@ void main() {
         'https://example.com/mp/api/v1/subscribe/',
       );
       expect(
-        config
-            .resolve('/api/v1/mediaserver/exists', <String, String>{
-              'mtype': '电影',
-            })
-            .toString(),
+        config.resolve('/api/v1/mediaserver/exists', <String, String>{
+          'mtype': '电影',
+        }).toString(),
         'https://example.com/mp/api/v1/mediaserver/exists?mtype=%E7%94%B5%E5%BD%B1',
       );
     });
@@ -172,9 +170,9 @@ void main() {
       final kv = InMemoryKeyValueStore();
       await MoviePilotConfigStore(kv).write(config());
 
-      final decoded =
-          jsonDecode((await kv.read(MoviePilotConfigStore.key))!)
-              as Map<String, dynamic>;
+      final decoded = jsonDecode(
+        (await kv.read(MoviePilotConfigStore.key))!,
+      ) as Map<String, dynamic>;
       expect(decoded['schemaVersion'], MoviePilotConfigStore.schemaVersion);
       expect(decoded['config'], isA<Map<String, dynamic>>());
     });

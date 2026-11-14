@@ -38,6 +38,23 @@ class FakeEmbyServer {
   int sessionsStatus = 200;
   int lookupRequests = 0;
 
+  /// `GET /System/Info` reply (S24 服务器信息); null answers a default built
+  /// from [serverName].
+  Map<String, dynamic>? systemInfoResponse;
+  int systemInfoStatus = 200;
+
+  /// `GET /Users` reply (S24 用户), served as a bare array like real Emby.
+  List<Map<String, dynamic>> usersResponse = <Map<String, dynamic>>[];
+  int usersStatus = 200;
+
+  /// `GET /Users/user-1` reply (S24): the signed-in user, including the
+  /// `Policy.IsAdministrator` flag the admin gate reads.
+  Map<String, dynamic> currentUserResponse = <String, dynamic>{
+    'Id': 'user-1',
+    'Name': 'test',
+    'Policy': <String, dynamic>{'IsAdministrator': true},
+  };
+
   /// Session reports in arrival order, with their bodies (contract §3.6).
   final List<String> sessionReportPaths = <String>[];
   final List<Map<String, dynamic>> sessionBodies = <Map<String, dynamic>>[];
@@ -61,15 +78,45 @@ class FakeEmbyServer {
   List<Map<String, dynamic>>? titleSearchItems;
 
   /// 130 movies so paging can be exercised with 60-item pages.
-  final List<Map<String, dynamic>> movieItems = List<Map<String, dynamic>>.generate(
-    130,
-    (index) => <String, dynamic>{
-      'Id': 'movie-${index + 1}',
-      'Name': 'Movie ${index + 1}',
-      'Type': 'Movie',
-      'RunTimeTicks': 6000000000,
-    },
-  );
+  final List<Map<String, dynamic>> movieItems =
+      List<Map<String, dynamic>>.generate(
+        130,
+        (index) => <String, dynamic>{
+          'Id': 'movie-${index + 1}',
+          'Name': 'Movie ${index + 1}',
+          'Type': 'Movie',
+          'RunTimeTicks': 6000000000,
+        },
+      );
+
+  /// Reply for a favorites query (`Filters=IsFavorite`, S8).
+  List<Map<String, dynamic>> favoriteItems = <Map<String, dynamic>>[];
+
+  /// Reply for a continue-watching query (`Filters=IsResumable`, P1 home).
+  List<Map<String, dynamic>> resumableItems = <Map<String, dynamic>>[];
+
+  /// Reply for the BoxSet collections query (S10 合集).
+  List<Map<String, dynamic>> boxsetItems = <Map<String, dynamic>>[];
+
+  /// Replies for `GET /Genres` / `GET /Tags` (S10), served as `Items[].Name`.
+  List<String> genreNames = <String>[];
+  List<String> tagNames = <String>[];
+  Map<String, String>? lastGenresQuery;
+  Map<String, String>? lastTagsQuery;
+
+  /// Replies for `GET /LiveTv/Channels` / `GET /LiveTv/Programs` (S21).
+  List<Map<String, dynamic>> liveTvChannels = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> liveTvPrograms = <Map<String, dynamic>>[];
+  Map<String, String>? lastLiveTvChannelsQuery;
+  Map<String, String>? lastLiveTvProgramsQuery;
+
+  /// When set, the LiveTv paths answer this status instead, so the empty/error
+  /// surface can be exercised (e.g. a server without Live TV enabled).
+  int? liveTvStatus;
+
+  /// Favorite/played writes in arrival order, as `METHOD path` (S8).
+  final List<String> favoriteWrites = <String>[];
+  final List<String> playedWrites = <String>[];
 
   String get base => 'http://127.0.0.1:${_server.port}';
 
@@ -97,10 +144,58 @@ class FakeEmbyServer {
         return;
       }
 
+      if (request.method == 'GET' && path == '/System/Info') {
+        if (revokeToken || request.headers.value('X-Emby-Token') != token) {
+          await _json(response, 401, <String, dynamic>{'error': 'no token'});
+          return;
+        }
+        if (systemInfoStatus != 200) {
+          await _json(response, systemInfoStatus, <String, dynamic>{
+            'error': 'system info failed',
+          });
+          return;
+        }
+        await _json(
+          response,
+          200,
+          systemInfoResponse ??
+              <String, dynamic>{
+                'ServerName': serverName,
+                'Version': '4.10.1.0',
+                'OperatingSystem': 'Linux',
+                'HasPendingRestart': false,
+              },
+        );
+        return;
+      }
+
+      if (request.method == 'GET' && path == '/Users') {
+        if (revokeToken || request.headers.value('X-Emby-Token') != token) {
+          await _json(response, 401, <String, dynamic>{'error': 'no token'});
+          return;
+        }
+        if (usersStatus != 200) {
+          await _json(response, usersStatus, <String, dynamic>{
+            'error': 'users failed',
+          });
+          return;
+        }
+        await _jsonList(response, 200, usersResponse);
+        return;
+      }
+
+      if (request.method == 'GET' && path == '/Users/user-1') {
+        if (revokeToken || request.headers.value('X-Emby-Token') != token) {
+          await _json(response, 401, <String, dynamic>{'error': 'no token'});
+          return;
+        }
+        await _json(response, 200, currentUserResponse);
+        return;
+      }
+
       if (request.method == 'POST' && path == '/Users/AuthenticateByName') {
         authRequests++;
-        lastAuthorizationHeader =
-            request.headers.value('X-Emby-Authorization');
+        lastAuthorizationHeader = request.headers.value('X-Emby-Authorization');
         final body = await utf8.decoder.bind(request).join();
         final map = jsonDecode(body) as Map<String, dynamic>;
         final headerOk =
@@ -139,7 +234,59 @@ class FakeEmbyServer {
 
       if (request.method == 'GET' && path == '/Users/user-1/Items') {
         lastItemsQuery = request.uri.queryParameters;
-        final isLookup = request.uri.queryParameters.containsKey('SearchTerm') ||
+        final isFavorites =
+            request.uri.queryParameters['Filters'] == 'IsFavorite';
+        if (isFavorites) {
+          final start =
+              int.tryParse(request.uri.queryParameters['StartIndex'] ?? '') ??
+              0;
+          final limit =
+              int.tryParse(request.uri.queryParameters['Limit'] ?? '') ?? 60;
+          final slice = favoriteItems
+              .skip(start)
+              .take(limit)
+              .toList(growable: false);
+          await _json(response, 200, <String, dynamic>{
+            'Items': slice,
+            'TotalRecordCount': favoriteItems.length,
+            'StartIndex': start,
+          });
+          return;
+        }
+        final isResumable =
+            request.uri.queryParameters['Filters'] == 'IsResumable';
+        if (isResumable) {
+          final limit =
+              int.tryParse(request.uri.queryParameters['Limit'] ?? '') ?? 20;
+          final slice = resumableItems.take(limit).toList(growable: false);
+          await _json(response, 200, <String, dynamic>{
+            'Items': slice,
+            'TotalRecordCount': resumableItems.length,
+            'StartIndex': 0,
+          });
+          return;
+        }
+        final isBoxSet =
+            request.uri.queryParameters['IncludeItemTypes'] == 'BoxSet';
+        if (isBoxSet) {
+          final start =
+              int.tryParse(request.uri.queryParameters['StartIndex'] ?? '') ??
+              0;
+          final limit =
+              int.tryParse(request.uri.queryParameters['Limit'] ?? '') ?? 60;
+          final slice = boxsetItems
+              .skip(start)
+              .take(limit)
+              .toList(growable: false);
+          await _json(response, 200, <String, dynamic>{
+            'Items': slice,
+            'TotalRecordCount': boxsetItems.length,
+            'StartIndex': start,
+          });
+          return;
+        }
+        final isLookup =
+            request.uri.queryParameters.containsKey('SearchTerm') ||
             request.uri.queryParameters.containsKey('AnyProviderIdEquals');
         if (isLookup) {
           lookupRequests++;
@@ -159,15 +306,117 @@ class FakeEmbyServer {
           return;
         }
         final parentId = request.uri.queryParameters['ParentId'];
-        final start = int.tryParse(request.uri.queryParameters['StartIndex'] ?? '') ?? 0;
-        final limit = int.tryParse(request.uri.queryParameters['Limit'] ?? '') ?? 60;
-        final all = parentId == 'view-1' ? movieItems : const <Map<String, dynamic>>[];
+        final start =
+            int.tryParse(request.uri.queryParameters['StartIndex'] ?? '') ?? 0;
+        final limit =
+            int.tryParse(request.uri.queryParameters['Limit'] ?? '') ?? 60;
+        var all = parentId == 'view-1'
+            ? movieItems
+            : const <Map<String, dynamic>>[];
+        // S10 browsing filters: type / year / genre / tag narrowing.
+        final types = request.uri.queryParameters['IncludeItemTypes'];
+        if (types != null && types != 'Movie,Series') {
+          final wanted = types.split(',');
+          all = all
+              .where((item) => wanted.contains(item['Type']))
+              .toList(growable: false);
+        }
+        final years = request.uri.queryParameters['Years'];
+        if (years != null) {
+          all = all
+              .where((item) => '${item['ProductionYear']}' == years)
+              .toList(growable: false);
+        }
+        final genres = request.uri.queryParameters['Genres'];
+        if (genres != null) {
+          all = all
+              .where(
+                (item) => (item['Genres'] as List? ?? const <Object?>[])
+                    .contains(genres),
+              )
+              .toList(growable: false);
+        }
+        final tags = request.uri.queryParameters['Tags'];
+        if (tags != null) {
+          all = all
+              .where(
+                (item) =>
+                    (item['Tags'] as List? ?? const <Object?>[]).contains(tags),
+              )
+              .toList(growable: false);
+        }
         final slice = all.skip(start).take(limit).toList(growable: false);
 
         await _json(response, 200, <String, dynamic>{
           'Items': slice,
           'TotalRecordCount': all.length,
           'StartIndex': start,
+        });
+        return;
+      }
+
+      if (request.method == 'GET' && path == '/Genres') {
+        lastGenresQuery = request.uri.queryParameters;
+        await _json(response, 200, <String, dynamic>{
+          'Items': <Map<String, dynamic>>[
+            for (final String name in genreNames)
+              <String, dynamic>{'Name': name},
+          ],
+          'TotalRecordCount': genreNames.length,
+        });
+        return;
+      }
+
+      if (request.method == 'GET' && path == '/Tags') {
+        lastTagsQuery = request.uri.queryParameters;
+        await _json(response, 200, <String, dynamic>{
+          'Items': <Map<String, dynamic>>[
+            for (final String name in tagNames) <String, dynamic>{'Name': name},
+          ],
+          'TotalRecordCount': tagNames.length,
+        });
+        return;
+      }
+
+      if (request.method == 'GET' && path == '/LiveTv/Channels') {
+        lastLiveTvChannelsQuery = request.uri.queryParameters;
+        final status = liveTvStatus;
+        if (status != null) {
+          await _json(response, status, <String, dynamic>{'error': 'livetv'});
+          return;
+        }
+        if (revokeToken || request.headers.value('X-Emby-Token') != token) {
+          await _json(response, 401, <String, dynamic>{'error': 'no token'});
+          return;
+        }
+        await _json(response, 200, <String, dynamic>{
+          'Items': liveTvChannels,
+          'TotalRecordCount': liveTvChannels.length,
+        });
+        return;
+      }
+
+      if (request.method == 'GET' && path == '/LiveTv/Programs') {
+        lastLiveTvProgramsQuery = request.uri.queryParameters;
+        final status = liveTvStatus;
+        if (status != null) {
+          await _json(response, status, <String, dynamic>{'error': 'livetv'});
+          return;
+        }
+        if (revokeToken || request.headers.value('X-Emby-Token') != token) {
+          await _json(response, 401, <String, dynamic>{'error': 'no token'});
+          return;
+        }
+        // ChannelIds narrows the guide to one channel, mirroring the server.
+        final channelIds = request.uri.queryParameters['ChannelIds'];
+        final items = channelIds == null || channelIds.isEmpty
+            ? liveTvPrograms
+            : liveTvPrograms
+                  .where((p) => '${p['ChannelId']}' == channelIds)
+                  .toList(growable: false);
+        await _json(response, 200, <String, dynamic>{
+          'Items': items,
+          'TotalRecordCount': items.length,
         });
         return;
       }
@@ -247,13 +496,17 @@ class FakeEmbyServer {
           },
         ];
         await _json(response, 200, <String, dynamic>{
-          'Items': all.where((e) => seasonId == null || e['SeasonId'] == seasonId).toList(),
+          'Items': all
+              .where((e) => seasonId == null || e['SeasonId'] == seasonId)
+              .toList(),
           'TotalRecordCount': all.length,
         });
         return;
       }
 
-      if (request.method == 'GET' && path.startsWith('/Items/') && path.endsWith('/Images/Primary')) {
+      if (request.method == 'GET' &&
+          path.startsWith('/Items/') &&
+          path.endsWith('/Images/Primary')) {
         imageRequests++;
         response.statusCode = 200;
         response.headers.contentType = ContentType('image', 'png');
@@ -272,24 +525,19 @@ class FakeEmbyServer {
 
         final index = playbackInfoBodies.length - 1;
         final reply = playbackInfoResponses.isEmpty
-            ? <String, dynamic>{
-                'MediaSources': <Map<String, dynamic>>[],
-              }
-            : playbackInfoResponses[
-                index < playbackInfoResponses.length
-                    ? index
-                    : playbackInfoResponses.length - 1];
+            ? <String, dynamic>{'MediaSources': <Map<String, dynamic>>[]}
+            : playbackInfoResponses[index < playbackInfoResponses.length
+                  ? index
+                  : playbackInfoResponses.length - 1];
         await _json(response, 200, reply);
         return;
       }
 
       if (request.method == 'GET' && path == '/Sessions') {
         if (sessionsStatus != 200) {
-          await _json(
-            response,
-            sessionsStatus,
-            <String, dynamic>{'error': 'sessions failed'},
-          );
+          await _json(response, sessionsStatus, <String, dynamic>{
+            'error': 'sessions failed',
+          });
           return;
         }
         await _jsonList(response, 200, sessionsResponse);
@@ -302,18 +550,18 @@ class FakeEmbyServer {
               path == '/Sessions/Playing/Stopped')) {
         final raw = await utf8.decoder.bind(request).join();
         sessionReportPaths.add(path);
-        sessionBodies.add(raw.isEmpty
-            ? <String, dynamic>{}
-            : Map<String, dynamic>.from(jsonDecode(raw) as Map));
+        sessionBodies.add(
+          raw.isEmpty
+              ? <String, dynamic>{}
+              : Map<String, dynamic>.from(jsonDecode(raw) as Map),
+        );
         if (path == '/Sessions/Playing/Progress' && progressHold != null) {
           await progressHold;
         }
         if (failingSessionPaths.contains(path)) {
-          await _json(
-            response,
-            500,
-            <String, dynamic>{'error': 'report failed'},
-          );
+          await _json(response, 500, <String, dynamic>{
+            'error': 'report failed',
+          });
           return;
         }
         await _json(response, 200, <String, dynamic>{});
@@ -323,6 +571,28 @@ class FakeEmbyServer {
       if (request.method == 'GET' && path == '/expired') {
         expiredRequests++;
         await _json(response, 401, <String, dynamic>{'error': 'expired'});
+        return;
+      }
+
+      if ((request.method == 'POST' || request.method == 'DELETE') &&
+          path.startsWith('/Users/user-1/FavoriteItems/')) {
+        favoriteWrites.add('${request.method} $path');
+        if (revokeToken || request.headers.value('X-Emby-Token') != token) {
+          await _json(response, 401, <String, dynamic>{'error': 'no token'});
+          return;
+        }
+        await _json(response, 200, <String, dynamic>{});
+        return;
+      }
+
+      if ((request.method == 'POST' || request.method == 'DELETE') &&
+          path.startsWith('/Users/user-1/PlayedItems/')) {
+        playedWrites.add('${request.method} $path');
+        if (revokeToken || request.headers.value('X-Emby-Token') != token) {
+          await _json(response, 401, <String, dynamic>{'error': 'no token'});
+          return;
+        }
+        await _json(response, 200, <String, dynamic>{});
         return;
       }
 
