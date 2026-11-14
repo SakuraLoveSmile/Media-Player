@@ -6,5 +6,5 @@ abstract final class AppConfig {
   static const String clientName = 'MediaPlayer';
 
   /// Keep in sync with `version` in pubspec.yaml (major.minor.patch).
-  static const String appVersion = '0.3.0';
+  static const String appVersion = '0.4.0';
 }
