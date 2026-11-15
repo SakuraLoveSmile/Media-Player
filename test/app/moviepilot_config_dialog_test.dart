@@ -58,9 +58,10 @@ void main() {
   Future<void> pumpDialog(
     WidgetTester tester, {
     MoviePilotConfig? initial,
+    Size surface = const Size(900, 1000),
   }) async {
     // The dialog is tall; give the surface room so its actions stay tappable.
-    await tester.binding.setSurfaceSize(const Size(900, 1000));
+    await tester.binding.setSurfaceSize(surface);
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
@@ -129,6 +130,33 @@ void main() {
     expect(raw, isNot(contains('password')));
     // Closing on success is the point of the dialog.
     expect(find.byType(MoviePilotConfigDialog), findsNothing);
+  });
+
+  testWidgets('the form stays usable with the software keyboard up', (
+    tester,
+  ) async {
+    // A phone-sized window, so the dialog has no spare room to hide in.
+    tester.view.physicalSize = const Size(360 * 3, 780 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await pumpDialog(tester, surface: const Size(360, 780));
+
+    // A phone keyboard eats most of the screen. The dialog must shrink and
+    // scroll: it used to overflow its own layout and paint 登录/取消/清除连接
+    // on top of the fields.
+    tester.view.viewInsets = const FakeViewPadding(bottom: 400 * 3);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    await fill(tester, url: 'nas.local:3002');
+    await tester.ensureVisible(find.byKey(const Key('moviepilot-save')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('moviepilot-save')));
+    await tester.pumpAndSettle();
+
+    expect(service.logins, hasLength(1));
+    expect(await MoviePilotConfigStore(store).read(), isNotNull);
   });
 
   testWidgets('an invalid address is rejected before any request', (
