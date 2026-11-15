@@ -240,6 +240,7 @@ void main() {
     ScreenOrientationService? orientation,
     bool legacyRoute = false,
     String? source,
+    bool waitForIdle = true,
   }) async {
     final media = item ?? playerItem();
     final library =
@@ -302,6 +303,9 @@ void main() {
       await tester.tap(find.byKey(const Key('detail-play')));
     }
     await tester.pumpAndSettle();
+    // [waitForIdle] false returns right after the first frame, so a test can
+    // inspect the moment playback starts instead of a settled, idle player.
+    if (!waitForIdle) return;
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
     // Controls auto-hide when idle; re-show them so later taps land. Absent on
@@ -473,6 +477,38 @@ void main() {
     await tester.tap(find.byKey(const Key('player-play-toggle')));
     await tester.pumpAndSettle();
     expect(engine.pauseCalls, 1);
+  });
+
+  testWidgets('a video opens without popping the controls open', (
+    tester,
+  ) async {
+    await pumpPlayer(tester, waitForIdle: false);
+
+    double chromeOpacity() => tester
+        .widget<AnimatedOpacity>(
+          find
+              .ancestor(
+                of: find.byKey(const Key('player-back')),
+                matching: find.byType(AnimatedOpacity),
+              )
+              .first,
+        )
+        .opacity;
+
+    // The first frame is live (the opening tap layer is gone)…
+    expect(find.byKey(const Key('player-opening-tap')), findsNothing);
+    // …and the chrome is still closed, so playback start covers neither the
+    // entry transition nor the picture. Only a tap opens it.
+    expect(chromeOpacity(), 0);
+
+    await tester.tap(find.byKey(const Key('player-gesture-area')));
+    await tester.pumpAndSettle();
+    expect(chromeOpacity(), 1);
+
+    // Drain the §10.9 f verdict timer the helper's idle wait normally covers,
+    // so the test does not tear down with a pending timer.
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('controls auto-hide after idle and a tap brings them back', (

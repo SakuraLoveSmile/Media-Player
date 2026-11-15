@@ -424,6 +424,9 @@ void main() {
         const PlaybackSnapshot(position: Duration(seconds: 145), playing: true),
       );
       await tester.pump();
+      // S79: the chrome opens only on a tap, so reveal it before using it.
+      await tester.tap(find.byKey(const Key('player-gesture-area')));
+      await tester.pump(const Duration(milliseconds: 250));
       await tester.tap(find.byKey(const Key('player-play-toggle')));
       await tester.pump();
       final slider = tester.widget<Slider>(
@@ -484,6 +487,9 @@ void main() {
       expect(engines.last.openedPlans.single.itemId, 'e76');
       expect(reporters.last.startedItemIds, ['e76']);
       expect(playback.resolveStartAts.last, Duration.zero);
+      // A freshly opened player keeps its chrome closed (S79).
+      await tester.tap(find.byKey(const Key('player-gesture-area')));
+      await tester.pump(const Duration(milliseconds: 250));
       await tester.tap(find.byKey(const Key('player-back')));
       await tester.pumpAndSettle();
       expect(reporters.last.stoppedItemIds, ['e76']);

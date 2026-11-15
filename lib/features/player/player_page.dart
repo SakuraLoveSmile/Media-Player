@@ -96,12 +96,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   /// Controls auto-hide so they never sit over the subtitle band; a tap on the
   /// video brings them back (Yamby parity).
   static const Duration _controlsHideDelay = Duration(seconds: 3);
-  /// S79: starts hidden - a freshly opened player shows only the loader until
-  /// the first frame is live (or the user taps).
+  /// S79: starts hidden and only ever appears on a tap - neither the opening nor
+  /// the first live frame pops it open.
   bool _controlsVisible = false;
 
   /// S79: true until the first live frame. Opening never pops the chrome open;
-  /// only a tap does. Mid-session stalls keep the chrome's own behaviour.
+  /// only a tap does, and that stays true once the picture is live. Mid-session
+  /// stalls keep the chrome's own behaviour.
   bool _opening = true;
 
   /// The chrome was already cleared for this opening, so a later tap that
@@ -1724,12 +1725,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     // then auto-hide" behaviour takes over again. `ready` alone is too early:
     // it flips when the engine is open, before the first frame is decoded.
     if (_opening && state.ready && !state.buffering) {
-      // First live frame: the opening is over. The chrome appears briefly (the
-      // usual 3 s auto-hide) so the user lands on a normal player; during the
-      // opening itself only the loader and the speed readout show.
+      // First live frame: the opening is over. The chrome stays exactly where
+      // the user left it - finishing the open must not pop it open, or it lands
+      // on top of the entry transition and the first frames. A tap is the only
+      // thing that shows it; chrome the user already raised during the opening
+      // now follows the usual 3 s auto-hide.
       _opening = false;
-      _controlsVisible = true;
-      _scheduleHide();
+      if (_controlsVisible) _scheduleHide();
     } else if (_opening && !_openingChromeCleared) {
       _openingChromeCleared = true;
       _hideTimer?.cancel();
