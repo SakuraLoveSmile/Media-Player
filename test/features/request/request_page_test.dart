@@ -156,6 +156,32 @@ void main() {
     );
   });
 
+  testWidgets('signing in lets the open page leave its empty state', (
+    tester,
+  ) async {
+    // The app binds the shared controller before the user ever signs in; the
+    // page must pick up the new connection without a restart.
+    await pumpPage(tester, configured: false);
+    expect(find.text('还没有连接 MoviePilot'), findsOneWidget);
+
+    await ProviderScope.containerOf(
+      tester.element(find.byType(RequestPage)),
+    ).read(moviePilotSettingsProvider.notifier).login(
+      baseUrl: 'http://nas:3002',
+      username: 'admin',
+      password: 'pw',
+    );
+    await settle(tester);
+
+    expect(find.text('还没有连接 MoviePilot'), findsNothing);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('request-search-field')))
+          .enabled,
+      isTrue,
+    );
+  });
+
   testWidgets('a search failure is shown as copy', (tester) async {
     service.searchFailure = mpFailure(AppErrorCode.networkUnreachable);
     await pumpPage(tester);

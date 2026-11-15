@@ -107,6 +107,7 @@ class MoviePilotSettings extends AsyncNotifier<MoviePilotConfig?> {
     final verified = await service.testConnection(pending);
     await store.write(verified);
     state = AsyncData(verified);
+    _reloadRequests();
     return verified;
   }
 
@@ -115,7 +116,18 @@ class MoviePilotSettings extends AsyncNotifier<MoviePilotConfig?> {
     final store = await ref.read(moviePilotConfigStoreProvider.future);
     await store?.delete();
     state = const AsyncData(null);
+    _reloadRequests();
   }
+
+  /// Drops the shared 求片 controller so it reads the new connection.
+  ///
+  /// [RequestController.load] asks the store for the connection exactly once,
+  /// at startup: without this the instance both 求片 pages and the app-level
+  /// notification wiring hold would keep its first answer, so a fresh login
+  /// still renders 「还没有连接 MoviePilot」 (and a sign-out keeps polling with
+  /// a connection that no longer exists). Both pages re-attach when the
+  /// provider rebuilds, and the controller restores its list from storage.
+  void _reloadRequests() => ref.invalidate(requestControllerProvider);
 }
 
 final AsyncNotifierProvider<MoviePilotSettings, MoviePilotConfig?>

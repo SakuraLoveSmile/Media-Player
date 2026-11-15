@@ -104,6 +104,50 @@ void main() {
     });
   });
 
+  group('connection changes reach the 求片 controller', () {
+    test('a login leaves the startup "not connected" state', () async {
+      final service = FakeMoviePilotService();
+      final c = container(service: service);
+
+      // The app binds the shared controller at startup, before there is a
+      // connection: that instance is what 求片 renders.
+      final before = await c.read(requestControllerProvider.future);
+      expect(before!.state.configured, isFalse);
+
+      await c
+          .read(moviePilotSettingsProvider.notifier)
+          .login(baseUrl: 'http://nas:3002', username: 'admin', password: 'pw');
+
+      final after = await c.read(requestControllerProvider.future);
+
+      expect(after!.state.loaded, isTrue);
+      expect(after.state.configured, isTrue);
+      expect(after.state.needsConfiguration, isFalse);
+    });
+
+    test('clearing the connection drops the controller back', () async {
+      await MoviePilotConfigStore(store).write(
+        const MoviePilotConfig(
+          baseUrl: 'http://nas:3002',
+          username: 'admin',
+          accessToken: 't',
+        ),
+      );
+      final service = FakeMoviePilotService();
+      final c = container(service: service);
+
+      final before = await c.read(requestControllerProvider.future);
+      expect(before!.state.configured, isTrue);
+
+      await c.read(moviePilotSettingsProvider.notifier).clear();
+
+      final after = await c.read(requestControllerProvider.future);
+
+      expect(after!.state.configured, isFalse);
+      expect(after.state.needsConfiguration, isTrue);
+    });
+  });
+
   group('MoviePilotSettings', () {
     test('login verifies before persisting and updates the state', () async {
       final service = FakeMoviePilotService();
