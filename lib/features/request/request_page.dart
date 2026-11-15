@@ -262,7 +262,7 @@ class _RequestPageState extends ConsumerState<RequestPage> {
             padding: const EdgeInsets.only(bottom: AppSpacing.md),
             child: SearchResultCard(
               media: media,
-              busy: state.subscribeInFlight,
+              busy: state.isSubscribing(media),
               onRequest: () => unawaited(_requestFromSearch(media)),
             ),
           ),

@@ -16,6 +16,7 @@ import 'package:media_player/data/moviepilot/moviepilot_service.dart';
 import 'package:media_player/data/storage/key_value_store.dart';
 import 'package:media_player/data/storage/moviepilot_config_store.dart';
 import 'package:media_player/features/request/request_page.dart';
+import 'package:media_player/ui/app_controls.dart';
 
 import '../../support/fake_library_service.dart';
 import '../../support/fake_moviepilot_service.dart';
@@ -205,6 +206,47 @@ void main() {
     expect(service.createRequests, hasLength(1));
     expect(service.createRequests.single.type, MpMediaType.movie);
     // A new request opens the progress page, where its card lives now.
+    expect(router!.state.matchedLocation, '/request/mine');
+  });
+
+  testWidgets('only the card being requested shows the loader', (
+    tester,
+  ) async {
+    service.searchResults = <String, List<MpMediaInfo>>{
+      '沙丘': <MpMediaInfo>[
+        fakeMedia(),
+        fakeMedia(mediaId: '693135', tmdbId: 693135, title: '沙丘3', year: '2026'),
+      ],
+    };
+    await pumpPage(tester);
+    await search(tester, '沙丘');
+
+    // Hold the create call so the in-flight state is inspected, not raced.
+    final hold = Completer<void>();
+    service.createHold = hold.future;
+
+    await tester.tap(find.byKey(const Key('search-request-693134')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // The one that was tapped spins; the untouched result does not pretend to
+    // be loading too.
+    expect(
+      tester
+          .widget<AppButton>(find.byKey(const Key('search-request-693134')))
+          .loading,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<AppButton>(find.byKey(const Key('search-request-693135')))
+          .loading,
+      isFalse,
+    );
+
+    hold.complete();
+    await settle(tester);
+    expect(service.createRequests, hasLength(1));
     expect(router!.state.matchedLocation, '/request/mine');
   });
 

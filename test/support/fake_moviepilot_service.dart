@@ -62,6 +62,10 @@ class FakeMoviePilotService implements MoviePilotService {
   /// are serialized.
   Future<void>? pollHold;
 
+  /// When set, `createSubscription` waits for it, so a test can inspect the
+  /// in-flight state of a request instead of racing it.
+  Future<void>? createHold;
+
   /// Called on every poll so a test can advance the scripted snapshot.
   void Function(int call)? onPoll;
 
@@ -126,6 +130,8 @@ class FakeMoviePilotService implements MoviePilotService {
   @override
   Future<int> createSubscription(MpSubscribeDraft draft) async {
     createRequests.add(draft);
+    final hold = createHold;
+    if (hold != null) await hold;
     final failure = createFailure;
     if (failure != null) throw failure;
     final index = createRequests.length - 1;

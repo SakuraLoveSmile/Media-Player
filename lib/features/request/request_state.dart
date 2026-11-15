@@ -18,7 +18,7 @@ class RequestState {
     this.pollError,
     this.configInvalid = false,
     this.unauthorizedToken = false,
-    this.subscribeInFlight = false,
+    this.subscribingKeys = const <String>{},
     this.busyRequestIds = const <String>{},
   });
 
@@ -55,12 +55,27 @@ class RequestState {
   /// The API key was rejected specifically.
   final bool unauthorizedToken;
 
-  final bool subscribeInFlight;
+  /// Search hits whose 求片 action is running, keyed by
+  /// [subscribeMediaKey]. Per hit, not global: tapping one result must not make
+  /// every other result look like it is being requested too.
+  final Set<String> subscribingKeys;
 
   /// Request ids with an action (cancel / search now) in flight.
   final Set<String> busyRequestIds;
 
   bool get hasRequests => requests.isNotEmpty;
+
+  /// Whether any 求片 action is running.
+  bool get subscribeInFlight => subscribingKeys.isNotEmpty;
+
+  /// Whether this hit's 求片 action is running.
+  bool isSubscribing(MpMediaInfo media) =>
+      subscribingKeys.contains(subscribeMediaKey(media));
+
+  /// The key a search hit is tracked under while its action runs: the source
+  /// identity pair, or title + year for sources that give no identity.
+  static String subscribeMediaKey(MpMediaInfo media) =>
+      media.ref.identityKey ?? '${media.title}|${media.year}';
 
   bool get hasSearchResults => searchResults.isNotEmpty;
 
@@ -82,7 +97,7 @@ class RequestState {
     Object? pollError = _unset,
     bool? configInvalid,
     bool? unauthorizedToken,
-    bool? subscribeInFlight,
+    Set<String>? subscribingKeys,
     Set<String>? busyRequestIds,
   }) {
     return RequestState(
@@ -102,7 +117,7 @@ class RequestState {
           : pollError as String?,
       configInvalid: configInvalid ?? this.configInvalid,
       unauthorizedToken: unauthorizedToken ?? this.unauthorizedToken,
-      subscribeInFlight: subscribeInFlight ?? this.subscribeInFlight,
+      subscribingKeys: subscribingKeys ?? this.subscribingKeys,
       busyRequestIds: busyRequestIds ?? this.busyRequestIds,
     );
   }

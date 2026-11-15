@@ -510,14 +510,25 @@ class RequestController extends ChangeNotifier {
   /// promoted to "playable" instead of subscribing to it again. Returns the
   /// record, or null when the action failed (see [state.pollError]/message).
   Future<MediaRequest?> subscribe(MpMediaInfo media, {int season = 0}) async {
-    if (_disposed || _state.subscribeInFlight) return null;
+    if (_disposed) return null;
+
+    // Tracked per hit rather than globally: only the card the user tapped may
+    // show a spinner, and a second tap on that same card is what the guard
+    // rejects. Other results stay requestable while this one runs.
+    final key = RequestState.subscribeMediaKey(media);
+    if (_state.subscribingKeys.contains(key)) return null;
 
     // Same media, same season: the user already asked for this, so tapping
     // twice must not create a second subscription.
     final existing = _findExisting(media.ref, media.type, season);
     if (existing != null) return existing;
 
-    _set(_state.copyWith(subscribeInFlight: true, pollError: null));
+    _set(
+      _state.copyWith(
+        subscribingKeys: <String>{..._state.subscribingKeys, key},
+        pollError: null,
+      ),
+    );
     try {
       final alreadyThere = await _service.existingItemId(
         ref: media.ref,
@@ -557,7 +568,6 @@ class RequestController extends ChangeNotifier {
     } on MoviePilotException catch (error) {
       _set(
         _state.copyWith(
-          subscribeInFlight: false,
           pollError: requestErrorMessage(error.code),
           configInvalid:
               error.code == AppErrorCode.unauthorized ||
@@ -566,10 +576,16 @@ class RequestController extends ChangeNotifier {
       );
       return null;
     } catch (_) {
-      _set(_state.copyWith(subscribeInFlight: false, pollError: '求片失败，请稍后重试'));
+      _set(_state.copyWith(pollError: '求片失败，请稍后重试'));
       return null;
     } finally {
-      if (!_disposed) _set(_state.copyWith(subscribeInFlight: false));
+      if (!_disposed) {
+        _set(
+          _state.copyWith(
+            subscribingKeys: Set<String>.of(_state.subscribingKeys)..remove(key),
+          ),
+        );
+      }
     }
   }
 
@@ -744,7 +760,7 @@ class RequestController extends ChangeNotifier {
 
   Future<void> _addRequest(MediaRequest request) async {
     final updated = <MediaRequest>[request, ..._state.requests];
-    _set(_state.copyWith(requests: updated, subscribeInFlight: false));
+    _set(_state.copyWith(requests: updated));
     await _persist(updated);
   }
 
