@@ -229,4 +229,33 @@ void main() {
     expect(lan.controller?.text, 'http://192.168.1.10:8096');
     expect(wan.controller?.text, 'https://emby.example.com');
   });
+
+  testWidgets('a stored punycode address is prefilled in its Unicode form', (
+    tester,
+  ) async {
+    final auth = RecordingAuth(
+      lastStoredProfile: const ServerProfile(
+        serverId: 'server-1',
+        name: 'Home',
+        lanUrl: 'http://192.168.1.10:8096',
+        wanUrl: 'https://media.xn--fhqths51enha.cn',
+      ),
+    );
+    await pumpApp(tester, auth);
+    await tester.pumpAndSettle();
+
+    final wan = tester.widget<TextField>(
+      find.byKey(const Key('login-wan-url')),
+    );
+    expect(wan.controller?.text, 'https://media.上杉九月.cn');
+
+    // The form still stores and sends the ASCII form the server needs.
+    await fill(tester, username: 'test', password: 'secret');
+    await tester.tap(find.byKey(const Key('login-submit')));
+    await tester.pumpAndSettle();
+    expect(
+      auth.lastLogin?.profile.wanUrl,
+      'https://media.xn--fhqths51enha.cn',
+    );
+  });
 }

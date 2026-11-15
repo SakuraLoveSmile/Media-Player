@@ -8,6 +8,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../app/providers.dart';
 import '../../core/errors/emby_exception.dart';
+import '../../core/network/idna.dart';
+import '../../core/network/url_normalizer.dart';
 import '../../core/router/app_routes.dart';
 import '../../data/auth/server_session_service.dart';
 import '../../data/models/server_entry.dart';
@@ -90,8 +92,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       }
       if (!mounted) return;
       setState(() {
-        if (_lanUrl.text.isEmpty && lan != null) _lanUrl.text = lan;
-        if (_wanUrl.text.isEmpty && wan != null) _wanUrl.text = wan;
+        // Stored addresses are ASCII (punycode); show the Unicode form so a
+        // Chinese domain reads naturally. Submitting normalizes it back.
+        if (_lanUrl.text.isEmpty && lan != null) {
+          _lanUrl.text = UrlNormalizer.display(lan);
+        }
+        if (_wanUrl.text.isEmpty && wan != null) {
+          _wanUrl.text = UrlNormalizer.display(wan);
+        }
       });
     } catch (_) {
       // Prefill is a convenience; a failure must not block manual entry.
@@ -192,7 +200,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final url = stored?.lanUrl ?? stored?.wanUrl ?? form.lanUrl ?? form.wanUrl;
     if (url != null) {
       final host = Uri.tryParse(url)?.host;
-      if (host != null && host.isNotEmpty) return host;
+      if (host != null && host.isNotEmpty) return Idna.toUnicode(host);
     }
     return '服务器';
   }

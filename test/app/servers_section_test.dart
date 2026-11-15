@@ -116,6 +116,24 @@ void main() {
     expect(find.byKey(const Key('settings-server-add')), findsOneWidget);
   });
 
+  testWidgets('a punycode address is displayed in its Unicode form', (
+    tester,
+  ) async {
+    const ServerEntry chinese = ServerEntry(
+      id: 'd',
+      name: '',
+      wanUrl: 'https://media.xn--fhqths51enha.cn',
+    );
+    await directory.add(chinese);
+    await directory.setActive('d');
+    await pumpApp(tester);
+    await openSettings(tester);
+
+    expect(find.text('https://media.上杉九月.cn'), findsOneWidget);
+    expect(find.text('https://media.上杉九月.cn · 当前'), findsOneWidget);
+    expect(find.textContaining('xn--'), findsNothing);
+  });
+
   testWidgets(
     'the servers page shows the active user and an add button (S55)',
     (tester) async {

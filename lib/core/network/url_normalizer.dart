@@ -1,7 +1,11 @@
+import 'idna.dart';
+
 /// Normalizes user-entered server addresses (contract §1.2).
 ///
 /// Rules: trim, prepend `http://` when the scheme is missing, accept only
 /// http/https, strip trailing slashes and drop query/fragment/userinfo.
+/// A non-ASCII host (e.g. `上杉九月.cn`) is stored in its ASCII punycode form,
+/// because DNS never resolves the percent-encoded host Dart's Uri produces.
 /// Invalid input returns `null` — the UI validates at the input boundary, so
 /// the data layer never receives an unparsable address.
 abstract final class UrlNormalizer {
@@ -25,7 +29,20 @@ abstract final class UrlNormalizer {
 
     final scheme = uri.scheme.toLowerCase();
     if (scheme != 'http' && scheme != 'https') return null;
-    if (uri.host.isEmpty || _whitespace.hasMatch(uri.host)) return null;
+
+    // Uri keeps a non-ASCII host percent-encoded, which DNS cannot resolve;
+    // decode it back and store/use the ASCII (punycode) form instead.
+    final String host;
+    try {
+      host = uri.host.contains('%')
+          ? Uri.decodeComponent(uri.host)
+          : uri.host;
+    } on ArgumentError {
+      return null;
+    }
+    if (host.isEmpty || _whitespace.hasMatch(host)) return null;
+    final asciiHost = Idna.toAscii(host);
+    if (asciiHost.isEmpty || _whitespace.hasMatch(asciiHost)) return null;
 
     var path = uri.path;
     while (path.endsWith('/')) {
@@ -36,10 +53,28 @@ abstract final class UrlNormalizer {
     // IPv6 hosts keep their brackets.
     return Uri(
       scheme: scheme,
-      host: uri.host,
+      host: asciiHost,
       port: uri.hasPort ? uri.port : null,
       path: path,
     ).toString();
+  }
+
+  /// Display form of a stored address: the ASCII (punycode) host is rendered
+  /// back as Unicode, e.g. `https://media.xn--fhqths51enha.cn` becomes
+  /// `https://media.上杉九月.cn`.
+  ///
+  /// Presentation only — never store or request this string. Input that is not
+  /// a usable address is returned trimmed and unchanged.
+  static String display(String raw) {
+    final canonical = normalize(raw);
+    if (canonical == null) return raw.trim();
+
+    final uri = Uri.parse(canonical);
+    final unicodeHost = Idna.toUnicode(uri.host);
+    if (unicodeHost == uri.host) return canonical;
+
+    final port = uri.hasPort ? ':${uri.port}' : '';
+    return '${uri.scheme}://$unicodeHost$port${uri.path}';
   }
 
   /// Candidate bases in probe order: the normalized value, then the same value

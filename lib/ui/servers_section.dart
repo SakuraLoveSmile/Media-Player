@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app/servers.dart';
+import '../core/network/url_normalizer.dart';
 import '../core/router/app_routes.dart';
 import '../data/models/server_entry.dart';
 import 'app_loader.dart';
@@ -118,8 +119,8 @@ class _ServerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String title = entry.name.isEmpty ? entry.addressLabel : entry.name;
-    final String address = entry.addressLabel;
+    final String address = UrlNormalizer.display(entry.addressLabel);
+    final String title = entry.name.isEmpty ? address : entry.name;
     final String user = userName ?? '';
     final String subtitle = !active
         ? address

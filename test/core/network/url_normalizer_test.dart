@@ -69,4 +69,91 @@ void main() {
       expect(UrlNormalizer.candidates('ftp://host'), isEmpty);
     });
   });
+
+  group('UrlNormalizer.normalize IDN hosts', () {
+    test('converts a Chinese host to punycode', () {
+      expect(
+        UrlNormalizer.normalize('https://media.上杉九月.cn'),
+        'https://media.xn--fhqths51enha.cn',
+      );
+    });
+
+    test('converts a Chinese host and keeps the port/sub-path', () {
+      expect(
+        UrlNormalizer.normalize('https://media.上杉九月.cn:443/emby/'),
+        'https://media.xn--fhqths51enha.cn/emby',
+      );
+    });
+
+    test('accepts a schemeless Chinese host', () {
+      expect(
+        UrlNormalizer.normalize('media.上杉九月.cn'),
+        'http://media.xn--fhqths51enha.cn',
+      );
+    });
+
+    test('tolerates full-width dots typed by an IME', () {
+      expect(
+        UrlNormalizer.normalize('https://media。上杉九月。cn'),
+        'https://media.xn--fhqths51enha.cn',
+      );
+    });
+
+    test('probe candidates use the punycode host', () {
+      expect(
+        UrlNormalizer.candidates('https://media.上杉九月.cn'),
+        <String>[
+          'https://media.xn--fhqths51enha.cn',
+          'https://media.xn--fhqths51enha.cn/emby',
+        ],
+      );
+    });
+  });
+
+  group('UrlNormalizer.display', () {
+    test('renders a punycode host as Unicode', () {
+      expect(
+        UrlNormalizer.display('https://media.xn--fhqths51enha.cn'),
+        'https://media.上杉九月.cn',
+      );
+    });
+
+    test('keeps port and sub-path while decoding the host', () {
+      expect(
+        UrlNormalizer.display('https://media.xn--fhqths51enha.cn:8443/emby'),
+        'https://media.上杉九月.cn:8443/emby',
+      );
+    });
+
+    test('accepts a Chinese domain as input too', () {
+      expect(
+        UrlNormalizer.display('media.上杉九月.cn:9096'),
+        'http://media.上杉九月.cn:9096',
+      );
+    });
+
+    test('leaves ASCII addresses alone', () {
+      expect(
+        UrlNormalizer.display('http://192.168.1.10:8096/emby'),
+        'http://192.168.1.10:8096/emby',
+      );
+      expect(
+        UrlNormalizer.display('https://emby.example.com'),
+        'https://emby.example.com',
+      );
+    });
+
+    test('returns unusable input trimmed and unchanged', () {
+      expect(UrlNormalizer.display(''), '');
+      expect(UrlNormalizer.display('not a url'), 'not a url');
+      expect(UrlNormalizer.display('  ftp://host  '), 'ftp://host');
+    });
+
+    test('round-trips the stored form back to the typed domain', () {
+      const typed = 'https://media.上杉九月.cn';
+      final String? stored = UrlNormalizer.normalize(typed);
+      expect(stored, 'https://media.xn--fhqths51enha.cn');
+      expect(UrlNormalizer.display(stored!), typed);
+    });
+  });
 }

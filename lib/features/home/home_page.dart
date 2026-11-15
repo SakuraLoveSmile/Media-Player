@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/hidden_libraries.dart';
 import '../../app/providers.dart';
 import '../../app/servers.dart';
+import '../../core/network/url_normalizer.dart';
 import '../../core/router/app_routes.dart';
 import '../../data/models/library_view.dart';
 import '../../data/models/media_item.dart';
@@ -156,9 +157,13 @@ class _HomePageState extends ConsumerState<HomePage> {
                             : palette.outline,
                       ),
                       title: Text(
-                        entry.name.isEmpty ? entry.addressLabel : entry.name,
+                        entry.name.isEmpty
+                            ? UrlNormalizer.display(entry.addressLabel)
+                            : entry.name,
                       ),
-                      subtitle: Text(entry.addressLabel),
+                      subtitle: Text(
+                        UrlNormalizer.display(entry.addressLabel),
+                      ),
                       onTap: () => Navigator.of(sheetContext).pop(entry.id),
                     ),
                   ListTile(

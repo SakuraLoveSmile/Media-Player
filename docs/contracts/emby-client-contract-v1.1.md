@@ -35,6 +35,12 @@ class ServerProfile {
 - 去首尾空白；无 scheme 时补 `http://`；去掉末尾 `/`。
 - 候选 base：输入值本身、输入值 + `/emby`（兼容反代子路径）。
 - 只接受 `http` / `https`。
+- 非 ASCII 主机名（如 `media.上杉九月.cn`）在规范化时转成 punycode
+  （`media.xn--fhqths51enha.cn`）再存储与请求：Dart 的 `Uri` 只把主机名百分号
+  编码（`media.%E4%B8%8A...`），DNS 无法解析，请求会以 `networkUnreachable` 失败。
+  全角点（`。．｡`）与全角 ASCII 也一并折算。
+- 界面展示地址时用 `UrlNormalizer.display` 把 punycode 主机转回 Unicode
+  （登录页回填、服务器列表）；该结果只用于显示，不写回存储、不用于请求。
 
 ### 1.3 EndpointResolver
 
