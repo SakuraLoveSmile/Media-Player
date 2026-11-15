@@ -166,6 +166,71 @@ void main() {
     expect(router!.state.matchedLocation, '/request');
   });
 
+  testWidgets('a background round does not flash a syncing label', (
+    tester,
+  ) async {
+    final hold = Completer<void>();
+    await pumpPage(tester, requests: <MediaRequest>[seeded()]);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MyRequestsPage)),
+    );
+    final controller = container.read(requestControllerProvider).value!;
+
+    // A heartbeat round in flight. This used to print 同步中… for a moment
+    // every few seconds, which is what made the page blink.
+    service.pollHold = hold.future;
+    unawaited(controller.refresh());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // The round really is running…
+    expect(controller.state.polling, isTrue);
+    // …and the page still says nothing about it.
+    expect(find.byKey(const Key('my-requests-syncing')), findsNothing);
+    expect(find.text('同步中…'), findsNothing);
+
+    hold.complete();
+    await settle(tester);
+  });
+
+  testWidgets('a manual refresh spins the toolbar button', (tester) async {
+    final hold = Completer<void>();
+    await pumpPage(tester, requests: <MediaRequest>[seeded()]);
+    service.pollHold = hold.future;
+
+    await tester.tap(find.byKey(const Key('my-requests-refresh')));
+    await tester.pump();
+
+    // The user's own action gets feedback; background rounds above do not.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('my-requests-refresh')),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+
+    hold.complete();
+    await settle(tester);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('my-requests-refresh')),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('after a round the page says when it last synced', (
+    tester,
+  ) async {
+    service.snapshot = PollSnapshot(fetchedAt: DateTime(2026, 1, 1, 15, 42));
+    await pumpPage(tester, requests: <MediaRequest>[seeded()]);
+
+    expect(find.byKey(const Key('my-requests-updated')), findsOneWidget);
+    expect(find.text('更新于 15:42'), findsOneWidget);
+  });
+
   testWidgets('a download renders percent, speed, ETA and episode progress', (
     tester,
   ) async {

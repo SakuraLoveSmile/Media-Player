@@ -134,15 +134,6 @@ class _RequestPageState extends ConsumerState<RequestPage> {
                 ),
                 children: <Widget>[
                   _searchBar(state, palette),
-                  if (state.polling) ...<Widget>[
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      '同步中…',
-                      key: const Key('request-syncing'),
-                      style: Theme.of(context).textTheme.labelMedium!
-                          .copyWith(color: palette.outline),
-                    ),
-                  ],
                   ..._body(controller, state, palette),
                 ],
               ),

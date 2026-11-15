@@ -31,6 +31,11 @@ class _MyRequestsPageState extends ConsumerState<MyRequestsPage> {
   RequestController? _controller;
   ProviderSubscription<AsyncValue<RequestController?>>? _subscription;
 
+  /// True only while a refresh the user asked for is running. The background
+  /// heartbeat polls on its own schedule; showing that in the UI made the page
+  /// flash a "syncing" label every few seconds, so it is not surfaced at all.
+  bool _refreshing = false;
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +62,17 @@ class _MyRequestsPageState extends ConsumerState<MyRequestsPage> {
 
   void _onChanged() {
     if (mounted) setState(() {});
+  }
+
+  /// One round on demand, with the toolbar showing it is running.
+  Future<void> _refresh(RequestController controller) async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      await controller.refresh();
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
   }
 
   @override
@@ -93,17 +109,33 @@ class _MyRequestsPageState extends ConsumerState<MyRequestsPage> {
       actions: <Widget>[
         AppIconButton(
           key: const Key('my-requests-refresh'),
-          tooltip: '刷新进度',
-          icon: const Icon(Icons.refresh),
-          onPressed: controller == null
+          tooltip: _refreshing ? '正在刷新进度' : '刷新进度',
+          icon: _refreshing
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh),
+          onPressed: controller == null || _refreshing
               ? null
-              : () => unawaited(controller.refresh()),
+              : () => unawaited(_refresh(controller)),
         ),
       ],
       child: controller == null || state == null
           ? const AppLoadingView()
           : _content(controller, state, palette),
     );
+  }
+
+  /// "更新于 15:42", or null until a round has succeeded at least once.
+  String? get _lastUpdated {
+    final DateTime? fetchedAt = _controller?.snapshot.fetchedAt;
+    if (fetchedAt == null) return null;
+    final DateTime local = fetchedAt.toLocal();
+    final String hh = local.hour.toString().padLeft(2, '0');
+    final String mm = local.minute.toString().padLeft(2, '0');
+    return '更新于 $hh:$mm';
   }
 
   Widget _content(
@@ -163,10 +195,13 @@ class _MyRequestsPageState extends ConsumerState<MyRequestsPage> {
           AppSpacing.xxxl,
         ),
         children: <Widget>[
-          if (state.polling) ...<Widget>[
+          // A calm, stable timestamp instead of a per-round flash: it only
+          // changes when a round actually succeeds, and then only by the
+          // minute, so an idle page looks idle.
+          if (_lastUpdated != null) ...<Widget>[
             Text(
-              '同步中…',
-              key: const Key('my-requests-syncing'),
+              _lastUpdated!,
+              key: const Key('my-requests-updated'),
               style: Theme.of(context).textTheme.labelMedium!
                   .copyWith(color: palette.outline),
             ),
