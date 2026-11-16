@@ -23,4 +23,16 @@ abstract interface class ServerSessionService {
   /// Deletes the stored credentials for [serverId] (used when removing a saved
   /// server). Other servers are unaffected.
   Future<void> clearServer(String serverId);
+
+  /// Writes an edited card's addresses into [serverId]'s stored profile (S81).
+  ///
+  /// The card and the profile are separate stores; playback and login read the
+  /// profile, so saving only the directory left the app on an old address. A
+  /// null address clears it. The active session keeps its current endpoint for
+  /// the rest of the run; the next restore/switch resolves the new addresses.
+  Future<void> updateAddresses(
+    String serverId, {
+    String? lanUrl,
+    String? wanUrl,
+  });
 }

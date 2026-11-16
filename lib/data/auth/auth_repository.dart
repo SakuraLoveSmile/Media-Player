@@ -280,6 +280,48 @@ class AuthRepository implements AuthService, ApiSession, ServerSessionService {
     return updated;
   }
 
+  /// S81: saves an edited server card's addresses into its profile.
+  ///
+  /// The active profile is updated in memory as well, but the current endpoint
+  /// is deliberately kept: an address edit must not log the user out when the
+  /// new host is not reachable from the current network. The next restore (or
+  /// server switch) resolves the updated profile.
+  @override
+  Future<void> updateAddresses(
+    String serverId, {
+    String? lanUrl,
+    String? wanUrl,
+  }) async {
+    final active = serverId == _serverId;
+    final KeyValueStore? store = _store;
+    final ProfileStore profiles;
+    if (active) {
+      profiles = _profileStore;
+    } else if (store != null) {
+      profiles = ProfileStore(store, serverId: serverId);
+    } else {
+      return;
+    }
+
+    final profile = await profiles.read();
+    if (profile == null) return;
+
+    var updated = profile.copyWith(lanUrl: lanUrl ?? '', wanUrl: wanUrl ?? '');
+    if (updated.preference == EndpointPreference.lan &&
+        (updated.lanUrl ?? '').isEmpty) {
+      updated = updated.copyWith(preference: EndpointPreference.auto);
+    }
+    if (updated.preference == EndpointPreference.wan &&
+        (updated.wanUrl ?? '').isEmpty) {
+      updated = updated.copyWith(preference: EndpointPreference.auto);
+    }
+    await profiles.write(updated);
+
+    if (!active) return;
+    _profile = updated;
+    resolver.invalidate();
+  }
+
   /// Performs an authenticated GET and logs out on 401 (contract §10.5).
   @override
   Future<Map<String, dynamic>> authorizedGet(Uri url) async {

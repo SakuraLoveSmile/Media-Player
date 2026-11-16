@@ -1,8 +1,10 @@
 import 'dart:convert';
 
+import '../../core/network/endpoint_kind.dart';
 import '../models/server_entry.dart';
 import '../models/server_profile.dart';
 import 'key_value_store.dart';
+import 'profile_store.dart';
 
 /// Persists the saved-server list (S20): non-secret names and addresses only.
 ///
@@ -129,6 +131,46 @@ class ServerDirectory {
     );
     await setActive(defaultServerId);
     return true;
+  }
+
+  /// Repairs stored profiles from their directory cards (S81).
+  ///
+  /// The S80 card editor wrote only the directory, so a WAN added there never
+  /// reached the profile that login and playback actually use. On startup this
+  /// fills or updates any non-empty entry address that differs; a missing entry
+  /// address is left alone so an older card cannot erase a working profile.
+  /// A forced preference that points at a now-missing address falls back to
+  /// auto, keeping the profile resolvable.
+  Future<void> reconcileProfiles() async {
+    for (final entry in await read()) {
+      final profileStore = ProfileStore(_store, serverId: entry.id);
+      final profile = await profileStore.read();
+      if (profile == null) continue;
+
+      var updated = profile;
+      var changed = false;
+      final lan = entry.lanUrl;
+      if (lan != null && lan.isNotEmpty && lan != profile.lanUrl) {
+        updated = updated.copyWith(lanUrl: lan);
+        changed = true;
+      }
+      final wan = entry.wanUrl;
+      if (wan != null && wan.isNotEmpty && wan != profile.wanUrl) {
+        updated = updated.copyWith(wanUrl: wan);
+        changed = true;
+      }
+      if (updated.preference == EndpointPreference.lan &&
+          (updated.lanUrl ?? '').isEmpty) {
+        updated = updated.copyWith(preference: EndpointPreference.auto);
+        changed = true;
+      }
+      if (updated.preference == EndpointPreference.wan &&
+          (updated.wanUrl ?? '').isEmpty) {
+        updated = updated.copyWith(preference: EndpointPreference.auto);
+        changed = true;
+      }
+      if (changed) await profileStore.write(updated);
+    }
   }
 
   Future<Map<String, dynamic>?> _readMap() async {

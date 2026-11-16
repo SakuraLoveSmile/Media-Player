@@ -135,7 +135,9 @@ class _IconDialog extends StatelessWidget {
                       ? palette.primary.withValues(alpha: 0.16)
                       : palette.surfaceContainerHighest,
                   border: Border.all(
-                    color: id == selected ? palette.primary : Colors.transparent,
+                    color: id == selected
+                        ? palette.primary
+                        : Colors.transparent,
                   ),
                 ),
                 child: Icon(
@@ -208,11 +210,7 @@ class _EditDialogState extends State<_EditDialog> {
         ? widget.entry.name
         : _name.text.trim();
     Navigator.of(context).pop(
-      widget.entry.copyWith(
-        name: name,
-        lanUrl: lan ?? '',
-        wanUrl: wan ?? '',
-      ),
+      widget.entry.copyWith(name: name, lanUrl: lan ?? '', wanUrl: wan ?? ''),
     );
   }
 
@@ -232,7 +230,7 @@ class _EditDialogState extends State<_EditDialog> {
       title: widget.addressOnly ? '添加备选地址' : '编辑',
       message: widget.addressOnly
           ? '填上这台服务器的另一个地址，例如出差时用的公网地址。'
-          : '修改后立即生效；已保存的登录状态会继续沿用。',
+          : '保存后下次连接生效；已保存的登录状态会继续沿用。',
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -278,9 +276,8 @@ class _EditDialogState extends State<_EditDialog> {
             Text(
               _error!,
               key: const Key('server-edit-error'),
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall!.copyWith(color: Theme.of(context).colorScheme.error),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: Theme.of(context).colorScheme.error),
             ),
           ],
         ],

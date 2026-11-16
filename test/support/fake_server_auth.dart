@@ -49,6 +49,10 @@ class FakeServerAuth implements AuthService, ServerSessionService {
   final List<String> restoredServers = <String>[];
   final List<String> clearedServers = <String>[];
 
+  /// S81: one entry per [updateAddresses] call, in order.
+  final List<({String serverId, String? lanUrl, String? wanUrl})>
+  addressUpdates = <({String serverId, String? lanUrl, String? wanUrl})>[];
+
   static const AuthSession sampleSession = AuthSession(
     userId: 'u1',
     userName: 'test',
@@ -89,6 +93,15 @@ class FakeServerAuth implements AuthService, ServerSessionService {
   Future<void> clearServer(String serverId) async {
     _sessions.remove(serverId);
     clearedServers.add(serverId);
+  }
+
+  @override
+  Future<void> updateAddresses(
+    String serverId, {
+    String? lanUrl,
+    String? wanUrl,
+  }) async {
+    addressUpdates.add((serverId: serverId, lanUrl: lanUrl, wanUrl: wanUrl));
   }
 
   @override

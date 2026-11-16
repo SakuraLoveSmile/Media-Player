@@ -10,6 +10,7 @@ import 'package:media_player/data/api/emby_http_client.dart';
 import 'package:media_player/data/auth/auth_repository.dart';
 import 'package:media_player/data/endpoints/endpoint_probe.dart';
 import 'package:media_player/data/endpoints/endpoint_resolver.dart';
+import 'package:media_player/data/models/server_entry.dart';
 import 'package:media_player/data/models/server_profile.dart';
 import 'package:media_player/data/storage/key_value_store.dart';
 import 'package:media_player/data/storage/profile_store.dart';
@@ -35,6 +36,7 @@ void main() {
       tokenStore: TokenStore(kv),
       sessionStore: SessionStore(kv),
       profileStore: ProfileStore(kv),
+      store: kv,
       deviceId: deviceId,
       deviceName: 'test device',
     );
@@ -182,6 +184,87 @@ void main() {
     expect(updated.wanUrl, sameServer.base);
     expect((await ProfileStore(kv).read())?.wanUrl, sameServer.base);
     expect(updated.lanUrl, server.base);
+  });
+
+  test(
+    'updateAddresses rewrites the active profile without logging out',
+    () async {
+      final repository = await buildRepository();
+      await repository.login(
+        username: 'test',
+        password: 'correct',
+        profile: profileFor(server),
+      );
+      final token = await kv.read(TokenStore.key);
+
+      await repository.updateAddresses(
+        defaultServerId,
+        lanUrl: 'http://192.168.1.77:8096',
+        wanUrl: 'https://new.example.com',
+      );
+
+      final stored = (await ProfileStore(kv).read())!;
+      expect(stored.lanUrl, 'http://192.168.1.77:8096');
+      expect(stored.wanUrl, 'https://new.example.com');
+      expect(repository.profile?.wanUrl, 'https://new.example.com');
+      expect(repository.current, isNotNull);
+      expect(await kv.read(TokenStore.key), token);
+    },
+  );
+
+  test('updateAddresses clears an address and keeps the other one', () async {
+    final repository = await buildRepository();
+    await repository.login(
+      username: 'test',
+      password: 'correct',
+      profile: profileFor(server),
+    );
+    await ProfileStore(kv).write(
+      (await ProfileStore(
+        kv,
+      ).read())!.copyWith(wanUrl: 'https://old.example.com'),
+    );
+
+    await repository.updateAddresses(
+      defaultServerId,
+      lanUrl: server.base,
+      wanUrl: null,
+    );
+
+    final stored = (await ProfileStore(kv).read())!;
+    expect(stored.lanUrl, server.base);
+    expect(stored.wanUrl, isNull);
+    expect(repository.profile?.wanUrl, isNull);
+  });
+
+  test('updateAddresses writes a non-active server profile', () async {
+    final repository = await buildRepository();
+    await repository.login(
+      username: 'test',
+      password: 'correct',
+      profile: profileFor(server),
+    );
+    final other = ProfileStore(kv, serverId: 'other');
+    await other.write(
+      const ServerProfile(
+        serverId: 'server-2',
+        name: 'Office',
+        lanUrl: 'http://old:8096',
+      ),
+    );
+
+    await repository.updateAddresses(
+      'other',
+      lanUrl: 'http://new:8096',
+      wanUrl: 'https://office.example.com',
+    );
+
+    final stored = (await other.read())!;
+    expect(stored.lanUrl, 'http://new:8096');
+    expect(stored.wanUrl, 'https://office.example.com');
+    // The active session is untouched.
+    expect(repository.current, isNotNull);
+    expect((await ProfileStore(kv).read())?.lanUrl, server.base);
   });
 
   test('a 401 on a business call logs out exactly once', () async {

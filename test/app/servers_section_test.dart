@@ -306,9 +306,7 @@ void main() {
         overrides: [
           bootstrapProvider.overrideWith((Ref ref) => bootstrap.future),
         ],
-        child: const MaterialApp(
-          home: Scaffold(body: ServerSettingsSection()),
-        ),
+        child: const MaterialApp(home: Scaffold(body: ServerSettingsSection())),
       ),
     );
     await tester.pump();
@@ -338,10 +336,7 @@ void main() {
 
     expect(find.text('书房'), findsOneWidget);
     expect(find.text('Office'), findsNothing);
-    expect((await directory.read()).map((e) => e.name), <String>[
-      'Home',
-      '书房',
-    ]);
+    expect((await directory.read()).map((e) => e.name), <String>['Home', '书房']);
   });
 
   testWidgets('the ⋮ toggles the user name and last-played lines (S80)', (
@@ -425,6 +420,11 @@ void main() {
     final edited = (await directory.find('a'))!;
     expect(edited.lanUrl, 'http://192.168.1.77:8096');
     expect(edited.name, 'Home');
+    // S81: the profile used by login/playback must follow the card edit.
+    expect(auth.addressUpdates, hasLength(1));
+    expect(auth.addressUpdates.single.serverId, 'a');
+    expect(auth.addressUpdates.single.lanUrl, 'http://192.168.1.77:8096');
+    expect(auth.addressUpdates.single.wanUrl, isNull);
   });
 
   testWidgets('an unusable address is refused with a message (S80)', (
@@ -472,6 +472,9 @@ void main() {
     final edited = (await directory.find('a'))!;
     expect(edited.wanUrl, 'https://home.example.com');
     expect(edited.lanUrl, 'http://192.168.1.10:8096');
+    expect(auth.addressUpdates, hasLength(1));
+    expect(auth.addressUpdates.single.serverId, 'a');
+    expect(auth.addressUpdates.single.wanUrl, 'https://home.example.com');
   });
 
   testWidgets('the avatar opens a quick switch list of saved servers (S80)', (
@@ -548,30 +551,31 @@ void main() {
     expect(find.byKey(const Key('login-lan-url')), findsOneWidget);
   });
 
-  testWidgets('the dashboard reloads for the server picked in the popup (S80)', (
-    tester,
-  ) async {
-    // A dashboard with one library: without views load() stops before it asks
-    // for the server name, and the reload would be invisible.
-    library.viewList = <LibraryView>[fakeMoviesView];
-    await directory.add(home);
-    await directory.add(office);
-    await directory.setActive('a');
-    auth.seedSession('a');
-    auth.seedSession('b');
-    auth.useServer('a');
-    await pumpApp(tester);
-    final int before = library.serverNameCalls;
-    expect(before, greaterThan(0));
+  testWidgets(
+    'the dashboard reloads for the server picked in the popup (S80)',
+    (tester) async {
+      // A dashboard with one library: without views load() stops before it asks
+      // for the server name, and the reload would be invisible.
+      library.viewList = <LibraryView>[fakeMoviesView];
+      await directory.add(home);
+      await directory.add(office);
+      await directory.setActive('a');
+      auth.seedSession('a');
+      auth.seedSession('b');
+      auth.useServer('a');
+      await pumpApp(tester);
+      final int before = library.serverNameCalls;
+      expect(before, greaterThan(0));
 
-    await tester.tap(find.byKey(const Key('home-account')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('home-server-b')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home-account')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home-server-b')));
+      await tester.pumpAndSettle();
 
-    // The header/rows belong to the newly active server, so the dashboard had
-    // to load again instead of keeping the previous server's content.
-    expect(library.serverNameCalls, greaterThan(before));
-    expect(find.byKey(const Key('home-page')), findsOneWidget);
-  });
+      // The header/rows belong to the newly active server, so the dashboard had
+      // to load again instead of keeping the previous server's content.
+      expect(library.serverNameCalls, greaterThan(before));
+      expect(find.byKey(const Key('home-page')), findsOneWidget);
+    },
+  );
 }

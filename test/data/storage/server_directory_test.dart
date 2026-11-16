@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:media_player/core/network/endpoint_kind.dart';
 import 'package:media_player/data/models/auth_session.dart';
 import 'package:media_player/data/models/server_entry.dart';
 import 'package:media_player/data/models/server_profile.dart';
@@ -157,6 +158,99 @@ void main() {
         }),
       );
       expect(await directory.read(), isEmpty);
+    });
+  });
+
+  group('profile reconciliation (S81)', () {
+    test('repairs a stale profile from card addresses', () async {
+      await directory.add(home);
+      final profiles = ProfileStore(kv, serverId: 'a');
+      await profiles.write(
+        const ServerProfile(
+          serverId: 'server-1',
+          name: 'Home',
+          lanUrl: 'http://old:8096',
+          wanUrl: 'https://old.example.com',
+          preference: EndpointPreference.wan,
+        ),
+      );
+
+      await directory.reconcileProfiles();
+
+      final repaired = (await profiles.read())!;
+      expect(repaired.lanUrl, home.lanUrl);
+      expect(repaired.wanUrl, home.wanUrl);
+      expect(repaired.serverId, 'server-1');
+      expect(repaired.preference, EndpointPreference.wan);
+    });
+
+    test('does not clear a profile address the card does not have', () async {
+      await directory.add(
+        const ServerEntry(
+          id: 'a',
+          name: 'Home',
+          lanUrl: 'http://192.168.1.10:8096',
+        ),
+      );
+      final profiles = ProfileStore(kv, serverId: 'a');
+      await profiles.write(
+        const ServerProfile(
+          serverId: 'server-1',
+          name: 'Home',
+          lanUrl: 'http://old:8096',
+          wanUrl: 'https://keep.example.com',
+        ),
+      );
+
+      await directory.reconcileProfiles();
+
+      final repaired = (await profiles.read())!;
+      expect(repaired.lanUrl, 'http://192.168.1.10:8096');
+      expect(repaired.wanUrl, 'https://keep.example.com');
+    });
+
+    test('falls back to auto when the forced address is missing', () async {
+      await directory.add(
+        const ServerEntry(
+          id: 'a',
+          name: 'Home',
+          wanUrl: 'https://new.example.com',
+        ),
+      );
+      final profiles = ProfileStore(kv, serverId: 'a');
+      await profiles.write(
+        const ServerProfile(
+          serverId: 'server-1',
+          name: 'Home',
+          wanUrl: 'https://old.example.com',
+          preference: EndpointPreference.lan,
+        ),
+      );
+
+      await directory.reconcileProfiles();
+
+      final repaired = (await profiles.read())!;
+      expect(repaired.wanUrl, 'https://new.example.com');
+      expect(repaired.preference, EndpointPreference.auto);
+    });
+
+    test('leaves a matching profile untouched', () async {
+      await directory.add(home);
+      final profiles = ProfileStore(kv, serverId: 'a');
+      await profiles.write(
+        const ServerProfile(
+          serverId: 'server-1',
+          name: 'Home',
+          lanUrl: 'http://192.168.1.10:8096',
+          wanUrl: 'https://home.example.com',
+        ),
+      );
+      final before = await kv.read(ProfileStore(kv, serverId: 'a').scopedKey);
+
+      await directory.reconcileProfiles();
+
+      final after = await kv.read(ProfileStore(kv, serverId: 'a').scopedKey);
+      expect(after, before);
     });
   });
 
@@ -318,9 +412,9 @@ void main() {
       expect(entries.single.lastPlayedAt, isNull);
 
       await directory.rename('a', '客厅');
-      final raw =
-          jsonDecode((await kv.read(ServerDirectory.key))!)
-              as Map<String, dynamic>;
+      final raw = jsonDecode(
+        (await kv.read(ServerDirectory.key))!,
+      ) as Map<String, dynamic>;
       expect(raw['schemaVersion'], 2);
     });
   });

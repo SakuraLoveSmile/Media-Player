@@ -155,7 +155,23 @@ class ServersController extends AsyncNotifier<ServersState> {
     ServerEntry Function(ServerEntry entry) change,
   ) async {
     final directory = await ref.read(serverDirectoryProvider.future);
-    await directory?.update(id, change);
+    if (directory == null) return;
+    final before = await directory.find(id);
+    if (before == null) return;
+    final after = change(before);
+    await directory.update(id, (_) => after);
+
+    // S81: addresses live in two places. The card is only the display/store
+    // copy; login and playback read the per-server profile, so an edit must be
+    // written there too or the app keeps using the old host.
+    if (before.lanUrl != after.lanUrl || before.wanUrl != after.wanUrl) {
+      final auth = await ref.read(serverAuthProvider.future);
+      await auth?.updateAddresses(
+        id,
+        lanUrl: after.lanUrl,
+        wanUrl: after.wanUrl,
+      );
+    }
     await _reload();
   }
 
