@@ -75,7 +75,7 @@ jobs:
       - name: Build split APKs
         run: flutter build apk --release --split-per-abi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: app-android-apk
           path: build/app/outputs/flutter-apk/app-*-release.apk
@@ -104,7 +104,7 @@ jobs:
       - name: Package app bundle
         run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/Media\ Player.app media_player-macos.zip
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: app-macos
           path: media_player-macos.zip
@@ -144,7 +144,7 @@ jobs:
       - name: Build Windows
         run: flutter build windows --release
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: app-windows-x64
           path: build/windows/x64/runner/Release/

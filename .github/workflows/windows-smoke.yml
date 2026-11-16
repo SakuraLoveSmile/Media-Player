@@ -48,7 +48,7 @@ jobs:
           Copy-Item -Path README.md -Destination build/windows/x64/runner/Release/
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-smoke-x64
           path: spike/windows_smoke/build/windows/x64/runner/Release/
