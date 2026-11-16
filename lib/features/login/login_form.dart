@@ -47,7 +47,11 @@ LoginFormResult validateLoginForm({
     return const LoginFormInvalid('局域网地址格式不正确，需要 http:// 或 https://');
   }
 
-  final normalizedWan = rawWan.isEmpty ? null : UrlNormalizer.normalize(rawWan);
+  // A public address is HTTPS-only: upgrade an explicit http:// (old saves)
+  // and default a scheme-less domain to https, matching the field's hint.
+  final normalizedWan = rawWan.isEmpty
+      ? null
+      : UrlNormalizer.normalizeWan(rawWan);
   if (rawWan.isNotEmpty && normalizedWan == null) {
     return const LoginFormInvalid('公网地址格式不正确，需要 https://');
   }

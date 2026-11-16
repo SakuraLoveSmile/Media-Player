@@ -197,7 +197,7 @@ class _EditDialogState extends State<_EditDialog> {
       setState(() => _error = '局域网地址格式不正确，需要 http:// 或 https://');
       return;
     }
-    final String? wan = _address(_wan.text);
+    final String? wan = _address(_wan.text, wan: true);
     if (wan == _invalid) {
       setState(() => _error = '公网地址格式不正确，需要 https://');
       return;
@@ -218,10 +218,14 @@ class _EditDialogState extends State<_EditDialog> {
   static const String _invalid = '\u0000invalid';
 
   /// Empty stays null (meaning "clear this address"); unusable becomes
-  /// [_invalid]; anything else is the canonical base URL.
-  static String? _address(String raw) {
+  /// [_invalid]; anything else is the canonical base URL. The WAN slot forces
+  /// HTTPS so an old http:// save cannot keep failing on the server's 301.
+  static String? _address(String raw, {bool wan = false}) {
     if (raw.trim().isEmpty) return null;
-    return UrlNormalizer.normalize(raw) ?? _invalid;
+    final normalized = wan
+        ? UrlNormalizer.normalizeWan(raw)
+        : UrlNormalizer.normalize(raw);
+    return normalized ?? _invalid;
   }
 
   @override

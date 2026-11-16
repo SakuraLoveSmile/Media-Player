@@ -92,9 +92,10 @@ final bootstrapProvider = FutureProvider<AppServices>((ref) async {
   // `default` id reuses the original credential keys, so no token is moved.
   final servers = ServerDirectory(store);
   await servers.migrateLegacyProfile(await ProfileStore(store).read());
-  // S81: repair installs whose card addresses were edited before the profile
-  // was kept in sync. This runs before restore, so the fix takes effect on the
-  // first launch after upgrading without asking the user to log in again.
+  // S82: normalize old card addresses first (a WAN saved as http:// makes the
+  // PlaybackInfo POST answer 301), then S81 copies them into the profile. Both
+  // run before restore, so an upgrade fixes the install without a re-login.
+  await servers.repairAddresses();
   await servers.reconcileProfiles();
   auth.useServer(await servers.activeId());
 

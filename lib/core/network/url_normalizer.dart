@@ -13,7 +13,11 @@ abstract final class UrlNormalizer {
   static final RegExp _whitespace = RegExp(r'\s');
 
   /// Returns a canonical base URL without a trailing slash, or `null`.
-  static String? normalize(String raw) {
+  static String? normalize(String raw, {String defaultScheme = 'http'}) {
+    final schemePrefix = defaultScheme.toLowerCase();
+    if (schemePrefix != 'http' && schemePrefix != 'https') {
+      throw ArgumentError.value(defaultScheme, 'defaultScheme');
+    }
     var value = raw.trim();
     if (value.isEmpty) return null;
     // A user-typed address never contains raw whitespace; refusing it here
@@ -21,7 +25,7 @@ abstract final class UrlNormalizer {
     if (_whitespace.hasMatch(value)) return null;
 
     if (!_hasScheme.hasMatch(value)) {
-      value = 'http://$value';
+      value = '$schemePrefix://$value';
     }
 
     final uri = Uri.tryParse(value);
@@ -34,9 +38,7 @@ abstract final class UrlNormalizer {
     // decode it back and store/use the ASCII (punycode) form instead.
     final String host;
     try {
-      host = uri.host.contains('%')
-          ? Uri.decodeComponent(uri.host)
-          : uri.host;
+      host = uri.host.contains('%') ? Uri.decodeComponent(uri.host) : uri.host;
     } on ArgumentError {
       return null;
     }
@@ -75,6 +77,22 @@ abstract final class UrlNormalizer {
 
     final port = uri.hasPort ? ':${uri.port}' : '';
     return '${uri.scheme}://$unicodeHost$port${uri.path}';
+  }
+
+  /// Normalizes a public (WAN) address and forces HTTPS.
+  ///
+  /// WAN playback goes through frp HTTPS; a saved `http://` host makes the
+  /// server answer the PlaybackInfo POST with a 301 instead of the JSON, while
+  /// GETs silently follow it — pages load but playback fails. Upgrading here
+  /// also repairs old entries saved before the WAN field defaulted to HTTPS.
+  /// A missing scheme defaults to HTTPS, so typing just the domain is enough.
+  static String? normalizeWan(String raw) {
+    final normalized = normalize(raw, defaultScheme: 'https');
+    if (normalized == null) return null;
+    final uri = Uri.parse(normalized);
+    return uri.scheme == 'https'
+        ? normalized
+        : uri.replace(scheme: 'https').toString();
   }
 
   /// Candidate bases in probe order: the normalized value, then the same value

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../core/network/endpoint_kind.dart';
+import '../../core/network/url_normalizer.dart';
 import '../models/server_entry.dart';
 import '../models/server_profile.dart';
 import 'key_value_store.dart';
@@ -131,6 +132,38 @@ class ServerDirectory {
     );
     await setActive(defaultServerId);
     return true;
+  }
+
+  /// Normalizes saved addresses (S82).
+  ///
+  /// Older installs can hold a WAN saved as `http://media.<percent-encoded
+  /// Chinese>.cn`: GETs follow the server's 301, so browsing worked, but the
+  /// PlaybackInfo POST did not and playback failed. This rewrites each entry to
+  /// the canonical form (IDNA/punycode, HTTPS for WAN) before profiles are
+  /// reconciled. A malformed address is kept as-is so data is never lost.
+  Future<void> repairAddresses() async {
+    final entries = await read();
+    var changed = false;
+    final repaired = <ServerEntry>[];
+    for (final entry in entries) {
+      final lan = _repairAddress(entry.lanUrl, wan: false);
+      final wan = _repairAddress(entry.wanUrl, wan: true);
+      if (lan != entry.lanUrl || wan != entry.wanUrl) {
+        changed = true;
+        repaired.add(entry.copyWith(lanUrl: lan ?? '', wanUrl: wan ?? ''));
+      } else {
+        repaired.add(entry);
+      }
+    }
+    if (changed) await _write(repaired, await activeId());
+  }
+
+  static String? _repairAddress(String? raw, {required bool wan}) {
+    if (raw == null || raw.isEmpty) return null;
+    return (wan
+            ? UrlNormalizer.normalizeWan(raw)
+            : UrlNormalizer.normalize(raw)) ??
+        raw;
   }
 
   /// Repairs stored profiles from their directory cards (S81).

@@ -60,6 +60,20 @@ void main() {
     expect(valid.profile.wanUrl, 'https://emby.example.com');
   });
 
+  test('upgrades a public http WAN and defaults a bare WAN host', () {
+    final http = validate(wan: 'http://media.example.com/');
+    expect(
+      (http as LoginFormValid).profile.wanUrl,
+      'https://media.example.com',
+    );
+
+    final bare = validate(wan: 'media.上杉九月.cn');
+    expect(
+      (bare as LoginFormValid).profile.wanUrl,
+      'https://media.xn--fhqths51enha.cn',
+    );
+  });
+
   test('keeps both addresses and trims the username', () {
     final result = validate(
       lan: 'http://192.168.1.10:8096',

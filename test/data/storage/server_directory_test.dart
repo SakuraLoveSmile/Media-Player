@@ -254,6 +254,70 @@ void main() {
     });
   });
 
+  group('address repair (S82)', () {
+    test('upgrades a legacy http WAN and keeps the LAN address', () async {
+      await directory.add(
+        const ServerEntry(
+          id: 'a',
+          name: 'Home',
+          lanUrl: 'http://192.168.0.69:9096',
+          wanUrl: 'http://media.%E4%B8%8A%E6%9D%89%E4%B9%9D%E6%9C%88.cn',
+        ),
+      );
+
+      await directory.repairAddresses();
+
+      final entry = (await directory.read()).single;
+      expect(entry.lanUrl, 'http://192.168.0.69:9096');
+      expect(entry.wanUrl, 'https://media.xn--fhqths51enha.cn');
+    });
+
+    test('reconcile then copies the repaired WAN into the profile', () async {
+      await directory.add(
+        const ServerEntry(
+          id: 'a',
+          name: 'Home',
+          wanUrl: 'http://media.%E4%B8%8A%E6%9D%89%E4%B9%9D%E6%9C%88.cn',
+        ),
+      );
+      final profiles = ProfileStore(kv, serverId: 'a');
+      await profiles.write(
+        const ServerProfile(
+          serverId: 'server-1',
+          name: 'Home',
+          wanUrl: 'http://media.%E4%B8%8A%E6%9D%89%E4%B9%9D%E6%9C%88.cn',
+        ),
+      );
+
+      await directory.repairAddresses();
+      await directory.reconcileProfiles();
+
+      expect(
+        (await profiles.read())?.wanUrl,
+        'https://media.xn--fhqths51enha.cn',
+      );
+    });
+
+    test('keeps an address that cannot be normalized', () async {
+      await directory.add(
+        const ServerEntry(id: 'a', name: 'Bad', wanUrl: 'not a url'),
+      );
+
+      await directory.repairAddresses();
+
+      expect((await directory.read()).single.wanUrl, 'not a url');
+    });
+
+    test('does not rewrite a correct entry', () async {
+      await directory.add(home);
+      final before = await kv.read(ServerDirectory.key);
+
+      await directory.repairAddresses();
+
+      expect(await kv.read(ServerDirectory.key), before);
+    });
+  });
+
   group('legacy migration', () {
     test('creates a default entry from the legacy profile', () async {
       const profile = ServerProfile(

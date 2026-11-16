@@ -70,6 +70,36 @@ void main() {
     });
   });
 
+  group('UrlNormalizer.normalizeWan', () {
+    test('upgrades a legacy http WAN and its percent-encoded host', () {
+      expect(
+        UrlNormalizer.normalizeWan(
+          'http://media.%E4%B8%8A%E6%9D%89%E4%B9%9D%E6%9C%88.cn',
+        ),
+        'https://media.xn--fhqths51enha.cn',
+      );
+    });
+
+    test('defaults a scheme-less public host to https', () {
+      expect(
+        UrlNormalizer.normalizeWan('media.上杉九月.cn'),
+        'https://media.xn--fhqths51enha.cn',
+      );
+    });
+
+    test('keeps a path and drops a trailing slash', () {
+      expect(
+        UrlNormalizer.normalizeWan('media.example.com/emby/'),
+        'https://media.example.com/emby',
+      );
+    });
+
+    test('invalid input stays null', () {
+      expect(UrlNormalizer.normalizeWan('ftp://host'), isNull);
+      expect(UrlNormalizer.normalizeWan('not a url'), isNull);
+    });
+  });
+
   group('UrlNormalizer.normalize IDN hosts', () {
     test('converts a Chinese host to punycode', () {
       expect(
@@ -100,13 +130,10 @@ void main() {
     });
 
     test('probe candidates use the punycode host', () {
-      expect(
-        UrlNormalizer.candidates('https://media.上杉九月.cn'),
-        <String>[
-          'https://media.xn--fhqths51enha.cn',
-          'https://media.xn--fhqths51enha.cn/emby',
-        ],
-      );
+      expect(UrlNormalizer.candidates('https://media.上杉九月.cn'), <String>[
+        'https://media.xn--fhqths51enha.cn',
+        'https://media.xn--fhqths51enha.cn/emby',
+      ]);
     });
   });
 

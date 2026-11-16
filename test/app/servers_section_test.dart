@@ -464,7 +464,7 @@ void main() {
 
     await tester.enterText(
       find.byKey(const Key('server-edit-wan')),
-      'https://home.example.com',
+      'home.example.com',
     );
     await tester.tap(find.byKey(const Key('server-edit-save')));
     await tester.pumpAndSettle();
