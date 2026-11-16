@@ -71,7 +71,7 @@ jobs:
       build_number: ${{ steps.validate.outputs.build_number }}
     steps:
       - name: Checkout release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.target_sha || inputs.tag_name || github.ref }}
           persist-credentials: false
@@ -216,7 +216,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.validate.outputs.source_ref }}
           persist-credentials: false
@@ -292,7 +292,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.validate.outputs.source_ref }}
           persist-credentials: false
@@ -361,7 +361,7 @@ jobs:
       LANG: en_US.UTF-8
     steps:
       - name: Checkout release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.validate.outputs.source_ref }}
           persist-credentials: false
@@ -411,7 +411,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.validate.outputs.source_ref }}
           persist-credentials: false
