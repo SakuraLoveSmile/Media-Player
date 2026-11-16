@@ -71,6 +71,9 @@ class LiveTvRepository implements LiveTvService {
             if (maxWidth != null) 'maxWidth': '$maxWidth',
             if (tag != null && tag.isNotEmpty) 'tag': tag,
             'quality': '90',
+            // Same reason as LibraryRepository.imageUrl: keep the WAN payload
+            // small and never ship a multi-megabyte animated PNG.
+            'format': 'webp',
             'api_key': token,
           },
         );

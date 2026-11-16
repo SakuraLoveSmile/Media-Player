@@ -316,6 +316,9 @@ void main() {
     expect(query['maxWidth'], '320');
     expect(query['tag'], 'tag 1');
     expect(query['quality'], '90');
+    // Animated PNG covers are tens of MiB; without this the WAN uplink is the
+    // whole home page's bottleneck.
+    expect(query['format'], 'webp');
     expect(query['api_key'], server.token);
     expect(uri.toString(), contains('tag=tag+1'));
   });

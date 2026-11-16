@@ -102,7 +102,7 @@ X-Emby-Device-Id: <deviceId>
 | 条目详情 | `GET /Users/{userId}/Items/{itemId}?Fields=Overview,MediaSources,MediaStreams,People,Genres,UserData` |
 | 季 | `GET /Shows/{seriesId}/Seasons?UserId={userId}` |
 | 集 | `GET /Shows/{seriesId}/Episodes?UserId={userId}&SeasonId={seasonId}&Fields=Overview,MediaSources,UserData` |
-| 图片 | `GET /Items/{itemId}/Images/Primary?maxWidth={w}&tag={ImageTags.Primary}&quality=90&api_key={token}` |
+| 图片 | `GET /Items/{itemId}/Images/Primary?maxWidth={w}&tag={ImageTags.Primary}&quality=90&format=webp&api_key={token}` |
 
 约定：
 

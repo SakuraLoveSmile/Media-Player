@@ -445,6 +445,12 @@ class LibraryRepository implements LibraryService {
             if (maxWidth != null) 'maxWidth': '$maxWidth',
             if (tag != null && tag.isNotEmpty) 'tag': tag,
             'quality': '90',
+            // Animated PNG library covers are 20-24 MiB each and Emby passes
+            // them through untouched whenever maxWidth >= their native width,
+            // so a cold home page used to pull ~290 MiB over the WAN uplink.
+            // WebP keeps the alpha channel that player logos need (JPEG does
+            // not) and takes those covers down to ~20 KiB.
+            'format': 'webp',
             'api_key': token,
           },
         );

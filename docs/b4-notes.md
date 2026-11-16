@@ -42,7 +42,7 @@ RESULT pass
 3. 列表字段严格按契约 §2：`Overview,PrimaryImageAspectRatio,UserData,ProductionYear,RunTimeTicks`，详情才带 `MediaSources,MediaStreams,People,Genres,UserData`。
 4. `ItemsPage` 以 `TotalRecordCount` + `StartIndex` 为准，`isLast`/`nextStartIndex` 供 F2 直接翻页；不做客户端排序或去重。
 5. `MediaItem.mediaSources` 只在详情响应里有值；列表响应恒为空列表，避免误用。
-6. 图片 URL 总是带 `quality=90` 与 `api_key`；`maxWidth`/`tag` 可选，`tag` 为空串时省略；登出后返回 `null`。
+6. 图片 URL 总是带 `quality=90`、`format=webp` 与 `api_key`；`maxWidth`/`tag` 可选，`tag` 为空串时省略；登出后返回 `null`。`format=webp` 见 v0.4.4 公网卡顿修复：Emby 在 `maxWidth` ≥ 原图宽度时原样回传动图 PNG，公网首页因此要拉 290 MiB。
 
 ## 4. 测试
 

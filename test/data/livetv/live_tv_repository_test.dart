@@ -296,6 +296,7 @@ void main() {
       expect(query['maxWidth'], '160');
       expect(query['tag'], 'tag 1');
       expect(query['quality'], '90');
+      expect(query['format'], 'webp');
       expect(query['api_key'], server.token);
     });
 
