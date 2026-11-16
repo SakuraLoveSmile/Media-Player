@@ -212,4 +212,6 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
   - `FeedbackExceptionCapture` 在 `main` 安装，记录 Flutter/平台错误并原样转发原处理链；
   - `buildFeedbackConfig` 默认 `logProvider = provideFeedbackDiagnostics`，面板打开时导出 `media-player-diagnostics.jsonl`；无事件时为空，采集失败不阻断提交。
 - 本地验证：`flutter analyze` 无问题；`flutter test` **1517 项通过**（新增 diagnostics 8 项：路径归一化/去 query、状态与失败记录、JSONL 导出、config 默认与覆盖）。验证使用 Flutter 3.47.7 / Dart 3.13.5（与 CI 一致）。
-- 尚未验证：真机（或隔离服务）提交一条反馈并在管理后台预览日志附件；Windows CI vendoring 只更新了 SHA，未在本机跑 Windows 构建。
+- 发布：提交 `1e1740b`（发布准备）与 `b2a72db`（功能），签名标签 `v0.4.5`；main CI [43889746106](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/43889746106) 4 job 成功；发布流水线 [43891165511](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/43891165511) 首跑因 Android NDK 下载损坏失败，重跑失败 job 后全部成功。
+- [Release v0.4.5](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.5)：2026-11-16T15:12:40Z 公开，非草稿、非预发布、Latest；3 个资产 `MediaPlayer-android.apk` / `MediaPlayer-windows-x64.zip` / `MediaPlayer-macos.zip`，body 为用户向日志 `release/notes/v0.4.5.md`。
+- 尚未验证：真机安装新包后提交一条反馈并在管理后台预览日志附件；Windows 更新安装未在真机执行（Release 构建已通过 vendoring 构建）。
