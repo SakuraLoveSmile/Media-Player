@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
 import '../../app/screenshot_settings.dart';
+import '../../app/servers.dart';
+import '../../app/services.dart';
 import '../../core/device/brightness.dart';
 import '../../core/device/screen_orientation.dart';
 import '../../core/router/app_routes.dart';
@@ -16,6 +18,8 @@ import '../../data/library/poster_cache.dart';
 import '../../data/danmaku/danmaku_repository.dart';
 import '../../data/danmaku/models/danmaku_anime.dart';
 import '../../data/models/media_item.dart';
+import '../../data/auth/auth_service.dart';
+import '../../data/auth/server_session_service.dart';
 import '../../data/models/media_stream.dart';
 import '../../data/playback/playback_engine.dart';
 import '../../data/playback/playback_settings.dart';
@@ -1638,9 +1642,34 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
       // S53: the portrait 选集 strip needs the season's episodes; a failure
       // only hides the strip, playback is unaffected.
       await _loadSeasonEpisodes(controller, services.library);
+      // S80: 显示上次播放时间 on the server card needs a timestamp; a failed
+      // write must never disturb playback.
+      _markServerPlayed(controller, services);
     } catch (_) {
       if (!mounted) return;
       setState(() => _fatal = '播放初始化失败，请稍后重试');
+    }
+  }
+
+  /// S80: records "this server just played something" once playback is really
+  /// running, so the server card can show 显示上次播放时间. Best effort only —
+  /// a missing directory or a failed write is silently ignored.
+  void _markServerPlayed(PlayerController controller, AppServices services) {
+    if (!controller.state.ready || controller.state.error != null) return;
+    final AuthService auth = services.auth;
+    // AuthService is an interface class, so flow analysis cannot promote it to
+    // the unrelated ServerSessionService; cast explicitly.
+    if (auth is! ServerSessionService) return;
+    final String serverId = (auth as ServerSessionService).activeServerId;
+    if (serverId.isEmpty) return;
+    unawaited(_recordPlayed(serverId));
+  }
+
+  Future<void> _recordPlayed(String serverId) async {
+    try {
+      await ref.read(serversControllerProvider.notifier).markPlayed(serverId);
+    } catch (_) {
+      // Best effort: the card simply keeps its previous timestamp.
     }
   }
 

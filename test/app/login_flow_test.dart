@@ -10,7 +10,11 @@ import 'package:media_player/core/errors/endpoint_failure.dart';
 import 'package:media_player/core/network/endpoint_kind.dart';
 import 'package:media_player/data/auth/auth_service.dart';
 import 'package:media_player/data/models/auth_session.dart';
+import 'package:media_player/data/library/library_service.dart';
+import 'package:media_player/data/models/server_entry.dart';
 import 'package:media_player/data/models/server_profile.dart';
+import 'package:media_player/data/storage/key_value_store.dart';
+import 'package:media_player/data/storage/server_directory.dart';
 
 import '../support/fake_library_service.dart';
 import '../support/fake_playback_engine.dart';
@@ -90,18 +94,26 @@ class RecordingAuth implements AuthService {
 }
 
 void main() {
-  Future<void> pumpApp(WidgetTester tester, AuthService auth) async {
+  Future<void> pumpApp(
+    WidgetTester tester,
+    AuthService auth, {
+    LibraryService? library,
+    ServerDirectory? directory,
+    InMemoryKeyValueStore? store,
+  }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           bootstrapProvider.overrideWith(
             (ref) async => AppServices(
               auth: auth,
-              library: FakeLibraryService(),
+              library: library ?? FakeLibraryService(),
               posters: FakePosterCache(),
               playback: FakePlaybackService(),
               createEngine: FakePlaybackEngine.new,
               createReporter: FakePlaybackReporter.new,
+              store: store,
+              servers: directory,
             ),
           ),
         ],
@@ -257,5 +269,62 @@ void main() {
       auth.lastLogin?.profile.wanUrl,
       'https://media.xn--fhqths51enha.cn',
     );
+  });
+
+  testWidgets('a new server is saved under the name it advertises (S80)', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    final directory = ServerDirectory(store);
+    final library = FakeLibraryService()..serverNameValue = 'sakurasep-emby';
+    final auth = RecordingAuth();
+    await pumpApp(tester, auth, library: library, directory: directory);
+
+    await fill(tester, lan: 'http://192.168.1.10:8096');
+    await tester.tap(find.byKey(const Key('login-submit')));
+    await tester.pumpAndSettle();
+
+    final List<ServerEntry> entries = await directory.read();
+    expect(entries, hasLength(1));
+    expect(entries.single.name, 'sakurasep-emby');
+    expect(entries.single.lanUrl, 'http://192.168.1.10:8096');
+    expect(await directory.activeId(), entries.single.id);
+  });
+
+  testWidgets('signing in again keeps a renamed server and its card settings', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    final directory = ServerDirectory(store);
+    // A server the user already renamed and gave an icon — re-authenticating it
+    // must not wipe either back to the address.
+    await directory.add(
+      const ServerEntry(
+        id: 'default',
+        name: 'Living Room',
+        lanUrl: 'http://192.168.1.10:8096',
+        customIcon: 'router',
+        showLastPlayed: true,
+      ),
+    );
+    await directory.setActive('default');
+    final library = FakeLibraryService()..serverNameValue = 'sakurasep-emby';
+    final auth = RecordingAuth(
+      lastStoredProfile: const ServerProfile(
+        serverId: 'server-1',
+        name: '',
+        lanUrl: 'http://192.168.1.10:8096',
+      ),
+    );
+    await pumpApp(tester, auth, library: library, directory: directory);
+
+    await fill(tester, username: 'test', password: 'secret');
+    await tester.tap(find.byKey(const Key('login-submit')));
+    await tester.pumpAndSettle();
+
+    final ServerEntry? stored = await directory.find('default');
+    expect(stored?.name, 'Living Room');
+    expect(stored?.customIcon, 'router');
+    expect(stored?.showLastPlayed, isTrue);
   });
 }

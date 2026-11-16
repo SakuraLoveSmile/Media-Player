@@ -5,17 +5,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app/servers.dart';
-import '../core/network/url_normalizer.dart';
 import '../core/router/app_routes.dart';
 import '../data/models/server_entry.dart';
 import 'app_loader.dart';
 import 'app_page.dart';
+import 'server_card.dart';
+import 'server_dialogs.dart';
 
-/// 服务器 list (S20/S28): shared by the settings section and the /servers page.
+/// 服务器 list (S20/S28/S80): shared by the settings section and the /servers
+/// page.
 ///
-/// List the saved servers, highlight the active one and offer 切换 / 添加 / 删除. Names and addresses are non-secret; credentials stay
-/// in the secure per-server stores. Switching restores the target session or
-/// routes to its login; adding opens the login flow for a brand-new entry.
+/// Each saved server is one Yamby-style card: the server glyph, the name, an
+/// online dot and the optional user name / last-played time. Tapping a card
+/// switches to that server; the trailing ⋮ opens the per-server menu (显示名称 /
+/// 编辑 / 自定义图标 / 显示用户名 / 显示上次播放时间 / 添加备选地址 / 删除).
+/// Names and addresses are non-secret; credentials stay in the secure
+/// per-server stores, so switching restores the target session or routes to its
+/// login.
 class ServerSettingsSection extends ConsumerWidget {
   const ServerSettingsSection({super.key, this.userName});
 
@@ -30,17 +36,14 @@ class ServerSettingsSection extends ConsumerWidget {
 
     return AppSection(
       header: '服务器',
-      footer: '切换会恢复该服务器的登录状态；未登录的服务器需要重新登录',
+      footer: '点按卡片切换服务器；切换会恢复该服务器的登录状态，未登录的服务器需要重新登录',
       children: <Widget>[
         // S79: while the directory is still resolving, say so instead of
         // showing a section that looks like it has no servers.
         if (state.servers.isEmpty && async.isLoading)
           const ListTile(
             key: Key('settings-server-loading'),
-            leading: SizedBox.square(
-              dimension: 22,
-              child: AppLoader(size: 22),
-            ),
+            leading: SizedBox.square(dimension: 22, child: AppLoader(size: 22)),
             title: Text('正在加载服务器…'),
           ),
         if (state.servers.isEmpty && !async.isLoading)
@@ -51,14 +54,14 @@ class ServerSettingsSection extends ConsumerWidget {
             subtitle: const Text('添加一台 Emby 服务器开始使用'),
           ),
         for (final ServerEntry entry in state.servers)
-          _ServerTile(
+          ServerCard(
             entry: entry,
             active: entry.id == state.activeId,
             userName: userName,
             online: state.online[entry.id],
-            palette: palette,
-            onSwitch: () => unawaited(_switch(context, ref, entry.id)),
-            onDelete: () => unawaited(_delete(context, ref, entry.id)),
+            onTap: () => unawaited(_switch(context, ref, entry.id)),
+            onMenu: (BuildContext anchor) =>
+                unawaited(_openMenu(context, ref, entry, state, anchor)),
           ),
         ListTile(
           key: const Key('settings-server-add'),
@@ -73,11 +76,133 @@ class ServerSettingsSection extends ConsumerWidget {
   }
 
   Future<void> _switch(BuildContext context, WidgetRef ref, String id) async {
-    final session = await ref
-        .read(serversControllerProvider.notifier)
-        .switchTo(id);
+    final ServersState current =
+        ref.read(serversControllerProvider).value ?? ServersState.empty;
+    if (current.activeId == id) return;
+    final session = await ref.read(serversControllerProvider.notifier).switchTo(id);
     if (!context.mounted) return;
     context.go(session == null ? AppRoutes.loginFor(id) : AppRoutes.home);
+  }
+
+  /// The anchored ⋮ menu (S80), positioned under the button that opened it.
+  Future<void> _openMenu(
+    BuildContext context,
+    WidgetRef ref,
+    ServerEntry entry,
+    ServersState state,
+    BuildContext anchor,
+  ) async {
+    final RenderBox button = anchor.findRenderObject()! as RenderBox;
+    final RenderBox overlay =
+        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    final _ServerAction? action = await showMenu<_ServerAction>(
+      context: context,
+      position: position,
+      items: <PopupMenuEntry<_ServerAction>>[
+        _item(_ServerAction.rename, '显示名称', Icons.drive_file_rename_outline),
+        _item(_ServerAction.edit, '编辑', Icons.edit_outlined),
+        _item(_ServerAction.icon, '自定义图标', Icons.emoji_emotions_outlined),
+        _item(
+          _ServerAction.toggleUserName,
+          '显示用户名',
+          entry.showUserName ? Icons.check_circle : Icons.radio_button_unchecked,
+        ),
+        _item(
+          _ServerAction.toggleLastPlayed,
+          '显示上次播放时间',
+          entry.showLastPlayed
+              ? Icons.check_circle
+              : Icons.radio_button_unchecked,
+        ),
+        _item(
+          _ServerAction.alternateAddress,
+          '添加备选地址',
+          Icons.alt_route_outlined,
+        ),
+        const PopupMenuDivider(),
+        _item(_ServerAction.delete, '删除', Icons.delete_outline),
+      ],
+    );
+    if (action == null || !context.mounted) return;
+
+    final ServersController controller = ref.read(
+      serversControllerProvider.notifier,
+    );
+    switch (action) {
+      case _ServerAction.rename:
+        final String? name = await showServerNameDialog(
+          context,
+          initial: entry.name,
+        );
+        if (name != null) await controller.rename(entry.id, name);
+      case _ServerAction.edit:
+        final ServerEntry? edited = await showServerEditDialog(
+          context,
+          entry: entry,
+        );
+        if (edited != null) {
+          await controller.updateEntry(entry.id, (_) => edited);
+        }
+      case _ServerAction.icon:
+        final String? icon = await showServerIconDialog(
+          context,
+          selected: entry.customIcon,
+        );
+        if (icon != null) {
+          await controller.updateEntry(
+            entry.id,
+            (ServerEntry e) => e.copyWith(customIcon: icon),
+          );
+        }
+      case _ServerAction.toggleUserName:
+        await controller.updateEntry(
+          entry.id,
+          (ServerEntry e) => e.copyWith(showUserName: !e.showUserName),
+        );
+      case _ServerAction.toggleLastPlayed:
+        await controller.updateEntry(
+          entry.id,
+          (ServerEntry e) => e.copyWith(showLastPlayed: !e.showLastPlayed),
+        );
+      case _ServerAction.alternateAddress:
+        final ServerEntry? edited = await showServerEditDialog(
+          context,
+          entry: entry,
+          addressOnly: true,
+        );
+        if (edited != null) {
+          await controller.updateEntry(entry.id, (_) => edited);
+        }
+      case _ServerAction.delete:
+        if (!context.mounted) return;
+        await _delete(context, ref, entry.id);
+    }
+  }
+
+  PopupMenuItem<_ServerAction> _item(
+    _ServerAction action,
+    String label,
+    IconData icon,
+  ) {
+    return PopupMenuItem<_ServerAction>(
+      key: Key('server-action-${action.name}'),
+      value: action,
+      child: Row(
+        children: <Widget>[
+          Icon(icon, size: 20),
+          const SizedBox(width: 12),
+          Text(label),
+        ],
+      ),
+    );
   }
 
   Future<void> _delete(BuildContext context, WidgetRef ref, String id) async {
@@ -96,85 +221,13 @@ class ServerSettingsSection extends ConsumerWidget {
   }
 }
 
-class _ServerTile extends StatelessWidget {
-  const _ServerTile({
-    required this.entry,
-    required this.active,
-    required this.userName,
-    required this.palette,
-    this.online,
-    required this.onSwitch,
-    required this.onDelete,
-  });
-
-  final ServerEntry entry;
-  final bool active;
-  final String? userName;
-  final ColorScheme palette;
-
-  /// S64: reachability of this server; null while unknown.
-  final bool? online;
-  final VoidCallback onSwitch;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final String address = UrlNormalizer.display(entry.addressLabel);
-    final String title = entry.name.isEmpty ? address : entry.name;
-    final String user = userName ?? '';
-    final String subtitle = !active
-        ? address
-        : user.isEmpty
-        ? '$address · 当前'
-        : '$address · 当前 · $user';
-    return ListTile(
-      key: Key('server-${entry.id}'),
-      leading: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(
-            active ? Icons.check_circle : Icons.dns_outlined,
-            color: active ? palette.primary : palette.outline,
-          ),
-          if (online != null) ...<Widget>[
-            const SizedBox(width: 6),
-            Container(
-              key: Key('server-online-${entry.id}'),
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: online! ? const Color(0xFF4CAF50) : palette.outline,
-              ),
-            ),
-          ],
-        ],
-      ),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: palette.onSurface,
-          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-        ),
-      ),
-      subtitle: Text(subtitle),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          TextButton(
-            key: Key('server-switch-${entry.id}'),
-            onPressed: onSwitch,
-            child: const Text('切换'),
-          ),
-          IconButton(
-            key: Key('server-delete-${entry.id}'),
-            tooltip: '删除',
-            icon: const Icon(Icons.delete_outline),
-            color: palette.outline,
-            onPressed: onDelete,
-          ),
-        ],
-      ),
-    );
-  }
+/// Rows of the per-server menu.
+enum _ServerAction {
+  rename,
+  edit,
+  icon,
+  toggleUserName,
+  toggleLastPlayed,
+  alternateAddress,
+  delete,
 }

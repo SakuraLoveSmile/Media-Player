@@ -23,14 +23,14 @@ class BackupSettingsSection extends ConsumerWidget {
 
     return AppSection(
       header: '备份/还原',
-      footer: '仅备份偏好设置，不含账号凭据；部分设置在下次启动或刷新后生效',
+      footer: '仅含偏好设置与服务器列表，不含账号凭据；恢复的服务器需要重新登录，部分设置在下次启动后生效',
       children: <Widget>[
         ListTile(
           key: const Key('settings-backup-export'),
           enabled: !loading && service != null,
           leading: Icon(Icons.upload_file_outlined, color: palette.primary),
           title: const Text('导出备份'),
-          subtitle: const Text('将偏好设置保存为 JSON 文件'),
+          subtitle: const Text('将偏好设置与服务器列表保存为 JSON 文件'),
           trailing: _trailing(loading, palette),
           onTap: loading || service == null
               ? null
@@ -41,7 +41,7 @@ class BackupSettingsSection extends ConsumerWidget {
           enabled: !loading && service != null,
           leading: Icon(Icons.download_outlined, color: palette.primary),
           title: const Text('导入备份'),
-          subtitle: const Text('从 JSON 文件恢复偏好设置'),
+          subtitle: const Text('从 JSON 文件恢复偏好设置与服务器列表'),
           trailing: _trailing(loading, palette),
           onTap: loading || service == null
               ? null

@@ -16,6 +16,7 @@ import '../../ui/app_bottom_nav.dart';
 import '../../ui/app_controls.dart';
 import '../../ui/poster_card.dart';
 import '../../ui/responsive.dart';
+import '../../ui/server_card.dart';
 import '../../ui/nav_visibility.dart';
 import '../../ui/app_loader.dart';
 import '../../ui/theme/app_tokens.dart';
@@ -37,14 +38,31 @@ class _HomePageState extends ConsumerState<HomePage> {
   bool _redirecting = false;
   String? _fatal;
 
+  /// Server id the current controller was built against (S80): a switch made
+  /// anywhere else in the app is detected by comparing against it.
+  String? _bootedServerId;
+
+  /// Watches the directory so switching servers rebuilds the dashboard (S80).
+  ProviderSubscription<AsyncValue<ServersState>>? _serverWatch;
+
   @override
   void initState() {
     super.initState();
+    _serverWatch = ref.listenManual(
+      serversControllerProvider,
+      (AsyncValue<ServersState>? previous, AsyncValue<ServersState> next) {
+        final String id = next.value?.activeId ?? '';
+        final String? booted = _bootedServerId;
+        if (id.isEmpty || booted == null || id == booted) return;
+        unawaited(_restart());
+      },
+    );
     unawaited(_bootstrap());
   }
 
   @override
   void dispose() {
+    _serverWatch?.close();
     _scroll.dispose();
     _controller?.dispose();
     super.dispose();
@@ -54,6 +72,9 @@ class _HomePageState extends ConsumerState<HomePage> {
     try {
       final services = await ref.read(bootstrapProvider.future);
       if (!mounted) return;
+      // Remember which server this dashboard belongs to so a later switch can
+      // be recognised as a different one (S80).
+      _bootedServerId = await services.servers?.activeId() ?? '';
       // S32: the hidden-library list may still be resolving on a cold start;
       // await it once so a hidden library never headlines the dashboard.
       Set<String> hidden = const <String>{};
@@ -74,6 +95,21 @@ class _HomePageState extends ConsumerState<HomePage> {
       if (!mounted) return;
       setState(() => _fatal = '首页加载失败，请稍后重试');
     }
+  }
+
+  /// Rebuilds the dashboard for a different active server (S80).
+  ///
+  /// Switching servers from the avatar popup or the 服务器 page swaps the
+  /// session in place; the page itself is reused, so without this the header
+  /// would keep the old server name and the rows the old server's libraries.
+  Future<void> _restart() async {
+    if (_redirecting) return;
+    _controller?.dispose();
+    setState(() {
+      _controller = null;
+      _fatal = null;
+    });
+    await _bootstrap();
   }
 
   void _onChanged() {
@@ -104,83 +140,110 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  /// Account avatar: switch between saved servers (Yamby's avatar dropdown).
-  Future<void> _showServers() async {
-    final String? activeId = ref
-        .read(serversControllerProvider)
-        .value
-        ?.activeId;
-    final String? picked = await showModalBottomSheet<String>(
+  /// The saved servers, resolving the directory on first use.
+  Future<ServersState> _serverSnapshot() async {
+    final AsyncValue<ServersState> snapshot = ref.read(
+      serversControllerProvider,
+    );
+    if (snapshot.hasValue) return snapshot.requireValue;
+    try {
+      return await ref.read(serversControllerProvider.future);
+    } catch (_) {
+      return ServersState.empty;
+    }
+  }
+
+  /// Account avatar: Yamby's anchored quick-switch popup (S80).
+  ///
+  /// A compact card drops out of the avatar, listing the saved servers with a ✓
+  /// on the active one. Picking another one switches to it; 添加服务器 opens the
+  /// add flow. [anchor] is the avatar's context so the menu can hang off it.
+  Future<void> _showServers(BuildContext anchor) async {
+    // Measured before the first await so the anchor context is never used
+    // across an async gap.
+    final RenderBox button = anchor.findRenderObject()! as RenderBox;
+    final RenderBox overlay =
+        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(
+          button.size.bottomRight(Offset.zero),
+          ancestor: overlay,
+        ),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    // The home page never renders the directory, so the first tap may still hit
+    // a loading state; await it once instead of showing an empty list.
+    final ServersState current = await _serverSnapshot();
+    if (!mounted) return;
+    final String activeId = current.activeId;
+
+    final String? picked = await showMenu<String>(
       context: context,
-      isScrollControlled: true,
-      builder: (BuildContext sheetContext) => Consumer(
-        builder: (BuildContext context, WidgetRef ref, Widget? _) {
-          final AsyncValue<ServersState> async = ref.watch(
-            serversControllerProvider,
-          );
-          final ServersState state = async.value ?? ServersState.empty;
-          final ColorScheme palette = Theme.of(context).colorScheme;
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.lg,
-                      AppSpacing.md,
-                      AppSpacing.lg,
-                      AppSpacing.sm,
-                    ),
-                    child: Text(
-                      '服务器',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  if (state.servers.isEmpty)
-                    ListTile(
-                      key: const Key('home-servers-empty'),
-                      leading: Icon(Icons.dns_outlined, color: palette.outline),
-                      title: const Text('暂无保存的服务器'),
-                    ),
-                  for (final ServerEntry entry in state.servers)
-                    ListTile(
-                      key: Key('home-server-${entry.id}'),
-                      leading: Icon(
-                        entry.id == activeId
-                            ? Icons.check_circle
-                            : Icons.radio_button_unchecked,
-                        color: entry.id == activeId
-                            ? palette.primary
-                            : palette.outline,
-                      ),
-                      title: Text(
-                        entry.name.isEmpty
-                            ? UrlNormalizer.display(entry.addressLabel)
-                            : entry.name,
-                      ),
-                      subtitle: Text(
-                        UrlNormalizer.display(entry.addressLabel),
-                      ),
-                      onTap: () => Navigator.of(sheetContext).pop(entry.id),
-                    ),
-                  ListTile(
-                    key: const Key('home-server-add'),
-                    leading: Icon(
-                      Icons.add_circle_outline,
-                      color: palette.primary,
-                    ),
-                    title: const Text('添加服务器'),
-                    onTap: () => Navigator.of(sheetContext).pop('__add__'),
-                  ),
-                ],
+      position: position,
+      constraints: const BoxConstraints(minWidth: 232, maxWidth: 288),
+      items: <PopupMenuEntry<String>>[
+        if (current.servers.isEmpty)
+          PopupMenuItem<String>(
+            key: const Key('home-servers-empty'),
+            enabled: false,
+            child: Text(
+              '暂无保存的服务器',
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
-          );
-        },
-      ),
+          ),
+        for (final ServerEntry entry in current.servers)
+          PopupMenuItem<String>(
+            key: Key('home-server-${entry.id}'),
+            value: entry.id,
+            child: Row(
+              children: <Widget>[
+                Icon(
+                  entry.id == activeId
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  size: 20,
+                  color: entry.id == activeId
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.outline,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                ServerGlyph(entry: entry, size: 20),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    entry.name.isEmpty
+                        ? UrlNormalizer.display(entry.addressLabel)
+                        : entry.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          key: const Key('home-server-add'),
+          value: '__add__',
+          child: Row(
+            children: <Widget>[
+              Icon(
+                Icons.add_circle_outline,
+                size: 20,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              const Text('添加服务器'),
+            ],
+          ),
+        ),
+      ],
     );
     if (!mounted || picked == null) return;
     if (picked == '__add__') {
@@ -194,7 +257,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (!mounted) return;
     context.go(session == null ? AppRoutes.loginFor(picked) : AppRoutes.home);
   }
-
   @override
   Widget build(BuildContext context) {
     final HomeController? controller = _controller;
@@ -210,7 +272,8 @@ class _HomePageState extends ConsumerState<HomePage> {
           children: <Widget>[
             _HomeHeader(
               serverName: state?.serverName ?? '',
-              onAccount: () => unawaited(_showServers()),
+              onAccount: (BuildContext anchor) =>
+                  unawaited(_showServers(anchor)),
               onSettings: () => context.push(AppRoutes.settings),
               onServers: () => context.push(AppRoutes.servers),
             ),
@@ -326,7 +389,9 @@ class _HomeHeader extends StatelessWidget {
   });
 
   final String serverName;
-  final VoidCallback onAccount;
+
+  /// Receives the avatar's context so the quick-switch popup can anchor to it.
+  final ValueChanged<BuildContext> onAccount;
   final VoidCallback onSettings;
   final VoidCallback onServers;
 
@@ -342,12 +407,14 @@ class _HomeHeader extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          IconButton(
-            key: const Key('home-account'),
-            tooltip: '服务器',
-            icon: const Icon(Icons.account_circle_outlined),
-            iconSize: 28,
-            onPressed: onAccount,
+          Builder(
+            builder: (BuildContext anchor) => IconButton(
+              key: const Key('home-account'),
+              tooltip: '服务器',
+              icon: const Icon(Icons.account_circle_outlined),
+              iconSize: 28,
+              onPressed: () => onAccount(anchor),
+            ),
           ),
           Expanded(
             child: Text(

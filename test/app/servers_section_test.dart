@@ -10,6 +10,7 @@ import 'package:media_player/app/services.dart';
 import 'package:media_player/app/router.dart';
 import 'package:media_player/app/update_providers.dart';
 import 'package:media_player/core/router/app_routes.dart';
+import 'package:media_player/data/models/library_view.dart';
 import 'package:media_player/data/models/server_entry.dart';
 import 'package:media_player/data/storage/key_value_store.dart';
 import 'package:media_player/data/storage/server_directory.dart';
@@ -36,12 +37,14 @@ void main() {
   late ServerDirectory directory;
   late FakeServerAuth auth;
   late FakeEndpointProbe probe;
+  late FakeLibraryService library;
 
   setUp(() {
     store = InMemoryKeyValueStore();
     directory = ServerDirectory(store);
     auth = FakeServerAuth();
     probe = FakeEndpointProbe();
+    library = FakeLibraryService();
   });
 
   Future<void> pumpApp(WidgetTester tester) async {
@@ -55,7 +58,7 @@ void main() {
           bootstrapProvider.overrideWith(
             (ref) async => AppServices(
               auth: auth,
-              library: FakeLibraryService(),
+              library: library,
               posters: FakePosterCache(),
               playback: FakePlaybackService(),
               createEngine: FakePlaybackEngine.new,
@@ -77,6 +80,13 @@ void main() {
   Future<void> openSettings(WidgetTester tester) async {
     await tester.tap(find.byKey(const Key('login-settings')));
     await tester.pumpAndSettle();
+  }
+
+  /// The /servers page hosts the same section and needs no settings scroll.
+  void openServersPage(WidgetTester tester) {
+    ProviderScope.containerOf(tester.element(find.byType(MediaPlayerApp)))
+        .read(appRouterProvider)
+        .go(AppRoutes.servers);
   }
 
   const home = ServerEntry(
@@ -110,9 +120,12 @@ void main() {
     expect(find.byKey(const Key('server-b')), findsOneWidget);
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Office'), findsOneWidget);
-    // Only the active entry is labelled 当前 (the appearance section also uses
-    // that word, so match the server subtitle exactly).
-    expect(find.text('http://192.168.1.10:8096 · 当前'), findsOneWidget);
+    // S80: the active card is marked with a check instead of the old "当前"
+    // suffix, and its second line falls back to the address.
+    expect(find.byKey(const Key('server-active-a')), findsOneWidget);
+    expect(find.byKey(const Key('server-active-b')), findsNothing);
+    expect(find.text('http://192.168.1.10:8096'), findsOneWidget);
+    expect(find.text('http://10.0.0.5:8096'), findsOneWidget);
     expect(find.byKey(const Key('settings-server-add')), findsOneWidget);
   });
 
@@ -129,8 +142,9 @@ void main() {
     await pumpApp(tester);
     await openSettings(tester);
 
+    // The name is empty, so the address itself becomes the card title and is
+    // printed once (S80 dropped the duplicated second line).
     expect(find.text('https://media.上杉九月.cn'), findsOneWidget);
-    expect(find.text('https://media.上杉九月.cn · 当前'), findsOneWidget);
     expect(find.textContaining('xn--'), findsNothing);
   });
 
@@ -150,7 +164,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('servers-add-fab')), findsOneWidget);
-      expect(find.text('http://192.168.1.10:8096 · 当前 · test'), findsOneWidget);
+      // S80: the user name is the card's second line when 显示用户名 is on.
+      expect(find.text('test'), findsOneWidget);
     },
   );
 
@@ -187,7 +202,8 @@ void main() {
       await pumpApp(tester);
       await openSettings(tester);
 
-      await tester.tap(find.byKey(const Key('server-switch-b')));
+      // S80: tapping the card itself switches (the old 切换 button is gone).
+      await tester.tap(find.byKey(const Key('server-b')));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('home-page')), findsOneWidget);
@@ -207,7 +223,7 @@ void main() {
     await pumpApp(tester);
     await openSettings(tester);
 
-    await tester.tap(find.byKey(const Key('server-switch-c')));
+    await tester.tap(find.byKey(const Key('server-c')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('login-submit')), findsOneWidget);
@@ -264,7 +280,10 @@ void main() {
     await pumpApp(tester);
     await openSettings(tester);
 
-    await tester.tap(find.byKey(const Key('server-delete-b')));
+    // S80: 删除 moved into the per-server ⋮ menu.
+    await tester.tap(find.byKey(const Key('server-menu-b')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('server-action-delete')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('server-b')), findsNothing);
@@ -299,5 +318,260 @@ void main() {
     expect(find.byKey(const Key('settings-server-empty')), findsNothing);
     // The wait uses the app loader (S66), not a Material spinner.
     expect(find.byKey(const Key('app-loader')), findsOneWidget);
+  });
+
+  testWidgets('the ⋮ menu renames a server (S80)', (tester) async {
+    await directory.add(home);
+    await directory.add(office);
+    await directory.setActive('a');
+    await pumpApp(tester);
+    await openSettings(tester);
+
+    await tester.tap(find.byKey(const Key('server-menu-b')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('server-action-rename')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('server-name-field')), '书房');
+    await tester.tap(find.byKey(const Key('server-name-save')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('书房'), findsOneWidget);
+    expect(find.text('Office'), findsNothing);
+    expect((await directory.read()).map((e) => e.name), <String>[
+      'Home',
+      '书房',
+    ]);
+  });
+
+  testWidgets('the ⋮ toggles the user name and last-played lines (S80)', (
+    tester,
+  ) async {
+    await directory.add(home);
+    await directory.setActive('a');
+    auth.seedSession('a');
+    // The bootstrap override does not run the real auth.useServer wiring.
+    auth.useServer('a');
+    await pumpApp(tester);
+    // A restored session lands on home, so reach the 服务器 page directly.
+    openServersPage(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('test'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('server-menu-a')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('server-action-toggleUserName')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('test'), findsNothing);
+    expect((await directory.find('a'))!.showUserName, isFalse);
+
+    await tester.tap(find.byKey(const Key('server-menu-a')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('server-action-toggleLastPlayed')));
+    await tester.pumpAndSettle();
+
+    expect((await directory.find('a'))!.showLastPlayed, isTrue);
+  });
+
+  testWidgets('a last-played server shows the time on its card (S80)', (
+    tester,
+  ) async {
+    await directory.add(
+      home.copyWith(showLastPlayed: true, lastPlayedAt: DateTime.now()),
+    );
+    await directory.setActive('a');
+    await pumpApp(tester);
+    await openSettings(tester);
+
+    expect(find.textContaining('今天'), findsOneWidget);
+  });
+
+  testWidgets('the ⋮ menu picks a custom icon (S80)', (tester) async {
+    await directory.add(home);
+    await directory.setActive('a');
+    await pumpApp(tester);
+    await openSettings(tester);
+
+    await tester.tap(find.byKey(const Key('server-menu-a')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('server-action-icon')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('server-icon-tv')));
+    await tester.pumpAndSettle();
+
+    expect((await directory.find('a'))!.customIcon, 'tv');
+  });
+
+  testWidgets('editing a server updates its addresses (S80)', (tester) async {
+    await directory.add(home);
+    await directory.setActive('a');
+    await pumpApp(tester);
+    await openSettings(tester);
+
+    await tester.tap(find.byKey(const Key('server-menu-a')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('server-action-edit')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('server-edit-lan')),
+      'http://192.168.1.77:8096',
+    );
+    await tester.tap(find.byKey(const Key('server-edit-save')));
+    await tester.pumpAndSettle();
+
+    final edited = (await directory.find('a'))!;
+    expect(edited.lanUrl, 'http://192.168.1.77:8096');
+    expect(edited.name, 'Home');
+  });
+
+  testWidgets('an unusable address is refused with a message (S80)', (
+    tester,
+  ) async {
+    await directory.add(home);
+    await directory.setActive('a');
+    await pumpApp(tester);
+    await openSettings(tester);
+
+    await tester.tap(find.byKey(const Key('server-menu-a')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('server-action-edit')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('server-edit-lan')),
+      'not a url',
+    );
+    await tester.tap(find.byKey(const Key('server-edit-save')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('server-edit-error')), findsOneWidget);
+    expect((await directory.find('a'))!.lanUrl, 'http://192.168.1.10:8096');
+  });
+
+  testWidgets('添加备选地址 fills the empty slot (S80)', (tester) async {
+    await directory.add(home);
+    await directory.setActive('a');
+    await pumpApp(tester);
+    await openSettings(tester);
+
+    await tester.tap(find.byKey(const Key('server-menu-a')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('server-action-alternateAddress')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('server-edit-wan')),
+      'https://home.example.com',
+    );
+    await tester.tap(find.byKey(const Key('server-edit-save')));
+    await tester.pumpAndSettle();
+
+    final edited = (await directory.find('a'))!;
+    expect(edited.wanUrl, 'https://home.example.com');
+    expect(edited.lanUrl, 'http://192.168.1.10:8096');
+  });
+
+  testWidgets('the avatar opens a quick switch list of saved servers (S80)', (
+    tester,
+  ) async {
+    await directory.add(home);
+    await directory.add(office);
+    await directory.setActive('a');
+    auth.seedSession('a');
+    auth.useServer('a');
+    await pumpApp(tester);
+    expect(find.byKey(const Key('home-page')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('home-account')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('home-server-a')), findsOneWidget);
+    expect(find.byKey(const Key('home-server-b')), findsOneWidget);
+    expect(find.byKey(const Key('home-server-add')), findsOneWidget);
+    // The active server is ticked; inactive ones are not.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('home-server-a')),
+        matching: find.byIcon(Icons.check_circle),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('home-server-b')),
+        matching: find.byIcon(Icons.radio_button_unchecked),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('picking another server from the avatar list switches (S80)', (
+    tester,
+  ) async {
+    await directory.add(home);
+    await directory.add(office);
+    await directory.setActive('a');
+    auth.seedSession('a');
+    auth.seedSession('b');
+    auth.useServer('a');
+    await pumpApp(tester);
+
+    await tester.tap(find.byKey(const Key('home-account')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('home-server-b')));
+    await tester.pumpAndSettle();
+
+    expect(auth.activeServerId, 'b');
+    expect(auth.restoredServers, contains('b'));
+    expect(await directory.activeId(), 'b');
+    expect(find.byKey(const Key('home-page')), findsOneWidget);
+  });
+
+  testWidgets('添加服务器 in the avatar list opens the add-server login (S80)', (
+    tester,
+  ) async {
+    await directory.add(home);
+    await directory.setActive('a');
+    auth.seedSession('a');
+    auth.useServer('a');
+    await pumpApp(tester);
+
+    await tester.tap(find.byKey(const Key('home-account')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('home-server-add')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('login-submit')), findsOneWidget);
+    expect(find.byKey(const Key('login-lan-url')), findsOneWidget);
+  });
+
+  testWidgets('the dashboard reloads for the server picked in the popup (S80)', (
+    tester,
+  ) async {
+    // A dashboard with one library: without views load() stops before it asks
+    // for the server name, and the reload would be invisible.
+    library.viewList = <LibraryView>[fakeMoviesView];
+    await directory.add(home);
+    await directory.add(office);
+    await directory.setActive('a');
+    auth.seedSession('a');
+    auth.seedSession('b');
+    auth.useServer('a');
+    await pumpApp(tester);
+    final int before = library.serverNameCalls;
+    expect(before, greaterThan(0));
+
+    await tester.tap(find.byKey(const Key('home-account')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('home-server-b')));
+    await tester.pumpAndSettle();
+
+    // The header/rows belong to the newly active server, so the dashboard had
+    // to load again instead of keeping the previous server's content.
+    expect(library.serverNameCalls, greaterThan(before));
+    expect(find.byKey(const Key('home-page')), findsOneWidget);
   });
 }

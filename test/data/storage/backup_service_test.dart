@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:media_player/data/models/server_entry.dart';
 import 'package:media_player/data/storage/backup_service.dart';
 import 'package:media_player/data/storage/key_value_store.dart';
+import 'package:media_player/data/storage/server_directory.dart';
 
 import '../../support/fake_backup_file_picker.dart';
 
@@ -14,6 +16,14 @@ void main() {
   const String sessionKey = 'mp.session.v1';
   const String moviePilotKey = 'mp.moviepilot.v1';
   const String strangerKey = 'app.unknown.v1';
+  // S80: the saved-server directory is backed up; a per-server credential is
+  // not, even though it shares the directory entry's id.
+  const String serversKey = 'servers.v1';
+  const String scopedTokenKey = 'mp.token.v1.emby-abc123';
+  const String serversPayload =
+      '{"schemaVersion":2,"activeId":"emby-abc123","servers":['
+      '{"id":"emby-abc123","name":"客厅 Emby",'
+      '"lanUrl":"http://192.168.0.23:9001","customIcon":"router"}]}';
 
   late InMemoryKeyValueStore store;
   late FakeBackupFilePicker picker;
@@ -31,6 +41,7 @@ void main() {
     await store.write('player.playbackSettings.v1', '{"hwdecEnabled":false}');
     await store.write('app.themeMode.v1', 'dark');
     await store.write('search.history.v1', '["one","two"]');
+    await store.write(serversKey, serversPayload);
   }
 
   group('export', () {
@@ -214,6 +225,44 @@ void main() {
         service.importFromFile(),
         throwsA(isA<BackupException>()),
       );
+    });
+  });
+
+  group('server directory (S80)', () {
+    test('a backup carries the saved servers but no per-server credentials', () async {
+      await seedPreferences();
+      await store.write(scopedTokenKey, 'scoped-secret-token');
+      await store.write('mp.session.v1.emby-abc123', '{"userId":"u1"}');
+
+      final Map<String, dynamic> document = await service.export();
+      final Map<String, dynamic> prefs =
+          document['prefs'] as Map<String, dynamic>;
+
+      // The non-secret directory travels with the backup...
+      expect(prefs[serversKey], serversPayload);
+      // ...but the credentials that let a restored entry skip the login do not.
+      expect(prefs.containsKey(scopedTokenKey), isFalse);
+      expect(prefs.containsKey('mp.session.v1.emby-abc123'), isFalse);
+      final String encoded = jsonEncode(document);
+      expect(encoded.contains('scoped-secret-token'), isFalse);
+    });
+
+    test('restoring a backup rebuilds the server list on a fresh install', () async {
+      await store.write(serversKey, serversPayload);
+      final Map<String, dynamic> document = await service.export();
+
+      final InMemoryKeyValueStore target = InMemoryKeyValueStore();
+      await BackupService(target, FakeBackupFilePicker()).restore(document);
+
+      final ServerDirectory directory = ServerDirectory(target);
+      final List<ServerEntry> entries = await directory.read();
+      expect(entries, hasLength(1));
+      expect(entries.single.name, '客厅 Emby');
+      expect(entries.single.lanUrl, 'http://192.168.0.23:9001');
+      expect(entries.single.customIcon, 'router');
+      expect(await directory.activeId(), 'emby-abc123');
+      // The credential that would auto-restore the session did not travel.
+      expect(await target.read(scopedTokenKey), isNull);
     });
   });
 }

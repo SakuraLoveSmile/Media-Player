@@ -37,14 +37,20 @@ class BackupService {
   ///
   /// Mirrors the constants owned by each feature (PlayerController.styleKey /
   /// trackPrefsKey, PlaybackSettings.storageKey, themeModeStorageKey,
-  /// LibrarySearchController.historyKey). Kept as literals here so the data
-  /// layer never imports a feature (tool/check_layering.sh).
+  /// LibrarySearchController.historyKey) plus the saved-server directory
+  /// (S80). Kept as literals here so the data layer never imports a feature
+  /// (tool/check_layering.sh).
   static const List<String> preferenceKeys = <String>[
     'player.subtitleStyle.v1',
     'player.trackPrefs.v1',
     'player.playbackSettings.v1',
     'app.themeMode.v1',
     'search.history.v1',
+    // S80: the saved-server list (names, addresses, card preferences). It holds
+    // no credentials — each server's token/session lives in its own secure key
+    // (`mp.token.v1.<id>` / `mp.session.v1.<id>`), which stays off the file, so
+    // a restored server simply asks for the password again.
+    'servers.v1',
   ];
 
   final KeyValueStore _store;

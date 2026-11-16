@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../app/providers.dart';
+import '../../app/services.dart';
 import '../../core/errors/emby_exception.dart';
 import '../../core/network/idna.dart';
 import '../../core/network/url_normalizer.dart';
@@ -148,13 +149,24 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           final directory = services.servers;
           if (directory != null) {
             final stored = await auth.lastProfile();
+            final String advertised = await _advertisedName(services);
+            // An existing entry keeps its name: the user may have renamed it, and
+            // signing in again (e.g. after the session expired) must not reset it
+            // back to an address.
+            final ServerEntry? existing = await directory.find(target);
+            final String name =
+                (existing != null && existing.name.isNotEmpty)
+                ? existing.name
+                : _entryName(advertised, stored, profile);
+            final String? lan = stored?.lanUrl ?? profile.lanUrl;
+            final String? wan = stored?.wanUrl ?? profile.wanUrl;
             await directory.upsert(
-              ServerEntry(
-                id: target,
-                name: _entryName(stored, profile),
-                lanUrl: stored?.lanUrl ?? profile.lanUrl,
-                wanUrl: stored?.wanUrl ?? profile.wanUrl,
-              ),
+              // Re-signing in keeps the S80 card preferences (icon, the two
+              // display toggles, last played) instead of resetting them; a null
+              // address keeps the stored one rather than clearing it.
+              existing == null
+                  ? ServerEntry(id: target, name: name, lanUrl: lan, wanUrl: wan)
+                  : existing.copyWith(name: name, lanUrl: lan, wanUrl: wan),
             );
             await directory.setActive(target);
           }
@@ -191,10 +203,26 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     };
   }
 
-  /// A friendly default name for a newly saved entry: the stored server name if
-  /// present, else the address host, else a generic label. Users can rename it
-  /// later; the directory never stores credentials.
-  static String _entryName(ServerProfile? stored, ServerProfile form) {
+  /// S80: the name the server advertises in System/Info/Public, so a freshly
+  /// added server shows its real name instead of its address. Best effort —
+  /// a failure falls through to the profile/address name.
+  static Future<String> _advertisedName(AppServices services) async {
+    try {
+      return await services.library.serverName();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// A friendly default name for a newly saved entry: the advertised name,
+  /// then the stored server name, then the address host, then a label.
+  /// Users can rename it later; the directory never stores credentials.
+  static String _entryName(
+    String advertised,
+    ServerProfile? stored,
+    ServerProfile form,
+  ) {
+    if (advertised.isNotEmpty) return advertised;
     final name = stored?.name ?? '';
     if (name.isNotEmpty) return name;
     final url = stored?.lanUrl ?? stored?.wanUrl ?? form.lanUrl ?? form.wanUrl;

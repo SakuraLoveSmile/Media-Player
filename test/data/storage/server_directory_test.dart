@@ -234,4 +234,94 @@ void main() {
       expect(await directory.read(), isEmpty);
     });
   });
+
+  group('per-server display preferences (S80)', () {
+    test('update applies a change and keeps the default flags', () async {
+      await directory.add(home);
+
+      await directory.update(
+        'a',
+        (entry) => entry.copyWith(customIcon: 'tv', showLastPlayed: true),
+      );
+
+      final entry = (await directory.read()).single;
+      expect(entry.customIcon, 'tv');
+      expect(entry.showLastPlayed, isTrue);
+      // A v1 payload had no flags: the defaults must survive the rewrite.
+      expect(entry.showUserName, isTrue);
+      expect(entry.name, 'Home');
+    });
+
+    test('update on an unknown id is a no-op', () async {
+      await directory.add(home);
+      await directory.update('missing', (entry) => entry.copyWith(name: 'X'));
+      expect((await directory.read()).single.name, 'Home');
+    });
+
+    test('the new fields round-trip through storage', () async {
+      final at = DateTime.fromMillisecondsSinceEpoch(1794814299000);
+      await directory.add(
+        home.copyWith(
+          customIcon: 'router',
+          showUserName: false,
+          showLastPlayed: true,
+          lastPlayedAt: at,
+        ),
+      );
+
+      final entry = (await ServerDirectory(kv).read()).single;
+      expect(entry.customIcon, 'router');
+      expect(entry.showUserName, isFalse);
+      expect(entry.showLastPlayed, isTrue);
+      expect(
+        entry.lastPlayedAt?.millisecondsSinceEpoch,
+        at.millisecondsSinceEpoch,
+      );
+    });
+
+    test('clearing copyWith drops an address and the time', () async {
+      await directory.add(home.copyWith(lastPlayedAt: DateTime(2026, 11, 16)));
+
+      await directory.update(
+        'a',
+        (entry) => entry.copyWith(wanUrl: '', clearLastPlayed: true),
+      );
+
+      final entry = (await directory.read()).single;
+      expect(entry.wanUrl, isNull);
+      expect(entry.lanUrl, 'http://192.168.1.10:8096');
+      expect(entry.lastPlayedAt, isNull);
+    });
+
+    test('a v1 payload still loads and is rewritten as v2', () async {
+      await kv.write(
+        ServerDirectory.key,
+        jsonEncode(<String, dynamic>{
+          'schemaVersion': 1,
+          'activeId': 'a',
+          'servers': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'a',
+              'name': 'Home',
+              'lanUrl': 'http://192.168.1.10:8096',
+            },
+          ],
+        }),
+      );
+
+      final entries = await directory.read();
+      expect(entries.single.name, 'Home');
+      // S80 fields fall back to their defaults on a v1 entry.
+      expect(entries.single.customIcon, '');
+      expect(entries.single.showUserName, isTrue);
+      expect(entries.single.showLastPlayed, isFalse);
+      expect(entries.single.lastPlayedAt, isNull);
+
+      await directory.rename('a', '客厅');
+      final raw =
+          jsonDecode((await kv.read(ServerDirectory.key))!)
+              as Map<String, dynamic>;
+      expect(raw['schemaVersion'], 2);
+    });
+  });
 }

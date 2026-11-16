@@ -8,13 +8,18 @@ import 'key_value_store.dart';
 ///
 /// The directory never stores credentials. Each entry's [ServerEntry.id] keys
 /// the secure per-server session stores; the single active connection still
-/// lives in `AuthRepository`. The legacy single-server install is migrated to a
+/// lives `AuthRepository`. The legacy single-server install is migrated to a
 /// `default` entry whose credentials reuse the original storage keys.
 class ServerDirectory {
   ServerDirectory(this._store);
 
   static const String key = 'servers.v1';
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
+
+  /// Versions [fromJson] can still read. S80 (v2) only added optional entry
+  /// fields, so a v1 payload loads unchanged and is rewritten as v2 on the next
+  /// write; accepting it keeps every existing install's servers on upgrade.
+  static const Set<int> readableVersions = <int>{1, 2};
 
   final KeyValueStore _store;
 
@@ -69,6 +74,18 @@ class ServerDirectory {
 
   Future<void> add(ServerEntry entry) => upsert(entry);
 
+  /// Applies [change] to the entry with [id]; a missing id is a no-op.
+  Future<void> update(
+    String id,
+    ServerEntry Function(ServerEntry entry) change,
+  ) async {
+    final entries = <ServerEntry>[...await read()];
+    final index = entries.indexWhere((entry) => entry.id == id);
+    if (index < 0) return;
+    entries[index] = change(entries[index]);
+    await _write(entries, await activeId());
+  }
+
   /// Removes an entry. When it was active, the first remaining entry (or
   /// [defaultServerId]) becomes active.
   Future<void> remove(String id) async {
@@ -121,7 +138,8 @@ class ServerDirectory {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
       final map = Map<String, dynamic>.from(decoded);
-      if (map['schemaVersion'] != schemaVersion) return null;
+      final version = map['schemaVersion'];
+      if (version is! int || !readableVersions.contains(version)) return null;
       return map;
     } on FormatException {
       return null;

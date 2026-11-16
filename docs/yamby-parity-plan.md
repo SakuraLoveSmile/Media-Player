@@ -351,8 +351,8 @@ Yamby 的 Pro 付费项（主题 / Monet / 多服务器 / 跳过启动画面）�
 - **S23 mpv 高级（2026-11-12）**：`PlaybackSettings` 增 gpuNext/deband/yuv420（同 blob 向后兼容）；
   引擎 `setAdvancedVideo`（`vo=gpu-next/gpu`、`deband=yes/no`、`vf=format=yuv420p/''`）；起播应用 +
   选项 sheet「高级」三开关（`adv-*`）即时生效。Anime4K 需外部 GLSL shader 暂不做。
-- **S22 备份/还原（2026-11-12）**：`BackupService` 导出/导入白名单偏好 JSON
-  （subtitleStyle/trackPrefs/playbackSettings/themeMode/searchHistory；**不含凭据**，restore 校验
+- **S22 备份/还原（2026-11-12，S80 追加 `servers.v1`）**：`BackupService` 导出/导入白名单偏好 JSON
+  （subtitleStyle/trackPrefs/playbackSettings/themeMode/searchHistory/servers；**不含凭据**，restore 校验
   version/未知键/类型后才写）；`BackupFilePicker` 注入抽象（file_picker saveFile/pickFile）；
   设置页「备份/还原」（`settings-backup-export/restore`）。质量门：全量 **1042 测试通过**。
 - **S14 Monet+多主题（2026-11-12）**：`buildAppTheme(brightness,{accent})` 以 accent 替换品牌 seed；
@@ -691,3 +691,50 @@ Yamby 的 Pro 付费项（主题 / Monet / 多服务器 / 跳过启动画面）�
   显隐无关的白色 `CircularProgressIndicator`，正好叠在我们的加载动画上。播放器本来就有自己的控制层
   （S30/S78），因此在 `MediaKitEngine.createSurface()` 显式传 `controls: NoVideoControls`，内置控件及其缓冲圈
   一并移除；字幕仍由 mpv 烧进视频纹理（S3/S4/S78），不受影响。
+
+- **S80 服务器管理复刻 Yamby：卡片/⋮ 菜单/头像快切（2026-11-16）**：真机抓 Yamby 的服务器管理
+  （参考 screenshots/s80-yamby-servers.png、s80-yamby-server-menu.png、s80-yamby-avatar-popup.png）：
+  独立「服务器」页顶部标题、一张圆角卡（绿 Emby 菱形图标 + 名称 + 绿点/用户名 + 右侧 ⋮）、右下 + 添加、
+  底部胶囊导航；点卡片即切换。⋮ 菜单 8 项（显示名称/编辑/自定义图标/显示用户名/显示上次播放时间/添加备选地址/
+  修改密码/删除）；编辑弹窗把地址拆成 协议/主机/端口/路径，并写明「Yamby 不会保存密码到本地, 在编辑时必须
+  重新输入密码」。首页头像弹出快切卡（✓ + 图标 + 名称），多服务器时逐条列出。
+  持久化：Yamby 用 MMKV + 原生混淆保存服务器表——`adb backup` 导出的备份里 `servers` 是 823 字符的加密
+  blob（`prefs`/`prefsNew`/`configs` 同为密文），非 debuggable 且无 root，取不到明文；因此按**行为等价**复刻，
+  不照搬其存储格式。
+  实现：`ServerEntry` 增加每服务器显示偏好（`customIcon`/`showUserName` 默认 true/`showLastPlayed` 默认 false/
+  `lastPlayedAt`）+ `ServerDirectory` schemaVersion 2（仍读 v1，旧安装的服务器不丢）；新增 `lib/ui/server_card.dart`
+  （`ServerCard`：图标 + 名称 + 在线点 + 两条可选副行 + ⋮，激活项 ✓ 并加粗；`formatLastPlayed` → 今天/昨天/M月D日
+  HH:MM）与 `lib/ui/server_dialogs.dart`（显示名称、自定义图标 10 选 1、编辑地址，地址非法当场报错）；
+  `servers_section.dart` 重写为 Yamby 版式并接上 ⋮ 七个动作（两个显示开关就地开合、添加备选地址填空槽位、删除带确认）；
+  首页头像从「更多」改为 Yamby 式快切弹层（`home-server-*`/`home-server-add`）；播放页在真正开播成功后
+  `markPlayed` 记录上次播放时间。新服务器入库时的默认名改为取 `System/Info/Public` 的 `ServerName`（与 Yamby
+  一致显示 `sakurasep-emby` 这类真名，而不是 `192.168.0.23`），并保证「重新登录不覆盖用户改过的名字和卡片偏好」
+  ——原来 `upsert` 会整条重建，重登一次就把改名和图标冲回地址。
+  **切换后首页不刷新（实现期自查发现并修掉）**：切服务器是在同一路由内换会话，首页只在 `initState` 建一次控制器，
+  导致标题仍停在旧服务器名。改为首页监听 `serversControllerProvider` 的 `activeId`，一变就用新会话重建控制器并重新
+  加载（新增单测锁住「切完会重新请求服务器名」）。
+  真机（Mi 10 / 1080×2340）：真实 Emby 没有可用密码（`/emby/Users/Public` 只有 `sakurasep` 且 HasPassword=true，
+  `test/test` 被拒），因此用本机 mock Emby（9001/9002 两个不同 ServerId、不同 ServerName）代替真实服务器：分别登录
+  两台 → 服务器页出现两张卡、✓ 在 :9002 → 点 :9001 卡片回首页，设置里 ✓ 移到 :9001；杀进程重启后列表与激活项仍在；
+  首页头像弹层列出两台 +「添加服务器」，点未激活项直接切过去，再打开弹层 ✓ 已跟随，首页标题当场从「客厅 Emby」变
+  「书房 Emby」（切回亦然——这就是上面那个缺陷的修复后观感）；⋮ 菜单七项 + 分隔线 + 删除渲染正常；改名
+  「Living Room」、换成「路由器」图标等改动落盘并在重启后保留。
+  再验证两条跨页面行为：播放一集视频后打开「显示上次播放时间」，卡片副行显示「今天 18:29」；删除第二台服务器后卡片
+  消失并提示「已删除服务器」；重新把 :9002 加回来并登录，首页标题恢复成「书房 Emby」、设置里 ✓ 跟随新服务器。
+  默认名修正后（新 build）复验：从 :9002 添加一台，卡片名直接是「书房 Emby」（不再是 `192.168.0.23`）；
+  杀掉进程重启，两张卡与 ✓ 仍在；点第一张卡切回首页标题变「客厅 Emby」。
+  备份真机验证：设置 → 导出备份存到「下载」，`adb pull` 下来看，`prefs` 里只有一项 `servers.v1`（两台服务器，
+  含名字/地址/图标/上次播放时间），没有任何 `mp.token.*` / `mp.session.*`；把「书房 Emby」删掉后导入该文件，
+  重启后列表恢复成两台、✓ 回到 Living Room，点「书房 Emby」卡片如期跳到该服务器的登录页（凭据确实没随文件走），
+  重新登录后首页标题变「书房 Emby」。
+  截图 docs/screenshots/s80-our-servers.png（设置页区块）、s80-our-servers-page.png（独立 /servers 页）、
+  s80-our-server-menu.png（⋮ 菜单）、s80-our-avatar-popup.png（头像快切）、s80-our-server-rename.png、
+  s80-our-server-icon.png、s80-our-last-played.png（播放后卡片显示「今天 18:29」）、s80-our-switch-back.png（切回后首页标题跟着变）、
+  s80-our-backup-export.png（导出成功）、s80-our-backup-restored.png（导入后服务器列表恢复）。
+  质量门：analyze 干净、layering ok、全量 **1509** 测试通过（servers_section_test 9 → 20 条、server_directory_test
+  17 → 22 条、login_flow_test 6 → 8 条、backup_service_test 12 → 14 条，合计 +20）。
+  已知差异：不做「修改密码」——每个服务器的令牌各自存在安全存储里，切过去直接恢复会话，不需要重新输入密码；
+  添加/编辑用一个「服务器地址」输入（`http://host:port`）而不是 Yamby 的协议/端口/路径四段式，归一化交给
+  `UrlNormalizer`。服务器表随备份走（与 Yamby 一致）：`BackupService.preferenceKeys` 追加 `servers.v1`，
+  备份文件里带名字/地址/卡片偏好，**但不带任何凭据**——令牌与会话按服务器 id 存在 `mp.token.v1.<id>` /
+  `mp.session.v1.<id>`，不在白名单里，所以还原后新设备上服务器列表和激活项都在、点进去要重新登录。

@@ -146,6 +146,31 @@ class ServersController extends AsyncNotifier<ServersState> {
     await _reload();
   }
 
+  /// S80: applies a metadata change (display name, icon, address, the two
+  /// display toggles) to one server without touching its session.
+  ///
+  /// Named `updateEntry` because [AsyncNotifier] already owns `update`.
+  Future<void> updateEntry(
+    String id,
+    ServerEntry Function(ServerEntry entry) change,
+  ) async {
+    final directory = await ref.read(serverDirectoryProvider.future);
+    await directory?.update(id, change);
+    await _reload();
+  }
+
+  /// S80: records "this server just played something" so the card can show
+  /// 显示上次播放时间. A no-op when the directory has no such entry.
+  Future<void> markPlayed(String id, {DateTime? at}) async {
+    final directory = await ref.read(serverDirectoryProvider.future);
+    if (directory == null) return;
+    await directory.update(
+      id,
+      (entry) => entry.copyWith(lastPlayedAt: at ?? DateTime.now()),
+    );
+    await _reload();
+  }
+
   /// Removes a saved server and its stored credentials. Returns the new active
   /// id when the removed server was the active one (so the UI can re-gate),
   /// otherwise null.
