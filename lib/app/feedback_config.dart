@@ -2,6 +2,8 @@ import 'package:feedback_widget/feedback_widget.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'feedback_diagnostics.dart' show provideFeedbackDiagnostics;
+
 /// Compile-time feedback wiring, injected with `--dart-define`.
 ///
 /// * `FEEDBACK_ENABLED` — master gate. When it is unset the layer is enabled
@@ -119,11 +121,17 @@ String feedbackPageLabelFromUri(Uri uri) {
 /// mobile bottom navigation. [showLauncher] is exposed so the host can hide the
 /// built-in entry on the player page while keeping the panel reachable through
 /// the shared controller.
+///
+/// [logProvider] defaults to [provideFeedbackDiagnostics], which attaches the
+/// app's own diagnostics (API events, status codes, Flutter/platform errors)
+/// to a submission. This is the required host log integration from Feedback
+/// integration.md §5.6; tests may inject another provider or `null`.
 FeedbackConfig buildFeedbackConfig({
   required FeedbackServiceConfig service,
   required String pageLabel,
   String? appVersion,
   bool showLauncher = true,
+  FeedbackLogProvider? logProvider = provideFeedbackDiagnostics,
 }) {
   return FeedbackConfig(
     service.apiBase,
@@ -141,5 +149,6 @@ FeedbackConfig buildFeedbackConfig({
     // it remains draggable to anywhere else.
     launcherBottom: '30%',
     showLauncher: showLauncher,
+    logProvider: logProvider,
   );
 }

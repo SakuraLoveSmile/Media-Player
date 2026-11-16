@@ -1,7 +1,7 @@
 # F4：反馈组件与在线更新
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
-- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4）、设置页、GitHub Releases 在线更新、发布工作流
+- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4；2026-11-16 升级到 0.9.1 并接入宿主诊断日志，见 §6）、设置页、GitHub Releases 在线更新、发布工作流
 - 版本：`v0.2.3`（`0.2.3+5`）已发布，升级 `feedback_widget` 至 0.8.6；更新日志改为每版手写
 - 结论：**`v0.2.0`–`v0.2.3` 均已发布；0.8.6 的灵感球背景更新已随 v0.2.3 上线，真机体验待确认**
 
@@ -9,7 +9,8 @@
 
 | 项 | 决定 | 依据 |
 |---|---|---|
-| 反馈组件版本 | `feedback_widget` 0.8.6，Git tag `v0.8.6`（commit `a345ca67de03153ebb8a4594b33b22475d0dff61`，`flutter/feedback` 子目录；0.8.6 修复灵感球背景残留，宿主 API 与 0.8.4/0.8.5 相同） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
+| 反馈组件版本 | `feedback_widget` **0.9.1**，Git tag `v0.9.1`（commit `f63dda8257354ef29b29521af6f1cbb2d2554b66`，`flutter/feedback` 子目录；0.9.1 修复「能力未确认时只允许一张图」与 Windows 宿主 `pub get` 失败，宿主 API 保持兼容） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
+| 宿主诊断日志 | `FeedbackDiagnosticsRecorder` 收集 dio 请求事件（方法 + 归一化路径、状态码、耗时）与 Flutter/平台错误；`buildFeedbackConfig` 默认挂 `logProvider`，面板打开时导出 JSONL，失败/无事件不阻断提交 | Feedback integration.md §5.6「宿主日志接入是必过的接入验收项」；只写白名单标量，请求体、凭据、完整 URL 与异常文本不进入缓冲 |
 | 反馈服务 | 生产地址 `https://feedback.xn--fhqths51enha.cn`，`appId = dev.mediaplayer.media_player`，`appName = Media Player` | 迁移前的历史决定（当时与 Android applicationId 一致）。应用标识已统一为 `cn.sakuralovesmile.mediaplayer`，此 appId 保持不变：它是反馈服务端侧的软件主键，改动会使历史反馈与面板登录态落到新软件下 |
 | 反馈默认开关 | release/profile 默认开启；debug 与 `flutter test` 默认关闭；可用 `FEEDBACK_ENABLED` / `FEEDBACK_API_BASE` / `FEEDBACK_APP_ID` / `FEEDBACK_APP_NAME` 覆盖 | 开发与既有测试不受影响；发布构建显式传 `--dart-define` |
 | 反馈入口 | 亮色主题、右侧灵感球（orb）+ 视口截图；播放页隐藏悬浮球；登录页服务器地址/用户名包 `FeedbackCaptureMask` | 与 app 亮色主题一致；避免遮挡播放控件；截图不泄露地址/账号 |
@@ -22,7 +23,8 @@
 
 | 能力 | 文件 |
 |---|---|
-| 反馈编译期配置 / provider / 页面标签白名单 | `lib/app/feedback_config.dart` |
+| 反馈编译期配置 / provider / 页面标签白名单 / `logProvider` | `lib/app/feedback_config.dart` |
+| 宿主诊断日志（记录器、dio 拦截器、异常捕获） | `lib/app/feedback_diagnostics.dart`、`lib/app/providers.dart`、`lib/main.dart` |
 | 反馈浮层（外层 Navigator + 控制器生命周期 + 返回键） | `lib/app/feedback_layer.dart` |
 | 灵感球设置的宿主存储与状态（v0.8.4 增补） | `lib/app/feedback_orb_settings.dart`、`lib/app/services.dart`（复用 `KeyValueStore`） |
 | 根接线（浮层挂载、页面标签同步、启动静默检查、弹窗触发） | `lib/app/app.dart`、`lib/app/router.dart` |
@@ -201,3 +203,13 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - 还原 `app.dart`/`router.dart`/`app_routes.dart`/登录页/库页的接线，AppConfig 与 pubspec
   版本回退到 `0.1.0+1`；
 - 已发布的 Release 不回改；Android 已用新 key 安装的包需卸载重装。
+
+## 6. feedback_widget 0.9.1 与宿主日志接入（2026-11-16）
+
+- 升级：`feedback_widget` 从 v0.8.6（`a345ca67`）到 **v0.9.1**（`f63dda82`）；`pubspec.yaml` 与两处 Windows CI vendoring（`.github/workflows/app-ci.yml`、`.github/workflows/release.yml`）同步，`pubspec.lock` 的 resolved-ref 已更新。0.9.1 修复能力未确认时的单图限制与 Windows 宿主 `pub get`，宿主 API 兼容。
+- 宿主诊断日志（integration.md §5.6 必过项）：新增 `lib/app/feedback_diagnostics.dart`
+  - `FeedbackDiagnosticsRecorder`（至多 200 条 / 256KiB、白名单字段）记录 dio 请求的方法 + 归一化路径、状态码、耗时与失败；`FeedbackDioInterceptor` 挂在主 dio 与弹幕 dio 上，请求体、请求头、完整 URL 与 query 不进入缓冲；
+  - `FeedbackExceptionCapture` 在 `main` 安装，记录 Flutter/平台错误并原样转发原处理链；
+  - `buildFeedbackConfig` 默认 `logProvider = provideFeedbackDiagnostics`，面板打开时导出 `media-player-diagnostics.jsonl`；无事件时为空，采集失败不阻断提交。
+- 本地验证：`flutter analyze` 无问题；`flutter test` **1517 项通过**（新增 diagnostics 8 项：路径归一化/去 query、状态与失败记录、JSONL 导出、config 默认与覆盖）。验证使用 Flutter 3.47.7 / Dart 3.13.5（与 CI 一致）。
+- 尚未验证：真机（或隔离服务）提交一条反馈并在管理后台预览日志附件；Windows CI vendoring 只更新了 SHA，未在本机跑 Windows 构建。

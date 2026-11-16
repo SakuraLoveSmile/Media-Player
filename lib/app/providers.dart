@@ -34,6 +34,7 @@ import '../data/storage/server_directory.dart';
 import '../data/storage/session_store.dart';
 import '../data/storage/storage_factory.dart';
 import '../data/storage/token_store.dart';
+import 'feedback_diagnostics.dart';
 import 'preference_keys.dart';
 import 'services.dart';
 
@@ -46,6 +47,10 @@ final bootstrapProvider = FutureProvider<AppServices>((ref) async {
   final deviceId = await DeviceIdStore(store).getOrCreate();
 
   final dio = Dio();
+  // Real API traffic feeds the host diagnostics buffer exported by the
+  // feedback panel (FeedbackConfig.logProvider). Bodies / headers / URLs are
+  // never recorded.
+  dio.interceptors.add(FeedbackDioInterceptor());
   // 忽略 SSL 证书错误 (S32): the client is built before Riverpod exists, so the
   // preference is read straight from the store; enabling it applies to the
   // next launch, exactly what the settings row says.
@@ -92,6 +97,7 @@ final bootstrapProvider = FutureProvider<AppServices>((ref) async {
   // S17: DandanPlay is a separate public API (no Emby auth), so it gets its
   // own dio instance and client; the repository is the non-fatal boundary.
   final danmakuDio = Dio();
+  danmakuDio.interceptors.add(FeedbackDioInterceptor());
   final library = LibraryRepository(auth);
 
   ref.onDispose(() {
