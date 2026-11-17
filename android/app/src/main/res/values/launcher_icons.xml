@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 8.0 以下没有自适应图标，ic_launcher_app 回落到原始 PNG：
+     原 mipmap-*/ic_launcher.png 保持不变，通知小图标继续直接引用它。 -->
+<resources>
+    <item name="ic_launcher_app" type="mipmap">@mipmap/ic_launcher</item>
+</resources>

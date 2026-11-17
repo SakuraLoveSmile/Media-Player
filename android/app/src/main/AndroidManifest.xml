@@ -20,7 +20,8 @@
     <application
         android:label="Media Player"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/ic_launcher_app"
+        android:roundIcon="@mipmap/ic_launcher_app"
         android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="true">
         <activity
