@@ -11,11 +11,36 @@ EMBY_URL='http://your-emby:8096' EMBY_SERVER_ID='your-server-id' \
 
 `EMBY_URL` 必须是管理员配置且信任的 Emby 地址（支持 `/emby` 前缀），不能含账号、query 或 fragment。`EMBY_SERVER_ID` 必须匹配该 Emby 的 Id。服务使用成员自己的会话核实身份和媒体版本权限，不需要 Emby 管理员 API Key。不要把服务暴露为任意上游代理。
 
-容器：
+## 使用预构建镜像
+
+MediaPlayer 发布流程额外构建一起看服务镜像，发布到 GHCR：
+
+```text
+ghcr.io/sakuralovesmile/media-player-watch-together:<MediaPlayer版本标签>
+```
+
+支持 `linux/amd64`、`linux/arm64`，Docker 自动选择宿主机架构。版本标签与客户端 Release 一致（例如 `v0.4.8-pilot.1794895367`）；测试版不会更新 `latest`，只有正式 `vX.Y.Z` 发布会更新。生产使用明确版本或工作流摘要中的 `@sha256:…`，便于回退。
+
+```sh
+# 将版本替换为已成功完成 watch-image 构建的 Release 标签。
+WATCH_VERSION='v0.4.8-pilot.1794895367'
+docker run -d --name media-player-watch --restart unless-stopped \
+  -p 127.0.0.1:18444:18444 \
+  -e EMBY_URL='http://your-emby:8096' \
+  -e EMBY_SERVER_ID='your-server-id' \
+  "ghcr.io/sakuralovesmile/media-player-watch-together:$WATCH_VERSION"
+```
+
+容器内的 `127.0.0.1` 指向容器自身；`EMBY_URL` 应填写容器可访问的 Emby 地址。无需挂载数据卷，也无需管理员 API Key。首次发布后，仓库维护者需在 GHCR 包设置中确认可见性为 Public，才支持匿名 `docker pull`；Private 包需要先登录 GHCR。
+
+维护者可在 GitHub Actions 的 **watch-image → Run workflow** 填写已有版本标签，单独补建镜像，不重建三个客户端；补建旧版本时保持 `update_latest` 关闭（默认），避免覆盖当前正式版。正式发布与 Pilot 发布自动调用相同工作流，源代码固定到发布验证解析的 SHA。每次发布前先分别启动 amd64、arm64 镜像并检查健康接口；服务或镜像工作流的 PR/main 变更只构建检查，不推送镜像。工作流摘要提供版本地址和镜像 digest。
+
+也可自行构建：
 
 ```sh
 docker build -t media-player-watch .
-docker run --rm -p 127.0.0.1:18444:18444 \
+docker run -d --name media-player-watch --restart unless-stopped \
+  -p 127.0.0.1:18444:18444 \
   -e EMBY_URL='http://your-emby:8096' -e EMBY_SERVER_ID='your-server-id' \
   media-player-watch
 ```

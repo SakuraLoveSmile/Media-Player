@@ -204,7 +204,7 @@ jobs:
           emit("release_tag", tag)
           emit("version", version)
           emit("notes_file", notes_file)
-          emit("source_ref", tag)
+          emit("source_ref", head_sha())
           emit("build_name", "")
           emit("build_number", "")
           print(f"Release tag {tag} matches pubspec version {version}.")
@@ -402,9 +402,21 @@ jobs:
           path: MediaPlayer-macos.zip
           if-no-files-found: error
 
+  build-watch-image:
+    name: Publish watch-together image
+    needs: validate
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/watch-image.yml
+    with:
+      source_ref: ${{ needs.validate.outputs.source_ref }}
+      release_tag: ${{ needs.validate.outputs.release_tag }}
+      update_latest: true
+
   publish:
     name: Publish GitHub Release
-    needs: [validate, build-android, build-windows, build-macos]
+    needs: [validate, build-android, build-windows, build-macos, build-watch-image]
     runs-on: ubuntu-latest
     # Only this job needs write access: it creates the release the updater reads.
     permissions:
