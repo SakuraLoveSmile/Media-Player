@@ -60,3 +60,13 @@ T1–T3实现完成，保留MP-TT01离线/画质和复制基线的全部用户�
 本轮组合态门禁（2026-11-17，基于 main45f92d4 的 integration 未提交增量）：分层守卫通过，flutter analyze --no-pub 无问题，flutter test --no-pub 全量1618项通过（日志 `/tmp/mp-tt01-integration-tests.log`），同步服务 dart analyze 及 exe 编译通过。独立复查确认 end() generation/roomId 防护与迟到响应回归有效；最终原生与远端构建待继续。原有 main 异步删除时序测试保留断言，现等待真实清理 Future。
 
 旧源工作树完整保全归档：`/Users/sakurasep/Documents/Code/Project/Project Worktree/_preserved-notes/20261117-mp-tt01-release/source-worktree.tar`，SHA256 `02d88831e739e15a5800d01a9ac00fa4f63e175c01439163629d4478c7188ee1`。含全部未跟踪源码、截图、忽略的历史构建产物和配置，仅排除 `.git` 指针；1038普通文件内容及242符号链接目标已逐项比对，附hash清单、原status与binary diff。因源树混有独有旧基线，后续不能简单依“干净”判断删除，须以此可恢复保全和本次功能实际合入为条件。
+
+
+原生补充验收与发布拦截：代码 `a31e91339b6d5a7683121bedb335a787bef8d30c` 已经快进合入 main；整合分支 app-ci [44029380025](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/44029380025) 四门全绿。macOS 正常入口 Debug 构建通过；原生双端隔离 smoke 完成统一起播/暂停/6s seek/后台返回对齐，最终暂停偏差0ms（`/tmp/mp-tt01-integration-native-watch.log`）。原生离线夹具完成1.2MB下载、关闭HTTP服务器后实际播放彩条；MPV页选择影视、拒绝vo=gpu并禁保存、brightness=5/scale=lanczos校验2项并保存。
+
+额外真实 WatchTogetherPage→PlayerPage 原生检查暴露旧门禁未覆盖的实际卡死：ready且buffering时后台/断线分支applyWatchState通知controller，_playerChanged把_lastStatus当缓冲边沿又请求sync，_again使微任务do循环不退。CPU100%，VM service stack暂停在coordinator._sync，原生sample/stack保存在 `/tmp/mp-tt01-room-sample.txt`、`/tmp/mp-tt01-room-dart-stack.json`。两端直接controller的smoke和widget/全量通过不能替代此真实页面入口。独立analyst复核同一根因。已取消尚未发布的release [44030497871](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/44030497871)，不会将该版本冒充完成。接下来按真实buffering边沿去重并补ready+buffering后台/失效房间回归，重跑门禁与原生房间入口后发布修订提交。
+
+
+修复结果：独立记录真实buffering状态边沿，仅活跃前台/连接有效且room/item/source匹配时立即同步，保留seek后重读buffering及既有周期对齐。新增后台/断线/房间结束三项ready+buffering回归；旧coordinator下三项均因21次重复apply失败（有限测试护栏避免挂死），修复后三项及定向14项通过。最终全量 `flutter test --no-pub` **1621项全部通过**（`/tmp/mp-tt01-final-tests.log`），analyze无问题，分层守卫/diff检查通过。原生真实WatchTogetherPage→PlayerPage复测可绘制合成视频与响应控件，不再微任务卡死；VM确认ready=true、buffering=false、syncing=false，当前自动化保持app后台，因此按规则paused，不能称作前台放映实测。原生AX树仍有Flutter桥错误，采用截图核对。最终双端自动同步再测与修订版本云门禁继续进行。
+
+最终修复组合态双端原生自动核验全部通过（`/tmp/mp-tt01-final-native-watch.log`）：统一开始、B暂停同步A、暂停seek6s、B后台A继续、B前台重新对齐、最终两端7208ms/paused，偏差0ms。此为本机合成媒体与显式模拟前后台的原生播放器验证，不是跨设备/公网保证。

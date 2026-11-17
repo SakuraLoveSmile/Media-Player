@@ -14,7 +14,8 @@ class WatchPlaybackCoordinator extends ChangeNotifier {
     required this.roomId,
     required this.itemId,
     String? mediaSourceId,
-  }) : mediaSourceId = mediaSourceId ?? client.room?.media.mediaSourceId {
+  }) : mediaSourceId = mediaSourceId ?? client.room?.media.mediaSourceId,
+       _lastBuffering = controller.state.buffering {
     final room = client.room;
     controller.enableWatchTogether(
       startAt: Duration(
@@ -55,6 +56,7 @@ class WatchPlaybackCoordinator extends ChangeNotifier {
   String? _notice;
   String? get notice => _notice;
   bool get active => !_closed && client.room?.roomId == roomId;
+  bool _lastBuffering;
   String? _lastStatus;
   int _lastRevision = -1, _lastStatusAt = 0;
   final Stopwatch _clock = Stopwatch()..start();
@@ -87,9 +89,20 @@ class WatchPlaybackCoordinator extends ChangeNotifier {
   }
 
   void _playerChanged() {
-    // Do not synchronize for every high-frequency position tick. The periodic
-    // loop handles drift; state transitions need prompt ready/buffering status.
-    if (_started && controller.state.buffering && _lastStatus != 'buffering') {
+    // Track the actual buffering edge, independently of the last status sent.
+    // Applying room state also notifies the controller; treating those repeated
+    // notifications as new buffering would keep the sync microtask loop alive.
+    final buffering = controller.state.buffering;
+    if (buffering == _lastBuffering) return;
+    _lastBuffering = buffering;
+    final room = client.room;
+    if (_started &&
+        !_closed &&
+        _foreground &&
+        client.connected &&
+        room?.roomId == roomId &&
+        room?.media.itemId == itemId &&
+        room?.media.mediaSourceId == mediaSourceId) {
       unawaited(_sync());
     }
   }

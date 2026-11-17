@@ -16,7 +16,7 @@
   - M2：macOS + Android 已签核（见 `docs/m2-signoff.md`）；Windows 拆为 M2-W，验收条件见契约 §8.1
   - F4：反馈组件（feedback_widget 0.9.1，含宿主诊断日志采集）+ 设置页 + 在线更新（检查/下载/三平台安装）已实现并发布 `v0.2.3`（见 `docs/f4-notes.md`）；真机更新体验待确认
   - WAN：公网 HTTPS 直连在 OnePlus 实机验证；0.4.6 同步卡片地址到登录配置，0.4.7 修复 http:// 公网地址导致 PlaybackInfo 301 的播放失败
-  - MP-TT01 / MP-WT01：离线下载/播放、MPV 画质设置、自建服务一起看（测试版整合中，验证与发布记录见 `docs/tasks/20261114-mp-wt01-watch-together.md`）
+  - MP-TT01 / MP-WT01：离线下载/播放、MPV 画质设置、自建服务一起看（已合入 main，验证与测试版发布记录见 `docs/tasks/20261114-mp-wt01-watch-together.md`）
   - PGS、HDR：待验证
 
 ## 文档

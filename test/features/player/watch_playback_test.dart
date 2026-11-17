@@ -106,6 +106,44 @@ class RoomEngine extends FakePlaybackEngine implements PausedOpenEngine {
   }
 }
 
+// Cap unexpected repeated applications so a regression fails with evidence
+// instead of starving the test runner's event queue indefinitely.
+class BoundedWatchPlayer extends PlayerController {
+  BoundedWatchPlayer({
+    required super.itemId,
+    required super.library,
+    required super.playback,
+    required super.engine,
+    required super.reporter,
+    super.delay,
+  });
+
+  int watchApplications = 0;
+  int? watchApplicationLimit;
+
+  @override
+  Future<void> applyWatchState({
+    required bool playing,
+    required Duration position,
+    double rate = 1,
+    bool seek = true,
+  }) {
+    watchApplications++;
+    if (watchApplicationLimit != null &&
+        watchApplications > watchApplicationLimit!) {
+      throw StateError(
+        'Repeated room-state applications starved the event queue',
+      );
+    }
+    return super.applyWatchState(
+      playing: playing,
+      position: position,
+      rate: rate,
+      seek: seek,
+    );
+  }
+}
+
 Future<void> settle([bool Function()? condition]) async {
   for (var i = 0; i < 100; i++) {
     await Future<void>.delayed(const Duration(milliseconds: 5));
@@ -118,7 +156,7 @@ void main() {
   late RoomClient client;
   late RoomEngine engine;
   late FakePlaybackReporter reporter;
-  late PlayerController player;
+  late BoundedWatchPlayer player;
   WatchPlaybackCoordinator? coordinator;
   setUp(() {
     client = RoomClient();
@@ -136,7 +174,7 @@ void main() {
           ),
         ],
       };
-    player = PlayerController(
+    player = BoundedWatchPlayer(
       itemId: 'movie',
       library: library,
       playback: FakePlaybackService(),
@@ -246,6 +284,38 @@ void main() {
     expect(client.statuses.map((s) => s.status).toList(), ['away']);
     expect(engine.playCalls, 0);
   });
+
+  for (final inactive in ['background', 'disconnected', 'ended room']) {
+    test('ready buffering $inactive yields to event timers', () async {
+      final sync = bind();
+      await player.load();
+      engine.emit(const PlaybackSnapshot(buffering: true));
+      await settle(() => player.state.buffering);
+      expect(player.state.ready, isTrue);
+      final before = player.watchApplications;
+      player.watchApplicationLimit = before + 20;
+      if (inactive == 'background') {
+        sync.setForeground(false);
+      } else if (inactive == 'disconnected') {
+        client.disconnect();
+      } else {
+        client.update(null);
+      }
+      final eventTimer = Completer<void>();
+      Timer.run(eventTimer.complete);
+      await sync.start();
+      await eventTimer.future;
+      player.watchApplicationLimit = null;
+      expect(player.watchApplications - before, lessThanOrEqualTo(2));
+      expect(player.state.playing, isFalse);
+      expect(client.commands, isEmpty);
+      expect(
+        client.statuses.map((entry) => entry.status),
+        inactive == 'background' ? ['away'] : isEmpty,
+      );
+      expect(sync.notice, isNot(contains('同步暂时失败')));
+    });
+  }
 
   test('loading and error status echo is bounded per revision', () async {
     final sync = bind();
