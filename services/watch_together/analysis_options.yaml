@@ -1,0 +1,8 @@
+# This standalone Dart service has no Flutter/package dependencies.
+linter:
+  rules:
+    - curly_braces_in_flow_control_structures
+    - avoid_relative_lib_imports
+    - unawaited_futures
+    - cancel_subscriptions
+    - close_sinks

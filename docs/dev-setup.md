@@ -68,6 +68,7 @@ export LANG=en_US.UTF-8     # CocoaPods 在非 UTF-8 locale 下会告警
 ## 5. 质量门
 
 ```bash
+(cd services/watch_together && ~/devsdk/flutter/bin/dart pub get)
 ./tool/check_layering.sh      # 分层守卫：features 不得直接 import dio/media_kit，core/data 不得 import features
 ~/devsdk/flutter/bin/flutter analyze
 ~/devsdk/flutter/bin/flutter test

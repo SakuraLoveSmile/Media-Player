@@ -1,3 +1,5 @@
+import 'mpv_config.dart';
+
 /// App-wide playback engine preferences (S13 / S16 / S23): hardware decoding,
 /// volume gain, demuxer cache sizing and advanced mpv video options.
 ///
@@ -17,6 +19,8 @@ class PlaybackSettings {
     this.seekOnDrag = false,
     this.autoPlayNext = true,
     this.forceStereo = true,
+    this.mpvQualityPreset = MpvQualityPreset.standard,
+    this.mpvCustomConfig = '',
   });
 
   /// KeyValueStore key shared by the player controller and the settings page.
@@ -40,6 +44,10 @@ class PlaybackSettings {
       seekOnDrag: json['seekOnDrag'] as bool? ?? false,
       autoPlayNext: json['autoPlayNext'] as bool? ?? true,
       forceStereo: json['forceStereo'] as bool? ?? true,
+      mpvQualityPreset: MpvQualityPreset.fromName(
+        json['mpvQualityPreset'] as String?,
+      ),
+      mpvCustomConfig: json['mpvCustomConfig'] as String? ?? '',
     );
   }
 
@@ -76,6 +84,10 @@ class PlaybackSettings {
   /// 强制输出立体声.
   final bool forceStereo;
 
+  /// MP-TT01: path-free mpv quality options, applied on the next playback.
+  final MpvQualityPreset mpvQualityPreset;
+  final String mpvCustomConfig;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     'hwdecEnabled': hwdecEnabled,
     'volumeGainPercent': volumeGainPercent,
@@ -87,6 +99,8 @@ class PlaybackSettings {
     'seekOnDrag': seekOnDrag,
     'autoPlayNext': autoPlayNext,
     'forceStereo': forceStereo,
+    'mpvQualityPreset': mpvQualityPreset.name,
+    'mpvCustomConfig': mpvCustomConfig,
   };
 
   PlaybackSettings copyWith({
@@ -100,6 +114,8 @@ class PlaybackSettings {
     bool? seekOnDrag,
     bool? autoPlayNext,
     bool? forceStereo,
+    MpvQualityPreset? mpvQualityPreset,
+    String? mpvCustomConfig,
   }) {
     return PlaybackSettings(
       hwdecEnabled: hwdecEnabled ?? this.hwdecEnabled,
@@ -112,6 +128,8 @@ class PlaybackSettings {
       seekOnDrag: seekOnDrag ?? this.seekOnDrag,
       autoPlayNext: autoPlayNext ?? this.autoPlayNext,
       forceStereo: forceStereo ?? this.forceStereo,
+      mpvQualityPreset: mpvQualityPreset ?? this.mpvQualityPreset,
+      mpvCustomConfig: mpvCustomConfig ?? this.mpvCustomConfig,
     );
   }
 }

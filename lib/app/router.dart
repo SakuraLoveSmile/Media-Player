@@ -4,6 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../core/router/app_page.dart';
 import '../core/router/app_routes.dart';
+import '../features/offline/offline_page.dart';
+import '../features/watch_together/watch_together_page.dart';
+import 'providers.dart';
+import 'playback_settings.dart';
+import '../data/playback/playback_settings.dart';
+
 import '../features/admin/admin_page.dart';
 import '../features/browse/browse_pages.dart';
 import '../features/detail/detail_page.dart';
@@ -48,6 +54,49 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     navigatorKey: appRootNavigatorKey,
     initialLocation: AppRoutes.startup,
     routes: [
+      GoRoute(
+        path: AppRoutes.watchTogether,
+        pageBuilder: (context, state) => appPage(
+          state,
+          WatchTogetherPage(
+            initialItemId: state.uri.queryParameters['item'],
+            initialSourceId: state.uri.queryParameters['source'],
+          ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.offline,
+        pageBuilder: (context, state) => appPage(
+          state,
+          Consumer(
+            builder: (context, ref, child) => ref
+                .watch(bootstrapProvider)
+                .when(
+                  data: (services) => services.offline == null
+                      ? Scaffold(
+                          appBar: AppBar(title: const Text('下载与离线媒体')),
+                          body: const Center(
+                            child: Text('无法读取离线存储，请检查本机空间与文件权限后重启应用'),
+                          ),
+                        )
+                      : OfflinePage(
+                          repository: services.offline!,
+                          createEngine: services.createEngine,
+                          settings:
+                              ref
+                                  .watch(playbackSettingsControllerProvider)
+                                  .value ??
+                              const PlaybackSettings(),
+                        ),
+                  loading: () => const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (error, stack) =>
+                      const Scaffold(body: Center(child: Text('无法读取离线媒体'))),
+                ),
+          ),
+        ),
+      ),
       GoRoute(
         path: AppRoutes.startup,
         pageBuilder: (context, state) => appPage(state, const StartupPage()),
@@ -142,6 +191,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => appPage(
           state,
           PlayerPage(
+            key: ValueKey('player:${state.uri}'),
+            watchRoomId: state.uri.queryParameters['room'],
             itemId: state.pathParameters['itemId'] ?? '',
             preferredSourceId: state.uri.queryParameters['source'],
             // S78: continuous play forwards the current playback mode, so a new
@@ -197,7 +248,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: AppRoutes.settingsMpv,
-        pageBuilder: (context, state) => appPage(state, const MpvSettingsPage()),
+        pageBuilder: (context, state) =>
+            appPage(state, const MpvSettingsPage()),
       ),
       GoRoute(
         path: AppRoutes.settingsLibraries,

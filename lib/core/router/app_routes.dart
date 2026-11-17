@@ -1,6 +1,13 @@
 /// Navigation paths. Kept free of widget imports so any layer may use them.
 abstract final class AppRoutes {
   static const String startup = '/';
+  static const String offline = '/offline';
+  static const String watchTogether = '/watch-together';
+
+  static String watchTogetherFor({String? itemId, String? sourceId}) => Uri(
+    path: watchTogether,
+    queryParameters: {'item': ?itemId, 'source': ?sourceId},
+  ).toString();
   static const String login = '/login';
   static const String home = '/home';
   static const String library = '/library';
@@ -54,6 +61,7 @@ abstract final class AppRoutes {
     int? audio,
     int? subtitle,
     bool portrait = false,
+    String? room,
   }) {
     final List<String> query = <String>[
       if (source != null && source.isNotEmpty)
@@ -61,6 +69,7 @@ abstract final class AppRoutes {
       if (audio != null) 'audio=$audio',
       if (subtitle != null) 'subtitle=$subtitle',
       if (portrait) 'portrait=1',
+      if (room != null) 'room=${Uri.encodeQueryComponent(room)}',
     ];
     return query.isEmpty
         ? '$player/$itemId'

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/playback/playback_settings.dart';
+import '../data/playback/mpv_config.dart';
 import '../data/storage/key_value_store.dart';
 import 'providers.dart';
 
@@ -76,6 +77,19 @@ class PlaybackSettingsController extends AsyncNotifier<PlaybackSettings> {
       _persist(
         _current.copyWith(gpuNext: gpuNext, deband: deband, yuv420: yuv420),
       );
+
+  Future<void> setMpvQuality({MpvQualityPreset? preset, String? customConfig}) {
+    final next = _current.copyWith(
+      mpvQualityPreset: preset,
+      mpvCustomConfig: customConfig,
+    );
+    // Do not persist even a single valid line when another line is invalid.
+    MpvConfig.resolve(next.mpvQualityPreset, next.mpvCustomConfig);
+    return _persist(next);
+  }
+
+  Future<void> resetMpvQuality() =>
+      setMpvQuality(preset: MpvQualityPreset.standard, customConfig: '');
 
   PlaybackSettings get _current => state.value ?? const PlaybackSettings();
 }

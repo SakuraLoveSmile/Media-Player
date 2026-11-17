@@ -619,3 +619,13 @@ abstract class PlaybackEngine {
   回退口径；URL 与 token 不落日志（§10.6）。投屏成功后暂停本地播放避免双声；失败为 picker 文案，
   非播放错误。Chromecast 不在本契约（需 Google Cast SDK）。
 
+
+## MP-TT01：离线下载与画质配置增补
+
+- 下载入口为电影详情的所选版本、季页的单集；仅允许用户 Policy.EnableContentDownloading 与条目 CanDownload 均为 true、Protocol=File、已知视频容器且大小有效的原始文件。STRM/远程源不作为离线副本保存。
+- 下载地址取同一解析端点 `/Videos/{itemId}/stream?Static=true&MediaSourceId={sourceId}`，Static 明确不编码；凭据只用请求头。官方 Static 契约：<https://dev.emby.media/reference/RestAPI/VideoService/getVideosByIdStream.html>。指定版本参数见 BaseEncodingJobOptions.MediaSourceId；真实 Emby 多版本行为仍待设备环境复核。
+- 现有 EmbyHttpClient JSON/小文件路径不变；大文件传输是 `data/offline/OfflineRepository` 内专用流式 HttpClient 二进制例外，不整片进内存。拒绝重定向；重新核实权限及 server/user/token/endpoint 归属；401 仅使仍匹配的原会话失效。
+- support/offline 内使用 SHA-256 身份文件名、`.part` 和索引原子替换；索引不存 URL/token/header。200 替换文件，206 校验 Content-Range/validator/长度，无法证明同一文件时重下；最终大小吻合才改名完成。重启时在途任务暂停，不自动联网。
+- 本机所有已保存副本可断网查看及播放，标出所属服务器/账号；下载/恢复必须为当前匹配会话。删除确认仅删除本地副本。损坏索引备份保留，可识别本地文件恢复为本地条目；本地存储不可用不阻断在线服务图。
+- 本地播放仅使用 file URI 与新建 PlaybackEngine，无 PlaybackInfo、远端 Started/Progress/Stopped。外置字幕/在线弹幕不随视频下载。启动错误页和登录页提供离线入口。
+- `PlaybackSettings` 原存储键兼容新增 mpvQualityPreset/mpvCustomConfig，旧数据默认原画质。MPV 配置仅允许 `MpvConfig` 的有界画质白名单；拒绝脚本、include、profile、路径与应用托管项。保存前、播放前均校验；可选 `MpvConfigEngine` 应用完整属性集并读回，失败提示并尝试默认回退。在线/离线播放均采用画质偏好。

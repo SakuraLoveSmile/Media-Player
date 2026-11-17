@@ -21,6 +21,7 @@ import '../../data/models/playback_plan.dart';
 import '../../data/playback/playback_engine.dart';
 import '../../data/playback/playback_service.dart';
 import '../../data/playback/playback_settings.dart';
+import '../../data/playback/mpv_config.dart';
 import '../../data/playback/session_reporter.dart';
 import '../../data/playback/subtitle_repository.dart';
 import '../../data/playback/track_prefs.dart';
@@ -73,6 +74,7 @@ class PlayerState {
     this.sleepRemaining,
     this.sleepDuration,
     this.playbackSettings = const PlaybackSettings(),
+    this.qualityWarning,
     this.danmakuSettings = const DanmakuSettings(),
     this.danmakuStatus = DanmakuStatus.idle,
     this.danmakuComments = const <DanmakuComment>[],
@@ -185,6 +187,9 @@ class PlayerState {
   /// App-wide engine preferences (S13 / S16), persisted and applied on open.
   final PlaybackSettings playbackSettings;
 
+  /// Non-fatal quality configuration failure; video playback continues.
+  final String? qualityWarning;
+
   /// Danmaku rendering preferences (S17), persisted app-wide.
   final DanmakuSettings danmakuSettings;
 
@@ -248,6 +253,7 @@ class PlayerState {
     Object? sleepRemaining = _unset,
     Object? sleepDuration = _unset,
     PlaybackSettings? playbackSettings,
+    Object? qualityWarning = _unset,
     DanmakuSettings? danmakuSettings,
     DanmakuStatus? danmakuStatus,
     List<DanmakuComment>? danmakuComments,
@@ -322,6 +328,9 @@ class PlayerState {
           ? this.sleepDuration
           : sleepDuration as Duration?,
       playbackSettings: playbackSettings ?? this.playbackSettings,
+      qualityWarning: identical(qualityWarning, _unset)
+          ? this.qualityWarning
+          : qualityWarning as String?,
       danmakuSettings: danmakuSettings ?? this.danmakuSettings,
       danmakuStatus: danmakuStatus ?? this.danmakuStatus,
       danmakuComments: danmakuComments ?? this.danmakuComments,
@@ -378,6 +387,104 @@ class PlayerController extends ChangeNotifier {
        _screenshotDirectory = screenshotDirectory,
        _probeDelay = probeDelay,
        _delay = delay ?? Future<void>.delayed;
+
+  Duration? _watchStartAt;
+  Future<void> Function(String action, Duration position)? _watchCommand;
+  void Function()? _watchRateRejected;
+  bool Function()? _watchCanPlay;
+  void Function()? _watchSleep;
+  int _watchApplication = 0;
+  Future<void> _watchApplications = Future<void>.value();
+  bool get watchSynchronized => _watchCommand != null;
+
+  /// Installed before load so a room never briefly uses personal resume state.
+  void enableWatchTogether({
+    required Duration startAt,
+    required Future<void> Function(String action, Duration position) command,
+    void Function()? onRateRejected,
+    bool Function()? canPlay,
+    void Function()? onSleep,
+  }) {
+    _watchStartAt = startAt;
+    _watchCommand = command;
+    _watchRateRejected = onRateRejected;
+    _watchCanPlay = canPlay;
+    _watchSleep = onSleep;
+  }
+
+  /// Applies the authoritative room timeline without reissuing a room command.
+  /// Reports actual local playback changes through the normal Emby reporter.
+  Future<void> applyWatchState({
+    required bool playing,
+    required Duration position,
+    double rate = 1,
+    bool seek = true,
+  }) {
+    final generation = ++_watchApplication;
+    final result = _watchApplications.then(
+      (_) => _applyWatchState(
+        playing: playing,
+        position: position,
+        rate: rate,
+        seek: seek,
+        generation: generation,
+      ),
+    );
+    _watchApplications = result.catchError((Object _) {});
+    return result;
+  }
+
+  Future<void> _applyWatchState({
+    required bool playing,
+    required Duration position,
+    required double rate,
+    required bool seek,
+    required int generation,
+  }) async {
+    bool current() =>
+        !_disposed && !_stopped && generation == _watchApplication;
+    final plan = _plan;
+    if (!current() || !_state.ready || plan == null) return;
+    playing = playing && (_watchCanPlay?.call() ?? true);
+    final changedPlaying = _state.playing != playing;
+    final target = Duration(
+      milliseconds: position.inMilliseconds.clamp(
+        0,
+        _state.duration > Duration.zero
+            ? _state.duration.inMilliseconds
+            : 1 << 52,
+      ),
+    );
+    _userPaused = !playing;
+    if (!playing && _state.playing) await _engine.pause();
+    if (!current()) return;
+    if (seek) {
+      await _engine.seekTo(target);
+      if (!current()) return;
+      _lastTrustedPosition = target;
+      _updateSkipFlags(target);
+    }
+    if (_state.rate != rate) await _engine.setRate(rate);
+    if (!current()) return;
+    playing = playing && (_watchCanPlay?.call() ?? true);
+    if (playing && !_state.playing) await _engine.play();
+    if (!current()) return;
+    if (playing && _watchCanPlay?.call() == false) {
+      await _engine.pause();
+      playing = false;
+    }
+    if (!current()) return;
+    _set(
+      _state.copyWith(
+        playing: playing,
+        position: seek ? target : _state.position,
+        rate: rate,
+      ),
+    );
+    if (changedPlaying || seek) {
+      await _reporter.progress(plan, _reportPosition, paused: !playing);
+    }
+  }
 
   /// Contract §10.9 d: resume only past this much playback.
   static const Duration _resumeThreshold = Duration(seconds: 10);
@@ -524,6 +631,7 @@ class PlayerController extends ChangeNotifier {
       _state.copyWith(
         loading: true,
         error: null,
+        qualityWarning: null,
         unsupported: false,
         selectionSeriesId: null,
         unauthorized: false,
@@ -607,8 +715,12 @@ class PlayerController extends ChangeNotifier {
       // Contract §10.9 d: > 10 s and not finished resumes, everything else
       // starts from zero.
       final userData = item.userData;
-      final resume = !userData.played && userData.position > _resumeThreshold;
-      final startAt = resume ? userData.position : Duration.zero;
+      final resume =
+          !watchSynchronized &&
+          !userData.played &&
+          userData.position > _resumeThreshold;
+      final startAt =
+          _watchStartAt ?? (resume ? userData.position : Duration.zero);
 
       final plan = await _playback.resolve(
         _itemId,
@@ -626,7 +738,16 @@ class PlayerController extends ChangeNotifier {
       _lastTrustedPosition = startAt;
       _ticks = _engine.state.listen(_onSnapshot);
 
-      await _engine.open(plan);
+      if (watchSynchronized) {
+        final engine = _engine;
+        if (engine is! PausedOpenEngine) {
+          throw StateError('当前播放引擎不支持一起看暂停加载');
+        }
+        _userPaused = true;
+        await (engine as PausedOpenEngine).openPaused(plan);
+      } else {
+        await _engine.open(plan);
+      }
       if (_disposed || _stopped) return;
       await _engine.setSubtitleStyle(_style);
       if (_disposed || _stopped) return;
@@ -638,6 +759,7 @@ class PlayerController extends ChangeNotifier {
         _state.copyWith(
           loading: false,
           ready: true,
+          playing: watchSynchronized ? false : _state.playing,
           position: startAt,
           resumedFrom: resume ? startAt : null,
           // PlaybackInfo probes STRM sources; the detail response's stream
@@ -708,6 +830,12 @@ class PlayerController extends ChangeNotifier {
   }
 
   Future<void> togglePlayPause() async {
+    final watch = _watchCommand;
+    if (watch != null) {
+      if (_disposed || _stopped || !_state.ready) return;
+      await watch(_state.playing ? 'pause' : 'play', _state.position);
+      return;
+    }
     final plan = _plan;
     if (_disposed || _stopped || !_state.ready || plan == null) return;
 
@@ -732,6 +860,12 @@ class PlayerController extends ChangeNotifier {
   }
 
   Future<void> seekTo(Duration position) async {
+    final watch = _watchCommand;
+    if (watch != null) {
+      if (_disposed || _stopped || !_state.ready) return;
+      await watch('seek', position);
+      return;
+    }
     final plan = _plan;
     if (_disposed || _stopped || !_state.ready || plan == null) return;
 
@@ -853,6 +987,12 @@ class PlayerController extends ChangeNotifier {
   /// Playback speed (S2); the UI offers presets, the engine takes any rate.
   Future<void> setRate(double rate) async {
     if (_disposed || _stopped) return;
+    if (watchSynchronized) {
+      if (rate != 1) _watchRateRejected?.call();
+      await _engine.setRate(1);
+      if (!_disposed && !_stopped) _set(_state.copyWith(rate: 1));
+      return;
+    }
     await _engine.setRate(rate);
     if (_disposed || _stopped) return;
     _set(_state.copyWith(rate: rate));
@@ -1026,6 +1166,7 @@ class PlayerController extends ChangeNotifier {
   /// The sleep timer pausing is a user-style pause: it reports immediately and
   /// must not be mistaken for a dead stream by the failure watch.
   Future<void> _pauseForSleep() async {
+    _watchSleep?.call();
     final plan = _plan;
     _userPaused = true;
     await _engine.pause();
@@ -1065,6 +1206,30 @@ class PlayerController extends ChangeNotifier {
       yuv420: _settings.yuv420,
       applyVo: false,
     );
+    if (_disposed || _stopped) return;
+    final engine = _engine;
+    if (engine is MpvConfigEngine) {
+      try {
+        await (engine as MpvConfigEngine).applyMpvConfig(
+          MpvConfig.resolve(
+            _settings.mpvQualityPreset,
+            _settings.mpvCustomConfig,
+          ),
+        );
+      } catch (_) {
+        if (_disposed || _stopped) return;
+        var message = '画质配置无法应用，请检查 MPV 设置';
+        try {
+          await (engine as MpvConfigEngine).applyMpvConfig(MpvConfig.defaults);
+          message = '画质配置无法应用，已恢复默认；请检查 MPV 设置';
+        } catch (_) {
+          // Keep the playable pipeline; a failed reset must not claim success.
+        }
+        if (!_disposed && !_stopped) {
+          _set(_state.copyWith(qualityWarning: message));
+        }
+      }
+    }
   }
 
   void _saveSettings(PlaybackSettings next) {

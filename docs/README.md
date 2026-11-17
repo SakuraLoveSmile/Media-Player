@@ -87,3 +87,16 @@
 - ~~Windows 测试机或 CI runner~~（已提供，冒烟通过）。
 - Emby WAN（frp HTTPS）地址与 frp 上行带宽。
 - PGS / HDR10 / 60–80 Mbps 样本（当前库内未发现 PGS）。
+
+## Tigerest-Theater 功能接入（MP-TT01）
+
+[任务与验证记录](tasks/20261114-mp-tt01-theater-features.md)。新增电影/单集下载→设置/启动/登录的离线管理→本地播放器路径；权限与文件状态由 `lib/data/offline/offline_repository.dart` 管理，索引与文件保存在应用 support/offline。通用下载按钮位于 `lib/ui/offline_download_button.dart`，不跨 feature 导入。服务图初始化失败时保留在线能力。
+
+MPV 设置页通过 PlaybackSettingsController 保存预设/白名单配置，`MpvConfig` 解析与组合参数；PlayerController 与离线播放器通过可选 MpvConfigEngine 应用，MediaKitEngine 写入并读回原生属性。未加入 GLSL 着色器包、RIFE 或作者专属社交服务。
+
+
+## 一起看（MP-WT01）
+
+[任务与验证记录](tasks/20261114-mp-wt01-watch-together.md)、[唯一协议](contracts/watch-together-v1.md)、[服务部署说明](../services/watch_together/README.md)。首页/设置/电影详情/季页单集可进入房间页，选择影片版本、创建或加入六位码房间；服务地址由用户配置。`app/providers.dart` 组装内存客户端并监听账号变化，`lib/data/watch_together` 处理票据、恢复和重连，`WatchPlaybackCoordinator` 将房间版本/时间锚点应用至独立播放器，用户控制发给房间、远端应用不回发。`PausedOpenEngine` 确保房间加载不提前播放；个人播放仍走原 open 行为。
+
+独立 `services/watch_together` 是只同步房间的 Dart HTTP/WebSocket 服务，固定绑定一个管理员配置的 Emby，通过每位成员的会话检查身份和同版本权限；各端视频与进度仍直连自己的 Emby。客户端仅在现有设置存储保存服务URL、随机设备标识和房间恢复身份，额外票据/凭据仅在内存；服务房间也仅存内存，重启结束。后台/离开播放器只暂停本机，离开房间/踢人/解散由房间服务处理。此功能不依赖 Tigerest 作者服务，也不包含聊天或语音。

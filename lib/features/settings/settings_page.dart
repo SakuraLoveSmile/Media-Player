@@ -209,6 +209,22 @@ class SettingsPage extends ConsumerWidget {
               ),
             ],
           ),
+          AppSection(
+            header: '本地媒体',
+            children: <Widget>[
+              ListTile(
+                key: const Key('settings-offline'),
+                leading: Icon(
+                  Icons.download_done_rounded,
+                  color: palette.primary,
+                ),
+                title: const Text('下载与离线媒体'),
+                subtitle: const Text('管理下载、暂停与继续，断网播放本地副本'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push(AppRoutes.offline),
+              ),
+            ],
+          ),
           const PlaybackSettingsSection(),
           AppSection(
             header: '求片',
@@ -523,6 +539,19 @@ class SettingsPage extends ConsumerWidget {
                 onTap: checking
                     ? null
                     : () => unawaited(_checkForUpdate(context, ref)),
+              ),
+            ],
+          ),
+          AppSection(
+            header: '一起看',
+            children: <Widget>[
+              ListTile(
+                key: const Key('settings-watch-together'),
+                leading: Icon(Icons.groups_outlined, color: palette.primary),
+                title: const Text('一起看'),
+                subtitle: const Text('创建或加入房间，同步播放影片'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push(AppRoutes.watchTogether),
               ),
             ],
           ),

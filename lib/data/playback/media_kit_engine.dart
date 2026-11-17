@@ -16,7 +16,8 @@ const bool _kTrace = bool.fromEnvironment('PLAYBACK_TRACE');
 ///
 /// This is the only file allowed to mention media_kit types: `tool/
 /// check_layering.sh` keeps them out of `lib/features` (§10.9 b).
-class MediaKitEngine implements PlaybackEngine {
+class MediaKitEngine
+    implements PlaybackEngine, MpvConfigEngine, PausedOpenEngine {
   MediaKitEngine() {
     // Same wiring as the verified M0 spike (spike/windows_smoke). libass must
     // be on: media_kit ties `sub-ass` AND `sub-visibility` to it, so the
@@ -82,7 +83,12 @@ class MediaKitEngine implements PlaybackEngine {
   PlaybackSnapshot get snapshot => _snapshot;
 
   @override
-  Future<void> open(PlaybackPlan plan) async {
+  Future<void> open(PlaybackPlan plan) => _open(plan, play: true);
+
+  @override
+  Future<void> openPaused(PlaybackPlan plan) => _open(plan, play: false);
+
+  Future<void> _open(PlaybackPlan plan, {required bool play}) async {
     // Resume through `Media.start` rather than open-then-seek: mpv applies
     // `start` while loading, so no seek can race the demuxer (contract §10.9 d).
     final media = Media(
@@ -94,7 +100,7 @@ class MediaKitEngine implements PlaybackEngine {
     // copyWith cannot clear `error`.
     _snapshot = const PlaybackSnapshot();
     _emit();
-    await _player.open(media, play: true);
+    await _player.open(media, play: play);
     if (_kTrace) {
       final platform = _player.platform;
       if (platform is NativePlayer) {
@@ -382,6 +388,30 @@ class MediaKitEngine implements PlaybackEngine {
       await platform.setProperty('vf', yuv420 ? 'format=yuv420p' : '');
     } catch (_) {
       // mpv logged the rejection; playback continues with the previous value.
+    }
+  }
+
+  @override
+  Future<void> applyMpvConfig(Map<String, String> properties) async {
+    final platform = _player.platform;
+    if (platform is! NativePlayer) {
+      throw UnsupportedError('当前播放内核不支持 MPV 画质配置');
+    }
+    for (final entry in properties.entries) {
+      await platform.setProperty(entry.key, entry.value);
+      // media_kit setProperty discards libmpv's error code. Read it back so
+      // unsupported properties cannot silently masquerade as applied settings.
+      final actual = (await platform.getProperty(entry.key)).trim();
+      final expectedNumber = double.tryParse(entry.value);
+      final actualNumber = double.tryParse(actual);
+      final matches =
+          actual == entry.value ||
+          (expectedNumber != null &&
+              actualNumber != null &&
+              (expectedNumber - actualNumber).abs() < 0.000001);
+      if (!matches) {
+        throw StateError('MPV rejected picture option ${entry.key}');
+      }
     }
   }
 

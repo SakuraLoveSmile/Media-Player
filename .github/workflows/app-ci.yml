@@ -49,6 +49,10 @@ jobs:
       - name: Dependencies
         run: flutter pub get
 
+      - name: Sync service dependencies
+        working-directory: services/watch_together
+        run: dart pub get
+
       - name: Layer guard
         run: ./tool/check_layering.sh
 

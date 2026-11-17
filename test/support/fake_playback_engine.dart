@@ -5,7 +5,7 @@ import 'package:media_player/data/models/playback_plan.dart';
 import 'package:media_player/data/playback/playback_engine.dart';
 
 /// Playback double for the page/controller tests of F3; no media_kit.
-class FakePlaybackEngine implements PlaybackEngine {
+class FakePlaybackEngine implements PlaybackEngine, PausedOpenEngine {
   final List<PlaybackPlan> openedPlans = <PlaybackPlan>[];
   int playCalls = 0;
   int pauseCalls = 0;
@@ -73,6 +73,14 @@ class FakePlaybackEngine implements PlaybackEngine {
     openedPlans.add(plan);
     final error = openError;
     if (error != null) throw error;
+  }
+
+  int pausedOpenCalls = 0;
+
+  @override
+  Future<void> openPaused(PlaybackPlan plan) async {
+    pausedOpenCalls++;
+    await open(plan);
   }
 
   @override

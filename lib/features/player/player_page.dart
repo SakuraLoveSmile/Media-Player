@@ -24,6 +24,8 @@ import '../../data/models/media_stream.dart';
 import '../../data/playback/playback_engine.dart';
 import '../../data/playback/playback_settings.dart';
 import '../../data/playback/track_prefs.dart';
+import '../../data/watch_together/watch_together_client.dart';
+import 'watch_playback_coordinator.dart';
 import '../../ui/app_controls.dart';
 import '../../ui/app_loader.dart';
 import '../../ui/theme/app_theme.dart';
@@ -44,9 +46,11 @@ class PlayerPage extends ConsumerStatefulWidget {
     this.initialPortrait = false,
     this.initialAudioIndex,
     this.initialSubtitleIndex,
+    this.watchRoomId,
   });
 
   final String itemId;
+  final String? watchRoomId;
 
   /// Version picked on the detail page (S7); null keeps the server default.
   final String? preferredSourceId;
@@ -65,7 +69,13 @@ class PlayerPage extends ConsumerStatefulWidget {
   ConsumerState<PlayerPage> createState() => _PlayerPageState();
 }
 
-class _PlayerPageState extends ConsumerState<PlayerPage> {
+class _PlayerPageState extends ConsumerState<PlayerPage>
+    with WidgetsBindingObserver {
+  WatchTogetherClient? _watchClient;
+  WatchPlaybackCoordinator? _watchCoordinator;
+  bool _watchChanging = false;
+  bool _watchCompletionRequested = false;
+  String? _watchShownNotice;
   PlayerController? _controller;
   bool _redirecting = false;
   bool _leaving = false;
@@ -100,6 +110,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   /// Controls auto-hide so they never sit over the subtitle band; a tap on the
   /// video brings them back (Yamby parity).
   static const Duration _controlsHideDelay = Duration(seconds: 3);
+
   /// S79: starts hidden and only ever appears on a tap - neither the opening nor
   /// the first live frame pops it open.
   bool _controlsVisible = false;
@@ -148,6 +159,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _orientationService = ref.read(playerOrientationServiceProvider);
     // S78: continuous play re-opens the player with the mode it was in; a
     // direct entry keeps S77's 默认横屏播放. Pinning happens synchronously on
@@ -193,6 +205,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _watchClient?.removeListener(_watchRoomChanged);
+    _watchCoordinator?.removeListener(_watchNoticeChanged);
+    _watchCoordinator?.dispose();
     // Also covers exits that bypass _leave; an earlier stop is idempotent.
     unawaited(_brightness.reset());
     // S77: hand the screen back to the device so the pages underneath (and the
@@ -1617,6 +1633,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
         // A broken preference keeps the default.
       }
       if (!mounted) return;
+      if (widget.watchRoomId != null) {
+        final watch = services.watchTogether;
+        if (watch == null || watch.room?.roomId != widget.watchRoomId) {
+          if (mounted) setState(() => _fatal = '一起看房间已失效，请返回房间页重新加入');
+          return;
+        }
+        if (_watchClient != watch) {
+          _watchClient?.removeListener(_watchRoomChanged);
+          _watchClient = watch;
+          watch.addListener(_watchRoomChanged);
+        }
+      }
       final controller = PlayerController(
         itemId: widget.itemId,
         library: services.library,
@@ -1634,7 +1662,22 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
         pauseWhileCapturing: pauseWhileCapturing,
       )..addListener(_onChanged);
       setState(() => _controller = controller);
+      if (_watchClient != null && widget.watchRoomId != null) {
+        _watchCoordinator = WatchPlaybackCoordinator(
+          client: _watchClient!,
+          controller: controller,
+          roomId: widget.watchRoomId!,
+          itemId: widget.itemId,
+          mediaSourceId: widget.preferredSourceId,
+        )..addListener(_watchNoticeChanged);
+        _watchCoordinator!.setForeground(
+          WidgetsBinding.instance.lifecycleState == null ||
+              WidgetsBinding.instance.lifecycleState ==
+                  AppLifecycleState.resumed,
+        );
+      }
       await controller.load();
+      await _watchCoordinator?.start();
       // S37: track picks from the detail page win over the automatic language
       // match; unknown indices are ignored so a stale pick cannot fail a start.
       if (!mounted) return;
@@ -1705,6 +1748,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   /// silence the new session. Disposing first sends that `Stopped` and frees
   /// the engine exactly once (contract §10.9 c).
   Future<void> _reload() async {
+    _watchClient?.removeListener(_watchRoomChanged);
+    _watchClient = null;
+    _watchCoordinator?.removeListener(_watchNoticeChanged);
+    await _watchCoordinator?.close();
+    _watchCoordinator?.dispose();
+    _watchCoordinator = null;
+    _watchCompletionRequested = false;
     final previous = _controller;
     if (previous != null) {
       previous.removeListener(_onChanged);
@@ -1725,6 +1775,56 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     await _bootstrap();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _watchCoordinator?.setForeground(state == AppLifecycleState.resumed);
+  }
+
+  void _watchNoticeChanged() {
+    final notice = _watchCoordinator?.notice;
+    if (!mounted || notice == null || notice == _watchShownNotice) return;
+    _watchShownNotice = notice;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_leaving) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(notice)));
+      }
+    });
+  }
+
+  void _watchRoomChanged() {
+    final watch = _watchClient;
+    final room = watch?.room;
+    if (!mounted ||
+        _leaving ||
+        _redirecting ||
+        room == null ||
+        room.roomId != widget.watchRoomId) {
+      return;
+    }
+    if (room.media.itemId == widget.itemId &&
+        room.media.mediaSourceId == widget.preferredSourceId) {
+      return;
+    }
+    _leaving = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _watchCoordinator?.close();
+      await _controller?.stop();
+      if (!mounted) return;
+      context.pushReplacement(
+        AppRoutes.playerFor(
+          room.media.itemId,
+          source: room.media.mediaSourceId,
+          room: room.roomId,
+          portrait: _orientation == PlaybackOrientation.portrait,
+        ),
+      );
+    });
+  }
+
+  String? _shownQualityWarning;
+
   void _onChanged() {
     final controller = _controller;
     if (controller == null) return;
@@ -1741,13 +1841,27 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     // `_goToEpisode` latches `_leaving` synchronously, so the repeated
     // notifications of a latched `completed` flag cannot re-trigger it.
     final PlayerState state = controller.state;
+    final String? qualityWarning = state.qualityWarning;
+    if (qualityWarning != null && qualityWarning != _shownQualityWarning) {
+      _shownQualityWarning = qualityWarning;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_leaving) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(qualityWarning)));
+        }
+      });
+    }
     if (state.completed &&
         state.hasNext &&
         state.playbackSettings.autoPlayNext &&
         !_leaving &&
-        !_redirecting) {
+        !_redirecting &&
+        !_watchCompletionRequested) {
       final String? next = controller.playNext();
-      if (next != null) unawaited(_goToEpisode(next));
+      if (next != null) {
+        if (widget.watchRoomId != null) _watchCompletionRequested = true;
+        unawaited(_goToEpisode(next));
+      }
     }
     // S79: while a loader owns the screen (opening or buffering) the chrome
     // stays out of the way; once the picture is live the usual "show briefly,
@@ -1772,6 +1886,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   Future<void> _leave() async {
     if (_leaving || _redirecting) return;
     _leaving = true;
+    await _watchCoordinator?.close();
     // Report before pop to avoid Video teardown zeroing the position first.
     await _controller?.stop();
     if (!mounted || _redirecting) return;
@@ -1801,6 +1916,22 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   /// intentionally do not carry over (each episode is a new session).
   Future<void> _goToEpisode(String itemId) async {
     if (_leaving || _redirecting) return;
+    if (widget.watchRoomId != null && _watchClient != null) {
+      if (_watchChanging) return;
+      _watchChanging = true;
+      try {
+        await _watchClient!.changeItem(itemId: itemId);
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_watchClient!.error ?? '无法切换房间影片，请返回房间页重试')),
+          );
+        }
+      } finally {
+        _watchChanging = false;
+      }
+      return;
+    }
     _leaving = true;
     // Report before the replacement so the final position survives teardown.
     await _controller?.stop();
@@ -3968,7 +4099,6 @@ class _StatsSheetState extends State<_StatsSheet> {
     if (bps >= 1000000) return '${(bps / 1000000).toStringAsFixed(2)} Mbps';
     return '${(bps / 1000).toStringAsFixed(0)} kbps';
   }
-
 }
 
 /// Formats a network rate reported in bytes per second (mpv `cache-speed`).

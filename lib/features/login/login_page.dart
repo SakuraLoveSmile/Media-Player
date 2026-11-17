@@ -154,8 +154,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             // signing in again (e.g. after the session expired) must not reset it
             // back to an address.
             final ServerEntry? existing = await directory.find(target);
-            final String name =
-                (existing != null && existing.name.isNotEmpty)
+            final String name = (existing != null && existing.name.isNotEmpty)
                 ? existing.name
                 : _entryName(advertised, stored, profile);
             final String? lan = stored?.lanUrl ?? profile.lanUrl;
@@ -165,7 +164,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               // display toggles, last played) instead of resetting them; a null
               // address keeps the stored one rather than clearing it.
               existing == null
-                  ? ServerEntry(id: target, name: name, lanUrl: lan, wanUrl: wan)
+                  ? ServerEntry(
+                      id: target,
+                      name: name,
+                      lanUrl: lan,
+                      wanUrl: wan,
+                    )
                   : existing.copyWith(name: name, lanUrl: lan, wanUrl: wan),
             );
             await directory.setActive(target);
@@ -347,6 +351,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               expand: true,
                               loading: _submitting,
                               onPressed: _submitting ? null : _submit,
+                            ),
+                            TextButton.icon(
+                              key: const Key('login-offline'),
+                              onPressed: () => context.push(AppRoutes.offline),
+                              icon: const Icon(Icons.offline_pin_outlined),
+                              label: const Text('离线媒体'),
                             ),
                             const SizedBox(height: AppSpacing.md),
                             Text(

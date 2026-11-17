@@ -1,3 +1,5 @@
+import '../../ui/watch_together_button.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -5,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
+import '../../data/offline/offline_repository.dart';
+import '../../ui/offline_download_button.dart';
 import '../../core/router/app_routes.dart';
 import '../../data/cast/dlna_cast_service.dart';
 import '../../data/playback/playback_service.dart';
@@ -50,6 +54,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   /// provides a DLNA renderer service (null in test harnesses that never cast).
   DlnaCastService? _cast;
   PlaybackService? _playback;
+  OfflineRepository? _offline;
 
   @override
   void initState() {
@@ -78,6 +83,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
         _controller = controller;
         _cast = services.cast;
         _playback = services.playback;
+        _offline = services.offline;
       });
       await controller.load();
     } catch (_) {
@@ -505,6 +511,11 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                 onPressed: _openingPlayer ? null : () => unawaited(_play()),
               ),
             ),
+            WatchTogetherButton(
+              itemId: item.id,
+              sourceId: state.selectedSourceId,
+              compact: true,
+            ),
             if (item.mediaSources.length > 1) ...<Widget>[
               const SizedBox(width: AppSpacing.sm),
               AppIconButton(
@@ -517,6 +528,18 @@ class _DetailPageState extends ConsumerState<DetailPage> {
           ],
         ),
       ),
+      if (_offline != null)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: OfflineDownloadButton(
+              repository: _offline!,
+              item: item,
+              sourceId: state.selectedSourceId,
+            ),
+          ),
+        ),
       if ((item.remoteTrailer != null && item.remoteTrailer!.isNotEmpty) ||
           state.selectedSourceId != null)
         Padding(

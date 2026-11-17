@@ -88,6 +88,16 @@ abstract interface class PlaybackEngine {
   Future<void> dispose();
 }
 
+/// Optional capability for engines supporting validated MPV picture options.
+abstract interface class MpvConfigEngine {
+  Future<void> applyMpvConfig(Map<String, String> properties);
+}
+
+/// Loads a synchronized room without emitting audio before its start anchor.
+abstract interface class PausedOpenEngine {
+  Future<void> openPaused(PlaybackPlan plan);
+}
+
 /// What the UI renders (contract §5).
 class PlaybackSnapshot {
   const PlaybackSnapshot({

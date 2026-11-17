@@ -1,3 +1,5 @@
+import '../../ui/watch_together_button.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -48,15 +50,15 @@ class _HomePageState extends ConsumerState<HomePage> {
   @override
   void initState() {
     super.initState();
-    _serverWatch = ref.listenManual(
-      serversControllerProvider,
-      (AsyncValue<ServersState>? previous, AsyncValue<ServersState> next) {
-        final String id = next.value?.activeId ?? '';
-        final String? booted = _bootedServerId;
-        if (id.isEmpty || booted == null || id == booted) return;
-        unawaited(_restart());
-      },
-    );
+    _serverWatch = ref.listenManual(serversControllerProvider, (
+      AsyncValue<ServersState>? previous,
+      AsyncValue<ServersState> next,
+    ) {
+      final String id = next.value?.activeId ?? '';
+      final String? booted = _bootedServerId;
+      if (id.isEmpty || booted == null || id == booted) return;
+      unawaited(_restart());
+    });
     unawaited(_bootstrap());
   }
 
@@ -257,6 +259,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (!mounted) return;
     context.go(session == null ? AppRoutes.loginFor(picked) : AppRoutes.home);
   }
+
   @override
   Widget build(BuildContext context) {
     final HomeController? controller = _controller;
@@ -429,6 +432,7 @@ class _HomeHeader extends StatelessWidget {
               ),
             ),
           ),
+          const WatchTogetherButton(compact: true),
           IconButton(
             key: const Key('home-settings'),
             tooltip: '设置',

@@ -16,6 +16,7 @@
   - M2：macOS + Android 已签核（见 `docs/m2-signoff.md`）；Windows 拆为 M2-W，验收条件见契约 §8.1
   - F4：反馈组件（feedback_widget 0.9.1，含宿主诊断日志采集）+ 设置页 + 在线更新（检查/下载/三平台安装）已实现并发布 `v0.2.3`（见 `docs/f4-notes.md`）；真机更新体验待确认
   - WAN：公网 HTTPS 直连在 OnePlus 实机验证；0.4.6 同步卡片地址到登录配置，0.4.7 修复 http:// 公网地址导致 PlaybackInfo 301 的播放失败
+  - MP-TT01 / MP-WT01：离线下载/播放、MPV 画质设置、自建服务一起看（测试版整合中，验证与发布记录见 `docs/tasks/20261114-mp-wt01-watch-together.md`）
   - PGS、HDR：待验证
 
 ## 文档
@@ -47,7 +48,7 @@ export LANG=en_US.UTF-8
   （双指长按/三指上滑/双指双击）保存在本机，与反馈面板内的同名设置共用一份宿主偏好。
   release 构建默认连接生产反馈服务（debug 默认关闭）。
 - 更新：release 构建启动时静默检查 GitHub Releases，设置页「检查更新」可手动触发；
-  只接受正式 Release（`vX.Y.Z`），下载后校验 SHA-256，再按平台安装。
+  默认接受正式 Release（`vX.Y.Z`）；设置切到「预览版」可检查 `vX.Y.Z-pilot.<build>` 测试版。下载后校验 SHA-256，再按平台安装。
 - 发布：打 `vX.Y.Z` 标签并推送后，`.github/workflows/release.yml` 构建三平台产物并创建
   Release（资产名是更新契约）；每个版本在 `release/notes/vX.Y.Z.md` 手写面向用户的更新说明，
   它会同时显示在 GitHub Release 和应用内更新弹窗（见 `docs/release.md`）。

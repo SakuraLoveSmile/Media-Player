@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -13,6 +14,8 @@ import '../core/device/local_subtitle_picker.dart';
 import '../core/device/pip.dart';
 import '../core/device/screen_orientation.dart';
 import '../data/admin/admin_repository.dart';
+import '../data/offline/offline_repository.dart';
+import '../data/watch_together/watch_together_client.dart';
 import '../data/api/emby_http_client.dart';
 import '../data/auth/auth_repository.dart';
 import '../data/cast/dlna_cast_service.dart';
@@ -121,7 +124,43 @@ final bootstrapProvider = FutureProvider<AppServices>((ref) async {
   } catch (_) {
     screenshotDirectory = null;
   }
+  OfflineRepository? offline;
+  try {
+    final candidate = OfflineRepository(
+      directory: Directory('${support.path}/offline'),
+      session: auth,
+      onUnauthorized: auth.handleUnauthorized,
+    );
+    try {
+      await candidate.initialize();
+      offline = candidate;
+      ref.onDispose(candidate.dispose);
+    } catch (_) {
+      candidate.dispose();
+      // Offline storage failures must not block login or online playback.
+    }
+  } catch (_) {
+    // Keep the existing online graph available if local storage is unavailable.
+  }
+  WatchTogetherClient? watchTogether;
+  final watchCandidate = WatchTogetherClient(session: auth, store: store);
+  try {
+    await watchCandidate.initialize();
+    watchTogether = watchCandidate;
+    final watchAuthSubscription = auth.session.listen((_) {
+      unawaited(watchCandidate.sessionChanged());
+    });
+    ref.onDispose(() {
+      unawaited(watchAuthSubscription.cancel());
+      watchCandidate.dispose();
+    });
+  } catch (_) {
+    watchCandidate.dispose();
+    // Optional room settings must not block normal login and playback.
+  }
   return AppServices(
+    watchTogether: watchTogether,
+    offline: offline,
     auth: auth,
     library: library,
     // The poster URL carries api_key, so it goes straight to dio and never to

@@ -1,0 +1,6 @@
+name: media_player_watch_server
+description: Self-hosted room synchronization for MediaPlayer.
+version: 1.0.0
+publish_to: none
+environment:
+  sdk: '>=3.10.0 <4.0.0'

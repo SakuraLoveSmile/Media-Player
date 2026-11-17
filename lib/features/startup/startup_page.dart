@@ -121,6 +121,13 @@ class _StartupPageState extends ConsumerState<StartupPage> {
                     onPressed: _boot,
                   ),
                 ],
+                const SizedBox(height: AppSpacing.md),
+                TextButton.icon(
+                  key: const Key('startup-offline'),
+                  onPressed: () => context.push(AppRoutes.offline),
+                  icon: const Icon(Icons.offline_pin_outlined),
+                  label: const Text('离线媒体'),
+                ),
               ],
             ),
           ),

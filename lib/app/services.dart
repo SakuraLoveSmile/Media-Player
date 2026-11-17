@@ -4,6 +4,8 @@ import '../core/device/backup_file_picker.dart';
 import '../core/device/local_subtitle_picker.dart';
 import '../core/device/pip.dart';
 import '../data/admin/admin_service.dart';
+import '../data/offline/offline_repository.dart';
+import '../data/watch_together/watch_together_client.dart';
 import '../data/api/emby_http_client.dart';
 import '../data/auth/auth_service.dart';
 import '../data/cast/dlna_cast_service.dart';
@@ -46,7 +48,14 @@ class AppServices {
     this.cast,
     this.screenshotDirectory,
     this.endpointProbe,
+    this.offline,
+    this.watchTogether,
   });
+
+  /// Local media remains available when server restoration fails.
+  final OfflineRepository? offline;
+
+  final WatchTogetherClient? watchTogether;
 
   final AuthService auth;
   final LibraryService library;

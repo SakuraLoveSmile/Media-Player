@@ -1,3 +1,5 @@
+import '../../ui/watch_together_button.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -5,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
+import '../../data/offline/offline_repository.dart';
+import '../../ui/offline_download_button.dart';
 import '../../core/router/app_routes.dart';
 import '../../data/auth/auth_service.dart';
 import '../../data/models/auth_session.dart';
@@ -34,6 +38,7 @@ class _SeasonPageState extends ConsumerState<SeasonPage> {
   final ScrollController _scroll = ScrollController();
   SeasonController? _controller;
   AuthService? _auth;
+  OfflineRepository? _offline;
   StreamSubscription<AuthSession?>? _session;
   bool _redirecting = false;
   bool _leaving = false;
@@ -82,6 +87,7 @@ class _SeasonPageState extends ConsumerState<SeasonPage> {
         return;
       }
       _auth = services.auth;
+      _offline = services.offline;
       _session = services.auth.session.listen((session) {
         if (session == null) _toLogin();
       });
@@ -557,6 +563,9 @@ class _SeasonPageState extends ConsumerState<SeasonPage> {
         _EpisodeCard(
           key: Key('season-episode-${episode.id}'),
           episode: episode,
+          download: _offline == null
+              ? null
+              : OfflineDownloadButton(repository: _offline!, item: episode),
           number: episode.indexNumber ?? index + 1,
           image: _controller!.episodeImage(episode),
           onTap: _openingPlayer ? null : () => unawaited(_play(episode)),
@@ -583,8 +592,10 @@ class _EpisodeCard extends StatelessWidget {
     required this.number,
     required this.image,
     required this.onTap,
+    this.download,
   });
 
+  final Widget? download;
   final MediaItem episode;
   final int number;
   final ImageProvider? image;
@@ -711,8 +722,10 @@ class _EpisodeCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                    WatchTogetherButton(itemId: episode.id, compact: true),
                   ],
                 ),
+                ?download,
                 if (overview != null && overview.trim().isNotEmpty) ...<Widget>[
                   const SizedBox(height: AppSpacing.sm),
                   Text(
