@@ -47,7 +47,7 @@ T1–T3实现完成，保留MP-TT01离线/画质和复制基线的全部用户�
 
 ## 2026-11-17 提交整合与测试版发布
 
-状态：实现中。用户已明确授权整合、提交、推送、合入 main、云构建并发布测试版；不含公网同步服务部署或生产账号/媒体操作。本节更新旧记录中的授权与未发布状态，历史验证只保留为历史证据。
+状态：待体验。用户已明确授权整合、提交、推送、合入 main、云构建并发布测试版；不含公网同步服务部署或生产账号/媒体操作。本节更新旧记录中的授权与未发布状态，历史验证只保留为历史证据。
 
 整合基线 main/origin main `45f92d47dd429fba2f26b85ac833ee43101af882`，主目录干净。旧任务工作树含早期 Yamby 未提交基线，保留只读；为防覆盖其独有成果，新增同任务 integration 工作树 `/Users/sakurasep/Documents/Code/Project/Project Worktree/personal-mediaplayer/20261117-feat-mp-tt01-integration`，分支 `codex/feat/20261117-mp-tt01-integration`。以增量合并到当前 main，保留其后续公网地址、播放器及反馈修复；不重做 UI。
 
@@ -70,3 +70,28 @@ T1–T3实现完成，保留MP-TT01离线/画质和复制基线的全部用户�
 修复结果：独立记录真实buffering状态边沿，仅活跃前台/连接有效且room/item/source匹配时立即同步，保留seek后重读buffering及既有周期对齐。新增后台/断线/房间结束三项ready+buffering回归；旧coordinator下三项均因21次重复apply失败（有限测试护栏避免挂死），修复后三项及定向14项通过。最终全量 `flutter test --no-pub` **1621项全部通过**（`/tmp/mp-tt01-final-tests.log`），analyze无问题，分层守卫/diff检查通过。原生真实WatchTogetherPage→PlayerPage复测可绘制合成视频与响应控件，不再微任务卡死；VM确认ready=true、buffering=false、syncing=false，当前自动化保持app后台，因此按规则paused，不能称作前台放映实测。原生AX树仍有Flutter桥错误，采用截图核对。最终双端自动同步再测与修订版本云门禁继续进行。
 
 最终修复组合态双端原生自动核验全部通过（`/tmp/mp-tt01-final-native-watch.log`）：统一开始、B暂停同步A、暂停seek6s、B后台A继续、B前台重新对齐、最终两端7208ms/paused，偏差0ms。此为本机合成媒体与显式模拟前后台的原生播放器验证，不是跨设备/公网保证。
+
+
+修订提交与收尾：`4f84b4c0e613b0c8d62c4c641dccc65e4b7f2ee4` 已快进合入并推送 main；该SHA的 [app-ci 44032410826](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/44032410826) 分析/测试及 Android/Windows/macOS 构建全部通过。最终发布运行 [44033261315](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/44033261315) 冻结此SHA和版本 `0.4.8+1794895367`，首轮取消构建未生成Release。
+
+已确认停止本轮所有Flutter/原生夹具进程，源归档与文件指纹/原git状态再次一致；旧源工作树和integration工作树均已通过git worktree remove移除，两个已整合本地任务分支删除。只保留主工作区与共享根目录，未删除远端任务分支。integration仅有本轮生成的依赖/构建缓存，验证日志已复制到上述保全目录的evidence；旧源全部历史产物保存在完整tar中。git worktree list及两个实际路径均已核对。
+
+最终门禁计数补充：macOS本机全量1621项通过；Linux CI全量1619项通过、2项既有macOS专属安装器用例跳过（ditto/桌面启动仅适用于macOS），这两项已在本机全量执行。本轮未新增跳过、删测或放宽门禁。本机确认Android SDK目录仍不存在，未重装SDK/ADB/模拟器；macOS验证重新生成的临时构建缓存随integration工作树移除。
+
+
+### 本轮发布完成（2026-11-17）
+
+状态：待体验。离线下载/播放、MPV画质、自建服务一起看均已合入main并发布测试版 [v0.4.8-pilot.1794895367](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.8-pilot.1794895367)。构建目标/标签为 `4f84b4c0e613b0c8d62c4c641dccc65e4b7f2ee4`；[发布44033261315](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/44033261315) 所有校验、三平台构建与发布job成功。Android固定keystore解码与签名构建步骤成功，macOS沿既有内测方式分发；没有安装覆盖用户应用。
+
+已实际下载全部资产，文件大小和SHA256均与GitHub digest及来源清单一致；ZIP/APK完整性检查通过。Release的kaneopilot-release.json与Actions provenance artifact逐字节一致，内含目标SHA/版本/批次/构建运行和三平台摘要；远端tag实际指向目标SHA。macOS包内Info.plist核对0.4.8+1794895367，Release正文与手写更新说明一致。
+
+| 可下载资产 | 字节 | SHA256 |
+|---|---:|---|
+| [kaneopilot-release.json](https://github.com/SakuraLoveSmile/Media-Player/releases/download/v0.4.8-pilot.1794895367/kaneopilot-release.json) | 1103 | `e3b5cb1d706a8ce47fd3663595181ffb48d5fc38c9eab9739ed64b1c8dbd1bcd` |
+| [MediaPlayer-android.apk](https://github.com/SakuraLoveSmile/Media-Player/releases/download/v0.4.8-pilot.1794895367/MediaPlayer-android.apk) | 117527059 | `0cf22b298229050e1cb9e2e97c7d4e292ae872d9fbe490247612fb8f099e30b6` |
+| [MediaPlayer-macos.zip](https://github.com/SakuraLoveSmile/Media-Player/releases/download/v0.4.8-pilot.1794895367/MediaPlayer-macos.zip) | 43352082 | `ca1e44f215df573f71444019ff63dc3334676603b8d0b11b082103b31197b401` |
+| [MediaPlayer-windows-x64.zip](https://github.com/SakuraLoveSmile/Media-Player/releases/download/v0.4.8-pilot.1794895367/MediaPlayer-windows-x64.zip) | 35373762 | `e3aa59f5b74a9ed268197e67269327c94e2a33427d3f8617827d087673d24eb2` |
+
+本地安装包保留在上述保全目录的 `release-assets/`；下载与来源校验记录见 `evidence/published-verification.json`，云端测试日志及本轮原生日志也保留在evidence。两临时worktree及本地任务分支已清理，主目录只追加本发布记录；本记录的文档提交不改变上述已构建代码。
+
+体验入口：设置→下载与离线媒体、设置→MPV播放器；首页/详情/季页→一起看。默认正式版渠道不会提示此预发布，需要切到设置中的预览版渠道或直接从上述链接下载安装。一起看仍需配置用户自己的可信同步服务，运行说明见 `services/watch_together/README.md`。本次未部署公网服务，未操作生产账号/媒体数据。真实Emby权限/多账号、跨设备/公网、Android/Windows原生运行、Docker和前台房间页面完整放映仍需实际环境体验；Mac隔离夹具、构建和单测不替代这些证据。只有用户确认后才转已验收。
