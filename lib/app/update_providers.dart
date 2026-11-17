@@ -387,16 +387,16 @@ class UpdateController extends Notifier<UpdateState> {
   }
 
   /// Clears the pending update and removes temporary download files.
-  void dismiss() {
+  Future<void> dismiss() async {
     final File? file = state.file;
     final CancelToken? token = _downloadToken;
     _downloadToken = null;
     token?.cancel('用户关闭更新');
     ++_generation;
-    if (file != null) {
-      unawaited(_deleteDownloadedFile(file));
-    }
     state = const UpdateState();
+    if (file != null) {
+      await _deleteDownloadedFile(file);
+    }
   }
 
   bool _isCurrent(int generation) => ref.mounted && generation == _generation;

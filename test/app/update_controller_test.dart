@@ -445,8 +445,7 @@ void main() {
       final Directory downloadDir = file.parent;
       expect(await downloadDir.exists(), isTrue);
 
-      controller().dismiss();
-      await pumpEventQueue();
+      await controller().dismiss();
 
       expect(state().status, UpdateStatus.idle);
       expect(state().release, isNull);
