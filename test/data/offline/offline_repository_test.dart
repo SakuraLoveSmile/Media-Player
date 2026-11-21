@@ -12,29 +12,125 @@ import 'offline_test_session.dart';
 
 const movie = MediaItem(id: 'movie', name: '测试电影', type: 'Movie');
 
+/// A second item, so one test can run two original-file downloads whose
+/// completion writes land in the same `index.json` queue.
+const secondMovie = MediaItem(id: 'movie2', name: '测试剧集', type: 'Episode');
+
 /// Resolves real `dart:io` files without re-entering any test override.
 final class _NoOverrides extends IOOverrides {}
 
-/// Pauses the atomic `index.json.tmp` replacement that persists a record with
-/// [status], so a test can assert the in-memory state before the commit lands.
-final class _IndexWriteGate extends IOOverrides {
-  _IndexWriteGate({required this.status, this.failOnHold = false});
+/// Serves the original file of [secondMovie] as well, so two downloads can
+/// reach their commit inside one repository.
+final class _TwoItemSession extends OfflineTestSession {
+  _TwoItemSession(super.base);
 
-  final String status;
-
-  /// Makes the released write throw, to exercise a failing commit.
-  final bool failOnHold;
-  final List<Completer<void>> _held = <Completer<void>>[];
-
-  /// Completes the first time a matching write is held, so a regression fails
-  /// fast instead of waiting for a write that is never paused.
-  final Completer<void> paused = Completer<void>();
-
-  /// Releases every held write, so no failure can leave one pending forever.
-  void open() {
-    for (final completer in _held) {
-      if (!completer.isCompleted) completer.complete();
+  @override
+  Future<Map<String, dynamic>> authorizedGet(Uri url) async {
+    if (!url.path.endsWith('/Items/${secondMovie.id}')) {
+      return super.authorizedGet(url);
     }
+    jsonCalls++;
+    onGet?.call(url);
+    return {
+      'Id': secondMovie.id,
+      'Type': secondMovie.type,
+      'CanDownload': canDownload,
+      'MediaSources': [
+        {
+          'Id': 'source',
+          'Container': container,
+          'Protocol': protocol,
+          'Size': size,
+        },
+      ],
+    };
+  }
+}
+
+/// Holds selected atomic renames and deletions, so a test can observe an
+/// in-flight write without relying on timing.
+final class _RenameGate extends IOOverrides {
+  _RenameGate({this.holdIndexWrite, this.holdPartRename, this.holdDelete});
+
+  /// Holds an `index.json.tmp` replacement whose snapshot matches.
+  final bool Function(String snapshot)? holdIndexWrite;
+
+  /// Holds renaming a finished `*.part` file into place.
+  final bool Function(String from)? holdPartRename;
+
+  /// Holds deleting a file whose path matches.
+  final bool Function(String path)? holdDelete;
+
+  final List<Completer<void>> _index = <Completer<void>>[];
+  final List<Completer<void>> _parts = <Completer<void>>[];
+  final List<Completer<void>> _deletes = <Completer<void>>[];
+  /// Completed the first time each kind of rename is held, so a regression
+  /// fails fast instead of waiting for a rename that is never paused.
+  final Completer<void> indexPaused = Completer<void>();
+  final Completer<void> partPaused = Completer<void>();
+  final Completer<void> deletePaused = Completer<void>();
+
+  /// The replacement that throws once it is released.
+  Completer<void>? _failing;
+
+  int get indexHolds => _index.length;
+  int get partHolds => _parts.length;
+
+  Completer<void> holdIndex() {
+    final hold = Completer<void>();
+    _index.add(hold);
+    if (!indexPaused.isCompleted) indexPaused.complete();
+    return hold;
+  }
+
+  Completer<void> holdPart() {
+    final hold = Completer<void>();
+    _parts.add(hold);
+    if (!partPaused.isCompleted) partPaused.complete();
+    return hold;
+  }
+
+  Completer<void> parkDelete() {
+    final hold = Completer<void>();
+    _deletes.add(hold);
+    if (!deletePaused.isCompleted) deletePaused.complete();
+    return hold;
+  }
+
+  /// Releases parked part renames, so that download can queue its completion
+  /// write behind a held replacement.
+  void openParts() {
+    for (final hold in _parts) {
+      if (!hold.isCompleted) hold.complete();
+    }
+  }
+
+  /// Releases parked file deletions.
+  void openDeletes() {
+    for (final hold in _deletes) {
+      if (!hold.isCompleted) hold.complete();
+    }
+  }
+
+  /// Releases every held replacement without failing any of them.
+  void openIndex() {
+    for (final hold in _index) {
+      if (!hold.isCompleted) hold.complete();
+    }
+  }
+
+  /// Releases the held replacements, failing the first still-pending one with an
+  /// injected `FileSystemException`.
+  void failFirstIndex() {
+    _failing = _index.where((hold) => !hold.isCompleted).firstOrNull;
+    openIndex();
+  }
+
+  /// Releases everything, so no failure can leave a hold pending forever.
+  void open() {
+    openParts();
+    openDeletes();
+    openIndex();
   }
 
   /// Installs the gate process-wide: the index write runs from the repository's
@@ -52,28 +148,37 @@ final class _IndexWriteGate extends IOOverrides {
   File createFile(String path) => _GateFile(path, this);
 }
 
-/// Delegates to the real file except for a matching `index.json.tmp` rename.
+/// Delegates to the real file, holding or failing the renames the gate selects.
 class _GateFile extends _DelegatingFile {
   _GateFile(super.path, this._gate);
-  final _IndexWriteGate _gate;
+  final _RenameGate _gate;
+
+  @override
+  Future<FileSystemEntity> delete({bool recursive = false}) async {
+    if (_gate.holdDelete?.call(path) ?? false) {
+      await _gate.parkDelete().future;
+    }
+    return super.delete(recursive: recursive);
+  }
 
   @override
   Future<File> rename(String newPath) async {
-    if (path.endsWith('index.json.tmp') &&
-        (await readAsString()).contains('"status":"${_gate.status}"')) {
-      final held = Completer<void>();
-      _gate._held.add(held);
-      if (!_gate.paused.isCompleted) _gate.paused.complete();
-      await held.future;
-      if (_gate.failOnHold && !_failed) {
-        _failed = true;
-        throw const FileSystemException('injected commit write failure');
+    if (path.endsWith('index.json.tmp')) {
+      final matches = _gate.holdIndexWrite;
+      if (matches != null && matches(await readAsString())) {
+        final hold = _gate.holdIndex();
+        await hold.future;
+        if (identical(_gate._failing, hold)) {
+          _gate._failing = null;
+          throw const FileSystemException('injected commit write failure');
+        }
       }
+    } else if (path.endsWith('.part') &&
+        (_gate.holdPartRename?.call(path) ?? false)) {
+      await _gate.holdPart().future;
     }
     return super.rename(newPath);
   }
-
-  bool _failed = false;
 }
 
 /// A [File] that forwards every operation to the real file at [path].
@@ -239,6 +344,11 @@ void main() {
   late OfflineTestSession session;
   late OfflineRepository repository;
   late bool stall;
+  /// Stream requests that stay open after their first 4 bytes, so a test can
+  /// park one download mid-transfer while another finishes.
+  late int stallStreams;
+  /// When set, a stalled response continues once this completes.
+  Completer<void>? stallRelease;
   late bool ignoreRange;
   late bool badRange;
   late bool redirect;
@@ -250,9 +360,11 @@ void main() {
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('offline-test-');
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    session = OfflineTestSession('http://127.0.0.1:${server.port}');
+    session = _TwoItemSession('http://127.0.0.1:${server.port}');
     repository = OfflineRepository(directory: directory, session: session);
     stall = false;
+    stallStreams = 0;
+    stallRelease = null;
     ignoreRange = false;
     badRange = false;
     redirect = false;
@@ -264,7 +376,10 @@ void main() {
       ranges.add(request.headers.value(HttpHeaders.rangeHeader));
       tokens.add(request.headers.value('X-Emby-Token'));
       onBinary?.call();
-      expect(request.uri.path, '/Videos/movie/stream');
+      expect(
+        request.uri.path,
+        anyOf('/Videos/movie/stream', '/Videos/${secondMovie.id}/stream'),
+      );
       expect(request.uri.queryParameters, {
         'Static': 'true',
         'MediaSourceId': 'source',
@@ -300,10 +415,17 @@ void main() {
       response.headers.set(HttpHeaders.etagHeader, '"v1"');
       response.contentLength = 12 - offset;
       try {
-        if (stall) {
+        if (stall || stallStreams > 0) {
+          if (stallStreams > 0) stallStreams--;
           response.add(data.sublist(offset, offset + 4));
           await response.flush();
-          // The response remains open until the client pauses it.
+          final release = stallRelease;
+          if (release != null) {
+            await release.future;
+            response.add(data.sublist(offset + 4));
+            await response.close();
+          }
+          // Otherwise the response stays open until the client pauses it.
         } else {
           response.add(data.sublist(offset));
           await response.close();
@@ -431,11 +553,13 @@ void main() {
   test('complete file is available after restart without a session', () async {
     // Hold the atomic `index.json` replacement that persists the completed
     // record: a restart in that window must never resurrect a finished file.
-    final gate = _IndexWriteGate(status: 'complete');
+    final gate = _RenameGate(
+      holdIndexWrite: (snapshot) => snapshot.contains('"status":"complete"'),
+    );
     final previous = gate.install();
     try {
       await repository.enqueue(movie);
-      await gate.paused.future.timeout(
+      await gate.indexPaused.future.timeout(
         const Duration(seconds: 10),
         onTimeout: () => fail('The completed index write was never paused'),
       );
@@ -663,16 +787,18 @@ void main() {
   test('a commit that cannot save its record fails closed', () async {
     // The rename succeeds but persisting `complete` throws: the entry must not
     // claim a readable file, and a restart must not resurrect it as complete.
-    final gate = _IndexWriteGate(status: 'complete', failOnHold: true);
+    final gate = _RenameGate(
+      holdIndexWrite: (snapshot) => snapshot.contains('"status":"complete"'),
+    );
     final previous = gate.install();
     try {
       await repository.enqueue(movie);
-      await gate.paused.future.timeout(
+      await gate.indexPaused.future.timeout(
         const Duration(seconds: 10),
         onTimeout: () => fail('The completed index write was never paused'),
       );
     } finally {
-      gate.open();
+      gate.failFirstIndex();
       gate.restore(previous);
     }
     await waitFor(
@@ -688,5 +814,143 @@ void main() {
     await repository.initialize();
     expect(repository.entries.single.id, id);
     expect(repository.entries.single.status, isNot(OfflineStatus.complete));
+  });
+
+  test(
+    'a failing completion write cannot persist another queued completion',
+    () async {
+      // A finishes its transfer first, but its `index.json` replacement is
+      // held. B then finishes and queues its own completion behind that held
+      // write. Disposing the repository and failing A's replacement must leave
+      // A unpersisted while B keeps a readable completed record.
+      stallStreams = 1;
+      stallRelease = Completer<void>();
+      await repository.enqueue(movie);
+      await waitFor(() {
+        final entry = repository.entries.single;
+        if (entry.status == OfflineStatus.failed) {
+          fail('Download failed: ${entry.error}');
+        }
+        return entry.received == 4;
+      });
+      final firstId = repository.entries.single.id;
+      var heldPart = false;
+      final gate = _RenameGate(
+        // Park whichever download finishes first, before it queues its commit.
+        holdPartRename: (from) {
+          if (heldPart || !from.endsWith('.part')) return false;
+          return heldPart = true;
+        },
+        holdIndexWrite: (snapshot) =>
+            (jsonDecode(snapshot) as List<dynamic>).any(
+              (raw) =>
+                  (raw as Map<String, dynamic>)['id'] == firstId &&
+                  raw['status'] == OfflineStatus.complete.name,
+            ),
+      );
+      late String secondId;
+      final previous = gate.install();
+      try {
+        await repository.enqueue(secondMovie);
+        secondId = repository.entries
+            .firstWhere((e) => e.itemId == secondMovie.id)
+            .id;
+        await gate.partPaused.future.timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => fail('The finished part was never held'),
+        );
+        // Let A finish: its completion write is now held, with B parked right
+        // before the write that must queue behind it.
+        stallRelease!.complete();
+        await gate.indexPaused.future.timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => fail('The failing completion write was never held'),
+        );
+        gate.openParts();
+        await waitFor(
+          () => File('${directory.path}/$secondId.mkv').existsSync(),
+        );
+        for (var i = 0; i < 10; i++) {
+          // Let B's completion write reach the queue; the assertions below do
+          // not depend on how far it got, only on what is persisted.
+          await Future<void>.delayed(Duration.zero);
+        }
+        repository.dispose();
+        gate.failFirstIndex();
+      } finally {
+        gate.open();
+        gate.restore(previous);
+      }
+      final index = File('${directory.path}/index.json');
+      await waitFor(() {
+        if (!index.existsSync()) return false;
+        return (jsonDecode(index.readAsStringSync()) as List<dynamic>).any(
+          (raw) =>
+              (raw as Map<String, dynamic>)['id'] == secondId &&
+              raw['status'] == OfflineStatus.complete.name,
+        );
+      });
+      // No login session: a restart can only rely on the persisted index.
+      session.endpoint = null;
+      session.accessToken = null;
+      session.userId = null;
+      final calls = session.jsonCalls;
+      final downloads = List<String?>.of(tokens);
+      repository = OfflineRepository(directory: directory, session: session);
+      await repository.initialize();
+      expect(session.jsonCalls, calls);
+      expect(tokens, downloads);
+      final failed = repository.entries.firstWhere((e) => e.id == firstId);
+      expect(failed.status, isNot(OfflineStatus.complete));
+      await expectLater(repository.completedFile(firstId), throwsStateError);
+      final complete = repository.entries.firstWhere((e) => e.id == secondId);
+      expect(complete.id, secondId);
+      expect(complete.status, OfflineStatus.complete);
+      expect(
+        await (await repository.completedFile(secondId)).readAsBytes(),
+        data,
+      );
+    },
+  );
+
+  test('a removal queued before dispose still lands', () async {
+    await repository.enqueue(movie);
+    await waitFor(
+      () => repository.entries.single.status == OfflineStatus.complete,
+    );
+    final id = repository.entries.single.id;
+    // Park the removal right before the index write it still owes, so that
+    // write is only queued once the repository is already disposed.
+    final gate = _RenameGate(holdDelete: (path) => path.endsWith('$id.mkv'));
+    final previous = gate.install();
+    late Future<void> removal;
+    try {
+      removal = repository.remove(id);
+      await gate.deletePaused.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => fail('The removal never reached its file deletion'),
+      );
+      repository.dispose();
+    } finally {
+      gate.open();
+      gate.restore(previous);
+    }
+    await removal;
+    final index = File('${directory.path}/index.json');
+    // The removal only completes once its queued index write landed.
+    expect(jsonDecode(await index.readAsString()), isEmpty);
+    expect(
+      await directory.list().where((e) => e.path.contains(id)).isEmpty,
+      isTrue,
+    );
+    // No login session: a restart can only rely on the persisted index, which
+    // must not keep a record pointing at the deleted file.
+    session.endpoint = null;
+    session.accessToken = null;
+    session.userId = null;
+    repository = OfflineRepository(directory: directory, session: session);
+    await repository.initialize();
+    expect(repository.entries, isEmpty);
+    expect(jsonDecode(await index.readAsString()), isEmpty);
   });
 }

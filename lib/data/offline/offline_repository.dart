@@ -24,10 +24,9 @@ class OfflineRepository extends ChangeNotifier {
   final Future<void> Function()? onUnauthorized;
   final List<OfflineEntry> _entries = <OfflineEntry>[];
   final Map<String, _Transfer> _active = <String, _Transfer>{};
+  /// Serializes atomic `index.json` replacements: every queued operation takes
+  /// its snapshot when it runs, so it persists exactly the state it observes.
   Future<void> _writes = Future<void>.value();
-  /// Records whose finished file is on disk but whose memory status may still
-  /// be in flight, so no queued snapshot can persist them as unfinished.
-  Set<String> _committed = <String>{};
   bool _disposed = false;
   Future<void>? _initializing;
   String? initializationError;
@@ -252,8 +251,6 @@ class OfflineRepository extends ChangeNotifier {
     transfer.done = _start(entry, transfer);
     unawaited(transfer.done);
     _notify();
-    // A resumed record is unfinished again until its next commit lands.
-    _committed = {..._committed}..remove(id);
   }
 
   Future<void> _start(OfflineEntry entry, _Transfer transfer) async {
@@ -261,7 +258,8 @@ class OfflineRepository extends ChangeNotifier {
       await _save();
       if (!transfer.cancelled) await _run(entry, transfer);
     } catch (_) {
-      _committed = {..._committed}..remove(entry.id);
+      // The download could not even be recorded: fail closed before any later
+      // snapshot is taken, so no queued write can persist it as complete.
       entry.status = OfflineStatus.failed;
       entry.error = '无法保存下载记录，请检查磁盘空间和目录权限';
     } finally {
@@ -405,8 +403,9 @@ class OfflineRepository extends ChangeNotifier {
         await _commit(entry, transfer, part);
       }
     } catch (error) {
-      // A failed commit must not keep claiming a finished file on disk.
-      _committed = {..._committed}..remove(entry.id);
+      // A failed commit must not keep claiming a finished file on disk; the
+      // queued write already moved this record to `failed` before any later
+      // snapshot was taken.
       transfer.committing = false;
       if (!transfer.cancelled) {
         entry.status = OfflineStatus.failed;
@@ -419,8 +418,8 @@ class OfflineRepository extends ChangeNotifier {
     } finally {
       await output?.close();
       transfer.http?.close(force: true);
-      // A committed download already persisted `complete` and updated memory;
-      // do not overwrite that record with a stale in-flight snapshot.
+      // A committed download already settled `complete` inside its queued
+      // write; do not enqueue another snapshot for it.
       if (!transfer.committing) {
         if (entry.status == OfflineStatus.downloading) {
           entry.status = OfflineStatus.paused;
@@ -432,10 +431,12 @@ class OfflineRepository extends ChangeNotifier {
     }
   }
 
-  /// Finishes a complete download: rename the part into place, atomically
-  /// persist the completed record, then update memory and notify. The record is
-  /// written first so a restart never observes a finished file behind a stale
-  /// `downloading` entry, and dispose() never aborts this final write.
+  /// Finishes a complete download: rename the part into place, then queue the
+  /// atomic record replacement. That queued write persists this record as
+  /// `complete` and flips its memory status in the same operation, so memory
+  /// never claims a finished file before the index does. A restart inside the
+  /// window between the rename and that replacement still turns the record into
+  /// `paused`. The notification is left to `_start`.
   Future<void> _commit(
     OfflineEntry entry,
     _Transfer transfer,
@@ -443,11 +444,10 @@ class OfflineRepository extends ChangeNotifier {
   ) async {
     transfer.committing = true;
     await part.rename(_file(entry).path);
-    _committed = {..._committed, entry.id};
-    await _save(completed: entry.id);
-    entry.status = OfflineStatus.complete;
-    entry.error = null;
-    _notify();
+    // The queued replacement records this commit as `complete` and settles the
+    // in-memory status once the atomic swap succeeded, so memory and every later
+    // snapshot agree with the file that is already on disk.
+    await _save(completing: entry.id);
   }
 
   Future<void> pause(String id) async {
@@ -488,31 +488,54 @@ class OfflineRepository extends ChangeNotifier {
     return file;
   }
 
-  /// Queues an atomic `index.json` replacement. A record named by [completed]
-  /// is the commit of a finished download: it is persisted as `complete` and
-  /// written even after dispose(), so a restart can never see a finished file
-  /// behind an in-flight status.
-  Future<void> _save({String? completed}) {
-    final committed = completed == null
-        ? _committed
-        : ({..._committed, completed});
-    final snapshot = jsonEncode(
-      _entries
-          .map(
-            (e) => committed.contains(e.id)
-                ? {...e.toJson(), 'status': OfflineStatus.complete.name}
-                : e.toJson(),
-          )
-          .toList(),
-    );
+  /// Queues an atomic `index.json` replacement. The snapshot is produced when
+  /// the queued operation runs, never when it is queued, so what lands on disk
+  /// always matches the state observed at that point of the queue.
+  ///
+  /// A record named by [completing] is the commit of a finished download: only
+  /// that record is written as `complete`, and its memory status changes inside
+  /// this same queued operation once the replacement succeeded. A failed
+  /// replacement transitions the record before the next snapshot is taken, so no
+  /// later write can persist it as complete. Queued writes always land, even
+  /// after dispose(), because a restart must never resurrect a deleted record or
+  /// lose a finished file.
+  Future<void> _save({String? completing}) {
     final result = _writes.then((_) async {
-      if (_disposed && completed == null) return;
+      final snapshot = jsonEncode(
+        _entries
+            .map(
+              (e) => e.id == completing
+                  ? {...e.toJson(), 'status': OfflineStatus.complete.name}
+                  : e.toJson(),
+            )
+            .toList(),
+      );
       final temporary = File('${_index.path}.tmp');
-      await temporary.writeAsString(snapshot, flush: true);
-      await temporary.rename(_index.path);
+      try {
+        await temporary.writeAsString(snapshot, flush: true);
+        await temporary.rename(_index.path);
+      } catch (_) {
+        _settle(
+          completing,
+          OfflineStatus.failed,
+          '无法保存下载记录，请检查磁盘空间和目录权限',
+        );
+        rethrow;
+      }
+      _settle(completing, OfflineStatus.complete, null);
     });
     _writes = result.catchError((Object _) {});
     return result;
+  }
+
+  /// Applies the outcome of a queued commit to memory, once, inside the queued
+  /// operation so any following snapshot sees it.
+  void _settle(String? id, OfflineStatus status, String? error) {
+    if (id == null) return;
+    final entry = _entries.where((e) => e.id == id).firstOrNull;
+    if (entry == null) return;
+    entry.status = status;
+    entry.error = error;
   }
 
   void _notify() {
