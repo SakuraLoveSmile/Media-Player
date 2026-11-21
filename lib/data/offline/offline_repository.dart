@@ -25,6 +25,9 @@ class OfflineRepository extends ChangeNotifier {
   final List<OfflineEntry> _entries = <OfflineEntry>[];
   final Map<String, _Transfer> _active = <String, _Transfer>{};
   Future<void> _writes = Future<void>.value();
+  /// Records whose finished file is on disk but whose memory status may still
+  /// be in flight, so no queued snapshot can persist them as unfinished.
+  Set<String> _committed = <String>{};
   bool _disposed = false;
   Future<void>? _initializing;
   String? initializationError;
@@ -249,6 +252,8 @@ class OfflineRepository extends ChangeNotifier {
     transfer.done = _start(entry, transfer);
     unawaited(transfer.done);
     _notify();
+    // A resumed record is unfinished again until its next commit lands.
+    _committed = {..._committed}..remove(id);
   }
 
   Future<void> _start(OfflineEntry entry, _Transfer transfer) async {
@@ -256,6 +261,7 @@ class OfflineRepository extends ChangeNotifier {
       await _save();
       if (!transfer.cancelled) await _run(entry, transfer);
     } catch (_) {
+      _committed = {..._committed}..remove(entry.id);
       entry.status = OfflineStatus.failed;
       entry.error = '无法保存下载记录，请检查磁盘空间和目录权限';
     } finally {
@@ -396,10 +402,12 @@ class OfflineRepository extends ChangeNotifier {
             await part.length() != entry.total) {
           throw StateError('连接中断，文件未完整下载，可继续重试');
         }
-        await part.rename(_file(entry).path);
-        entry.status = OfflineStatus.complete;
+        await _commit(entry, transfer, part);
       }
     } catch (error) {
+      // A failed commit must not keep claiming a finished file on disk.
+      _committed = {..._committed}..remove(entry.id);
+      transfer.committing = false;
       if (!transfer.cancelled) {
         entry.status = OfflineStatus.failed;
         // Only our own StateError messages are user-safe; never persist URI,
@@ -411,13 +419,35 @@ class OfflineRepository extends ChangeNotifier {
     } finally {
       await output?.close();
       transfer.http?.close(force: true);
-      if (entry.status == OfflineStatus.downloading) {
-        entry.status = OfflineStatus.paused;
-      }
-      if (!_disposed) {
-        await _save();
+      // A committed download already persisted `complete` and updated memory;
+      // do not overwrite that record with a stale in-flight snapshot.
+      if (!transfer.committing) {
+        if (entry.status == OfflineStatus.downloading) {
+          entry.status = OfflineStatus.paused;
+        }
+        if (!_disposed) {
+          await _save();
+        }
       }
     }
+  }
+
+  /// Finishes a complete download: rename the part into place, atomically
+  /// persist the completed record, then update memory and notify. The record is
+  /// written first so a restart never observes a finished file behind a stale
+  /// `downloading` entry, and dispose() never aborts this final write.
+  Future<void> _commit(
+    OfflineEntry entry,
+    _Transfer transfer,
+    File part,
+  ) async {
+    transfer.committing = true;
+    await part.rename(_file(entry).path);
+    _committed = {..._committed, entry.id};
+    await _save(completed: entry.id);
+    entry.status = OfflineStatus.complete;
+    entry.error = null;
+    _notify();
   }
 
   Future<void> pause(String id) async {
@@ -458,9 +488,25 @@ class OfflineRepository extends ChangeNotifier {
     return file;
   }
 
-  Future<void> _save() {
-    final snapshot = jsonEncode(_entries.map((e) => e.toJson()).toList());
+  /// Queues an atomic `index.json` replacement. A record named by [completed]
+  /// is the commit of a finished download: it is persisted as `complete` and
+  /// written even after dispose(), so a restart can never see a finished file
+  /// behind an in-flight status.
+  Future<void> _save({String? completed}) {
+    final committed = completed == null
+        ? _committed
+        : ({..._committed, completed});
+    final snapshot = jsonEncode(
+      _entries
+          .map(
+            (e) => committed.contains(e.id)
+                ? {...e.toJson(), 'status': OfflineStatus.complete.name}
+                : e.toJson(),
+          )
+          .toList(),
+    );
     final result = _writes.then((_) async {
+      if (_disposed && completed == null) return;
       final temporary = File('${_index.path}.tmp');
       await temporary.writeAsString(snapshot, flush: true);
       await temporary.rename(_index.path);
@@ -488,4 +534,7 @@ class _Transfer {
   bool cancelled = false;
   HttpClient? http;
   Future<void>? done;
+
+  /// True from the first commit step until the completed record is persisted.
+  bool committing = false;
 }

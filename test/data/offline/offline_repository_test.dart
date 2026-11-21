@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_player/data/models/media_item.dart';
@@ -10,6 +11,217 @@ import 'package:media_player/data/offline/offline_repository.dart';
 import 'offline_test_session.dart';
 
 const movie = MediaItem(id: 'movie', name: '测试电影', type: 'Movie');
+
+/// Resolves real `dart:io` files without re-entering any test override.
+final class _NoOverrides extends IOOverrides {}
+
+/// Pauses the atomic `index.json.tmp` replacement that persists a record with
+/// [status], so a test can assert the in-memory state before the commit lands.
+final class _IndexWriteGate extends IOOverrides {
+  _IndexWriteGate({required this.status, this.failOnHold = false});
+
+  final String status;
+
+  /// Makes the released write throw, to exercise a failing commit.
+  final bool failOnHold;
+  final List<Completer<void>> _held = <Completer<void>>[];
+
+  /// Completes the first time a matching write is held, so a regression fails
+  /// fast instead of waiting for a write that is never paused.
+  final Completer<void> paused = Completer<void>();
+
+  /// Releases every held write, so no failure can leave one pending forever.
+  void open() {
+    for (final completer in _held) {
+      if (!completer.isCompleted) completer.complete();
+    }
+  }
+
+  /// Installs the gate process-wide: the index write runs from the repository's
+  /// own future continuation, which a zone-scoped override would never reach.
+  IOOverrides? install() {
+    final previous = IOOverrides.current;
+    IOOverrides.global = this;
+    return previous;
+  }
+
+  /// Restores the overrides that were active before [install].
+  void restore(IOOverrides? previous) => IOOverrides.global = previous;
+
+  @override
+  File createFile(String path) => _GateFile(path, this);
+}
+
+/// Delegates to the real file except for a matching `index.json.tmp` rename.
+class _GateFile extends _DelegatingFile {
+  _GateFile(super.path, this._gate);
+  final _IndexWriteGate _gate;
+
+  @override
+  Future<File> rename(String newPath) async {
+    if (path.endsWith('index.json.tmp') &&
+        (await readAsString()).contains('"status":"${_gate.status}"')) {
+      final held = Completer<void>();
+      _gate._held.add(held);
+      if (!_gate.paused.isCompleted) _gate.paused.complete();
+      await held.future;
+      if (_gate.failOnHold && !_failed) {
+        _failed = true;
+        throw const FileSystemException('injected commit write failure');
+      }
+    }
+    return super.rename(newPath);
+  }
+
+  bool _failed = false;
+}
+
+/// A [File] that forwards every operation to the real file at [path].
+class _DelegatingFile implements File {
+  _DelegatingFile(this.path);
+
+  @override
+  final String path;
+
+  /// Built outside the gate's zone, so delegation can never recurse into itself.
+  File get _target =>
+      IOOverrides.runWithIOOverrides(() => File(path), _NoOverrides());
+
+  @override
+  Future<File> create({bool recursive = false, bool exclusive = false}) =>
+      _target.create(recursive: recursive, exclusive: exclusive);
+  @override
+  void createSync({bool recursive = false, bool exclusive = false}) =>
+      _target.createSync(recursive: recursive, exclusive: exclusive);
+  @override
+  Future<File> copy(String newPath) => _target.copy(newPath);
+  @override
+  File copySync(String newPath) => _target.copySync(newPath);
+  @override
+  Future<File> rename(String newPath) => _target.rename(newPath);
+  @override
+  File renameSync(String newPath) => _target.renameSync(newPath);
+  @override
+  Future<FileSystemEntity> delete({bool recursive = false}) =>
+      _target.delete(recursive: recursive);
+  @override
+  void deleteSync({bool recursive = false}) =>
+      _target.deleteSync(recursive: recursive);
+  @override
+  Future<bool> exists() => _target.exists();
+  @override
+  bool existsSync() => _target.existsSync();
+  @override
+  Future<int> length() => _target.length();
+  @override
+  int lengthSync() => _target.lengthSync();
+  @override
+  Future<DateTime> lastAccessed() => _target.lastAccessed();
+  @override
+  DateTime lastAccessedSync() => _target.lastAccessedSync();
+  @override
+  Future setLastAccessed(DateTime time) => _target.setLastAccessed(time);
+  @override
+  void setLastAccessedSync(DateTime time) => _target.setLastAccessedSync(time);
+  @override
+  Future<DateTime> lastModified() => _target.lastModified();
+  @override
+  DateTime lastModifiedSync() => _target.lastModifiedSync();
+  @override
+  Future setLastModified(DateTime time) => _target.setLastModified(time);
+  @override
+  void setLastModifiedSync(DateTime time) => _target.setLastModifiedSync(time);
+  @override
+  RandomAccessFile openSync({FileMode mode = FileMode.read}) =>
+      _target.openSync(mode: mode);
+  @override
+  Future<RandomAccessFile> open({FileMode mode = FileMode.read}) =>
+      _target.open(mode: mode);
+  @override
+  Stream<List<int>> openRead([int? start, int? end]) =>
+      _target.openRead(start, end);
+  @override
+  IOSink openWrite({
+    FileMode mode = FileMode.write,
+    Encoding encoding = utf8,
+  }) => _target.openWrite(mode: mode, encoding: encoding);
+  @override
+  Future<Uint8List> readAsBytes() => _target.readAsBytes();
+  @override
+  Uint8List readAsBytesSync() => _target.readAsBytesSync();
+  @override
+  Future<String> readAsString({Encoding encoding = utf8}) =>
+      _target.readAsString(encoding: encoding);
+  @override
+  String readAsStringSync({Encoding encoding = utf8}) =>
+      _target.readAsStringSync(encoding: encoding);
+  @override
+  Future<List<String>> readAsLines({Encoding encoding = utf8}) =>
+      _target.readAsLines(encoding: encoding);
+  @override
+  List<String> readAsLinesSync({Encoding encoding = utf8}) =>
+      _target.readAsLinesSync(encoding: encoding);
+  @override
+  Future<File> writeAsBytes(
+    List<int> bytes, {
+    FileMode mode = FileMode.write,
+    bool flush = false,
+  }) => _target.writeAsBytes(bytes, mode: mode, flush: flush);
+  @override
+  void writeAsBytesSync(
+    List<int> bytes, {
+    FileMode mode = FileMode.write,
+    bool flush = false,
+  }) => _target.writeAsBytesSync(bytes, mode: mode, flush: flush);
+  @override
+  Future<File> writeAsString(
+    String contents, {
+    FileMode mode = FileMode.write,
+    Encoding encoding = utf8,
+    bool flush = false,
+  }) => _target.writeAsString(
+    contents,
+    mode: mode,
+    encoding: encoding,
+    flush: flush,
+  );
+  @override
+  void writeAsStringSync(
+    String contents, {
+    FileMode mode = FileMode.write,
+    Encoding encoding = utf8,
+    bool flush = false,
+  }) => _target.writeAsStringSync(
+    contents,
+    mode: mode,
+    encoding: encoding,
+    flush: flush,
+  );
+  @override
+  Future<FileStat> stat() => _target.stat();
+  @override
+  FileStat statSync() => _target.statSync();
+  @override
+  Future<String> resolveSymbolicLinks() => _target.resolveSymbolicLinks();
+  @override
+  String resolveSymbolicLinksSync() => _target.resolveSymbolicLinksSync();
+  @override
+  Stream<FileSystemEvent> watch({
+    int events = FileSystemEvent.all,
+    bool recursive = false,
+  }) => _target.watch(events: events, recursive: recursive);
+  @override
+  Uri get uri => _target.uri;
+  @override
+  File get absolute => _target.absolute;
+  @override
+  Directory get parent => _target.parent;
+  @override
+  bool get isAbsolute => _target.isAbsolute;
+  @override
+  String toString() => _target.toString();
+}
+
 
 Future<void> waitFor(bool Function() condition) async {
   final deadline = DateTime.now().add(const Duration(seconds: 5));
@@ -217,20 +429,42 @@ void main() {
   );
 
   test('complete file is available after restart without a session', () async {
-    await repository.enqueue(movie);
+    // Hold the atomic `index.json` replacement that persists the completed
+    // record: a restart in that window must never resurrect a finished file.
+    final gate = _IndexWriteGate(status: 'complete');
+    final previous = gate.install();
+    try {
+      await repository.enqueue(movie);
+      await gate.paused.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => fail('The completed index write was never paused'),
+      );
+      // The part was already renamed, yet the record must still be in flight.
+      expect(repository.entries.single.status, OfflineStatus.downloading);
+    } finally {
+      gate.open();
+      gate.restore(previous);
+    }
+    final id = repository.entries.single.id;
     await waitFor(
       () => repository.entries.single.status == OfflineStatus.complete,
     );
-    final id = repository.entries.single.id;
+    // First observation of `complete` is the restart point: dispose right here,
+    // with the index already atomically replaced by the commit.
+    expect(tokens, ['secret-token']);
     repository.dispose();
     session.endpoint = null;
     session.accessToken = null;
     session.userId = null;
     final calls = session.jsonCalls;
+    final downloads = List<String?>.of(tokens);
     repository = OfflineRepository(directory: directory, session: session);
     await repository.initialize();
+    expect(repository.entries.single.id, id);
+    expect(repository.entries.single.status, OfflineStatus.complete);
     expect(await (await repository.completedFile(id)).readAsBytes(), data);
     expect(session.jsonCalls, calls);
+    expect(tokens, downloads);
     await repository.remove(id);
     expect(repository.entries, isEmpty);
     expect(
@@ -425,4 +659,34 @@ void main() {
       expect(session.accessToken, 'replacement-token');
     },
   );
+
+  test('a commit that cannot save its record fails closed', () async {
+    // The rename succeeds but persisting `complete` throws: the entry must not
+    // claim a readable file, and a restart must not resurrect it as complete.
+    final gate = _IndexWriteGate(status: 'complete', failOnHold: true);
+    final previous = gate.install();
+    try {
+      await repository.enqueue(movie);
+      await gate.paused.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => fail('The completed index write was never paused'),
+      );
+    } finally {
+      gate.open();
+      gate.restore(previous);
+    }
+    await waitFor(
+      () => repository.entries.single.status == OfflineStatus.failed,
+    );
+    await expectLater(
+      repository.completedFile(repository.entries.single.id),
+      throwsStateError,
+    );
+    final id = repository.entries.single.id;
+    repository.dispose();
+    repository = OfflineRepository(directory: directory, session: session);
+    await repository.initialize();
+    expect(repository.entries.single.id, id);
+    expect(repository.entries.single.status, isNot(OfflineStatus.complete));
+  });
 }
