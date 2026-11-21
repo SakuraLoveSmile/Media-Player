@@ -70,6 +70,11 @@ final class _RenameGate extends IOOverrides {
   final Completer<void> partPaused = Completer<void>();
   final Completer<void> deletePaused = Completer<void>();
 
+  /// The `index.json` contents each read returned, in order. A repository that
+  /// starts reading the index while another one still owes a write is visible
+  /// here.
+  final List<String> indexReads = <String>[];
+
   /// The replacement that throws once it is released.
   Completer<void>? _failing;
 
@@ -178,6 +183,13 @@ class _GateFile extends _DelegatingFile {
       await _gate.holdPart().future;
     }
     return super.rename(newPath);
+  }
+
+  @override
+  Future<String> readAsString({Encoding encoding = utf8}) async {
+    final contents = await super.readAsString(encoding: encoding);
+    if (path.endsWith('index.json')) _gate.indexReads.add(contents);
+    return contents;
   }
 }
 
@@ -335,6 +347,15 @@ Future<void> waitFor(bool Function() condition) async {
       fail('Timed out awaiting download state');
     }
     await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
+/// Lets queued microtasks and zero-delay timers run for a bounded number of
+/// event-loop turns. Used to observe that a reopened repository is still
+/// blocked, without treating the wait as a timing guarantee for the outcome.
+Future<void> pumpEventLoop([int turns = 40]) async {
+  for (var i = 0; i < turns; i++) {
+    await Future<void>.delayed(Duration.zero);
   }
 }
 
@@ -953,4 +974,152 @@ void main() {
     expect(repository.entries, isEmpty);
     expect(jsonDecode(await index.readAsString()), isEmpty);
   });
+
+  test(
+    'a completion in flight when the directory reopens keeps both files',
+    () async {
+      // A is already complete and settled on disk.
+      await repository.enqueue(movie);
+      await waitFor(
+        () => repository.entries.single.status == OfflineStatus.complete,
+      );
+      final firstId = repository.entries.single.id;
+      // B renames its part into place, but its `complete` record is only about
+      // to be queued: the reopen below lands inside that exact window.
+      var heldOnce = false;
+      final gate = _RenameGate(
+        holdIndexWrite: (snapshot) {
+          if (heldOnce) return false;
+          final holds = (jsonDecode(snapshot) as List<dynamic>).any(
+            (raw) =>
+                (raw as Map<String, dynamic>)['itemId'] == secondMovie.id &&
+                raw['status'] == OfflineStatus.complete.name,
+          );
+          return heldOnce = holds;
+        },
+      );
+      final previous = gate.install();
+      late OfflineRepository reopened;
+      try {
+        await repository.enqueue(secondMovie);
+        final secondId = repository.entries
+            .firstWhere((e) => e.itemId == secondMovie.id)
+            .id;
+        await gate.indexPaused.future.timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => fail('The completion write was never held'),
+        );
+        // The finished file is already in place; only its record is in flight.
+        expect(File('${directory.path}/$secondId.mkv').existsSync(), isTrue);
+        // Restart with no login session: only the directory can be trusted.
+        session.endpoint = null;
+        session.accessToken = null;
+        session.userId = null;
+        final calls = session.jsonCalls;
+        final downloads = List<String?>.of(tokens);
+        repository.dispose();
+        reopened = OfflineRepository(directory: directory, session: session);
+        // Handed to tearDown immediately, so a failure below cannot dispose the
+        // repository that was already disposed above.
+        repository = reopened;
+        var settled = false;
+        final reopening = reopened.initialize();
+        unawaited(
+          reopening.then(
+            (_) => settled = true,
+            onError: (Object _) => settled = true,
+          ),
+        );
+        await pumpEventLoop();
+        // It must wait for the commit the old instance still owes instead of
+        // reading the stale index, which its own write would then overwrite.
+        expect(settled, isFalse, reason: 'the reopen read the index too early');
+        expect(gate.indexReads, isEmpty);
+        gate.openIndex();
+        await reopening;
+        expect(reopened.entries, hasLength(2));
+        final first = reopened.entries.firstWhere((e) => e.id == firstId);
+        expect(first.status, OfflineStatus.complete);
+        expect(
+          await (await reopened.completedFile(firstId)).readAsBytes(),
+          data,
+        );
+        final second = reopened.entries.firstWhere((e) => e.id == secondId);
+        expect(second.status, OfflineStatus.complete);
+        expect(
+          await (await reopened.completedFile(secondId)).readAsBytes(),
+          data,
+        );
+        expect(session.jsonCalls, calls);
+        expect(tokens, downloads);
+      } finally {
+        gate.open();
+        gate.restore(previous);
+      }
+    },
+  );
+
+  test(
+    'a deletion in flight when the directory reopens does not resurrect it',
+    () async {
+      await repository.enqueue(movie);
+      await waitFor(
+        () => repository.entries.single.status == OfflineStatus.complete,
+      );
+      final id = repository.entries.single.id;
+      // The file deletion is parked, so the removal still owes its index write
+      // when the directory is reopened.
+      final gate = _RenameGate(holdDelete: (path) => path.endsWith('$id.mkv'));
+      final previous = gate.install();
+      late OfflineRepository reopened;
+      late Future<void> removal;
+      try {
+        removal = repository.remove(id);
+        await gate.deletePaused.future.timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => fail('The removal never reached its file deletion'),
+        );
+        session.endpoint = null;
+        session.accessToken = null;
+        session.userId = null;
+        final calls = session.jsonCalls;
+        final downloads = List<String?>.of(tokens);
+        repository.dispose();
+        reopened = OfflineRepository(directory: directory, session: session);
+        repository = reopened;
+        var settled = false;
+        final reopening = reopened.initialize();
+        unawaited(
+          reopening.then(
+            (_) => settled = true,
+            onError: (Object _) => settled = true,
+          ),
+        );
+        await pumpEventLoop();
+        // The stale index still lists the entry and its file still exists, so
+        // reading it here would resurrect a record the removal already dropped.
+        expect(
+          settled,
+          isFalse,
+          reason: 'the reopen read the index before the removal settled',
+        );
+        expect(gate.indexReads, isEmpty);
+        gate.openDeletes();
+        await reopening;
+        await removal;
+        final index = File('${directory.path}/index.json');
+        expect(reopened.entries, isEmpty);
+        expect(jsonDecode(await index.readAsString()), isEmpty);
+        expect(
+          await directory.list().where((e) => e.path.contains(id)).isEmpty,
+          isTrue,
+        );
+        expect(session.jsonCalls, calls);
+        expect(tokens, downloads);
+      } finally {
+        gate.open();
+        gate.restore(previous);
+      }
+    },
+  );
 }

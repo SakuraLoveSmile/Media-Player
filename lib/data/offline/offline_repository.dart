@@ -17,16 +17,16 @@ class OfflineRepository extends ChangeNotifier {
     required this.directory,
     required this.session,
     this.onUnauthorized,
-  });
+  }) : _state = _DirectoryState.attach(directory);
 
   final Directory directory;
   final ApiSession session;
   final Future<void> Function()? onUnauthorized;
   final List<OfflineEntry> _entries = <OfflineEntry>[];
   final Map<String, _Transfer> _active = <String, _Transfer>{};
-  /// Serializes atomic `index.json` replacements: every queued operation takes
-  /// its snapshot when it runs, so it persists exactly the state it observes.
-  Future<void> _writes = Future<void>.value();
+  /// Serializes this directory's atomic `index.json` replacements and tracks
+  /// its in-flight commits and removals across every repository opened on it.
+  final _DirectoryState _state;
   bool _disposed = false;
   Future<void>? _initializing;
   String? initializationError;
@@ -38,6 +38,12 @@ class OfflineRepository extends ChangeNotifier {
 
   Future<void> _initialize() async {
     await directory.create(recursive: true);
+    // Another repository may still be finishing a commit or a removal on this
+    // same directory, whose index write is only queued after its file
+    // operations. Reading the index before that lands would make this instance
+    // observe a state the other one is about to replace, and its own write
+    // would then overwrite the settled result.
+    await _state.settle();
     if (await _index.exists()) {
       try {
         final decoded =
@@ -275,6 +281,10 @@ class OfflineRepository extends ChangeNotifier {
 
   Future<void> _run(OfflineEntry entry, _Transfer transfer) async {
     RandomAccessFile? output;
+    // Covers the whole commit window, including the index write that is only
+    // queued after the part was renamed into place, so another repository
+    // opened on this directory cannot read the index in between.
+    _DirectoryOperation? commit;
     try {
       final detail = await _checkedDetail(
         entry.itemId,
@@ -400,6 +410,7 @@ class OfflineRepository extends ChangeNotifier {
             await part.length() != entry.total) {
           throw StateError('连接中断，文件未完整下载，可继续重试');
         }
+        commit = _state.begin();
         await _commit(entry, transfer, part);
       }
     } catch (error) {
@@ -418,15 +429,22 @@ class OfflineRepository extends ChangeNotifier {
     } finally {
       await output?.close();
       transfer.http?.close(force: true);
-      // A committed download already settled `complete` inside its queued
-      // write; do not enqueue another snapshot for it.
-      if (!transfer.committing) {
-        if (entry.status == OfflineStatus.downloading) {
-          entry.status = OfflineStatus.paused;
+      try {
+        // A committed download already settled `complete` inside its queued
+        // write; do not enqueue another snapshot for it.
+        if (!transfer.committing) {
+          if (entry.status == OfflineStatus.downloading) {
+            entry.status = OfflineStatus.paused;
+          }
+          if (!_disposed) {
+            await _save();
+          }
         }
-        if (!_disposed) {
-          await _save();
-        }
+      } finally {
+        // Released even when that last snapshot throws: a failed write must
+        // never leave this directory's in-flight window closed, which would
+        // block every later repository opened on it.
+        commit?.settle();
       }
     }
   }
@@ -466,14 +484,22 @@ class OfflineRepository extends ChangeNotifier {
   }
 
   Future<void> remove(String id) async {
-    await pause(id);
-    final entry = _find(id);
-    for (final file in [_part(entry), _file(entry)]) {
-      if (await file.exists()) await file.delete();
+    // Covers the whole removal, including the index write that is only queued
+    // after the files are gone, so a directory reopened right here waits for it
+    // instead of resurrecting a record that points at a deleted file.
+    final operation = _state.begin();
+    try {
+      await pause(id);
+      final entry = _find(id);
+      for (final file in [_part(entry), _file(entry)]) {
+        if (await file.exists()) await file.delete();
+      }
+      _entries.remove(entry);
+      await _save();
+      _notify();
+    } finally {
+      operation.settle();
     }
-    _entries.remove(entry);
-    await _save();
-    _notify();
   }
 
   Future<File> completedFile(String id) async {
@@ -492,6 +518,10 @@ class OfflineRepository extends ChangeNotifier {
   /// the queued operation runs, never when it is queued, so what lands on disk
   /// always matches the state observed at that point of the queue.
   ///
+  /// The queue belongs to the directory, not to this instance: a repository
+  /// opened on the same directory later replaces `index.json` only behind the
+  /// writes already queued here, so neither can swap the other's file.
+  ///
   /// A record named by [completing] is the commit of a finished download: only
   /// that record is written as `complete`, and its memory status changes inside
   /// this same queued operation once the replacement succeeded. A failed
@@ -500,7 +530,7 @@ class OfflineRepository extends ChangeNotifier {
   /// after dispose(), because a restart must never resurrect a deleted record or
   /// lose a finished file.
   Future<void> _save({String? completing}) {
-    final result = _writes.then((_) async {
+    return _state.write(() async {
       final snapshot = jsonEncode(
         _entries
             .map(
@@ -524,8 +554,6 @@ class OfflineRepository extends ChangeNotifier {
       }
       _settle(completing, OfflineStatus.complete, null);
     });
-    _writes = result.catchError((Object _) {});
-    return result;
   }
 
   /// Applies the outcome of a queued commit to memory, once, inside the queued
@@ -550,6 +578,90 @@ class OfflineRepository extends ChangeNotifier {
       transfer.http?.close(force: true);
     }
     super.dispose();
+  }
+}
+
+/// Process-wide coordination for one offline directory.
+///
+/// `index.json` is a single path inside the directory, so two repositories
+/// opened on it must neither read the index while the other one still owes a
+/// commit or a removal write, nor replace `index.json` through one shared
+/// `index.json.tmp` at the same time.
+class _DirectoryState {
+  _DirectoryState._(this.key);
+
+  /// Kept for the process lifetime: a disposed repository may still owe a write
+  /// (a removal queued before dispose, a paused transfer), and those writes must
+  /// queue behind the same directory's replacements as any newer instance.
+  static final Map<String, _DirectoryState> _open =
+      <String, _DirectoryState>{};
+
+  /// The state of [directory], created on demand.
+  static _DirectoryState attach(Directory directory) {
+    final key = directory.absolute.path;
+    return _open.putIfAbsent(key, () => _DirectoryState._(key));
+  }
+
+  /// The absolute directory path this state coordinates.
+  final String key;
+
+  int _pendingWrites = 0;
+  Future<void> _writes = Future<void>.value();
+  final Set<_DirectoryOperation> _operations = <_DirectoryOperation>{};
+
+  /// Registers one commit or removal whose index write may only be queued
+  /// after its file operations already happened.
+  _DirectoryOperation begin() {
+    final operation = _DirectoryOperation._(this);
+    _operations.add(operation);
+    return operation;
+  }
+
+  /// Queues one atomic `index.json` replacement behind every replacement
+  /// already queued on this directory, whichever repository queued it, so two
+  /// instances never fill or swap the same `index.json.tmp`.
+  Future<void> write(Future<void> Function() replacement) {
+    final result = _writes.then((_) => replacement());
+    _pendingWrites++;
+    _writes = result.then(
+      (_) => _pendingWrites--,
+      onError: (Object _) => _pendingWrites--,
+    );
+    return result;
+  }
+
+  /// Waits until no commit or removal is in flight and no queued replacement is
+  /// outstanding, so a reopened repository reads the settled index.
+  Future<void> settle() async {
+    while (true) {
+      if (_operations.isNotEmpty) {
+        await Future.wait(
+          _operations.map((operation) => operation.settled).toList(),
+        );
+        continue;
+      }
+      if (_pendingWrites == 0) return;
+      await _writes;
+    }
+  }
+
+  void finish(_DirectoryOperation operation) => _operations.remove(operation);
+}
+
+/// One in-flight commit or removal: from its first file operation until the
+/// index write it still owed has been persisted.
+class _DirectoryOperation {
+  _DirectoryOperation._(this._state);
+
+  final _DirectoryState _state;
+  final Completer<void> _done = Completer<void>();
+
+  Future<void> get settled => _done.future;
+
+  void settle() {
+    if (_done.isCompleted) return;
+    _state.finish(this);
+    _done.complete();
   }
 }
 
