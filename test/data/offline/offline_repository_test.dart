@@ -50,7 +50,12 @@ final class _TwoItemSession extends OfflineTestSession {
 /// Holds selected atomic renames and deletions, so a test can observe an
 /// in-flight write without relying on timing.
 final class _RenameGate extends IOOverrides {
-  _RenameGate({this.holdIndexWrite, this.holdPartRename, this.holdDelete});
+  _RenameGate({
+    this.holdIndexWrite,
+    this.holdPartRename,
+    this.holdDelete,
+    this.holdLength,
+  });
 
   /// Holds an `index.json.tmp` replacement whose snapshot matches.
   final bool Function(String snapshot)? holdIndexWrite;
@@ -61,14 +66,20 @@ final class _RenameGate extends IOOverrides {
   /// Holds deleting a file whose path matches.
   final bool Function(String path)? holdDelete;
 
+  /// Holds reading the length of a file whose path matches.
+  final bool Function(String path)? holdLength;
+
   final List<Completer<void>> _index = <Completer<void>>[];
   final List<Completer<void>> _parts = <Completer<void>>[];
   final List<Completer<void>> _deletes = <Completer<void>>[];
+  final List<Completer<void>> _lengths = <Completer<void>>[];
+
   /// Completed the first time each kind of rename is held, so a regression
   /// fails fast instead of waiting for a rename that is never paused.
   final Completer<void> indexPaused = Completer<void>();
   final Completer<void> partPaused = Completer<void>();
   final Completer<void> deletePaused = Completer<void>();
+  final Completer<void> lengthPaused = Completer<void>();
 
   /// The `index.json` contents each read returned, in order. A repository that
   /// starts reading the index while another one still owes a write is visible
@@ -102,6 +113,13 @@ final class _RenameGate extends IOOverrides {
     return hold;
   }
 
+  Completer<void> parkLength() {
+    final hold = Completer<void>();
+    _lengths.add(hold);
+    if (!lengthPaused.isCompleted) lengthPaused.complete();
+    return hold;
+  }
+
   /// Releases parked part renames, so that download can queue its completion
   /// write behind a held replacement.
   void openParts() {
@@ -113,6 +131,13 @@ final class _RenameGate extends IOOverrides {
   /// Releases parked file deletions.
   void openDeletes() {
     for (final hold in _deletes) {
+      if (!hold.isCompleted) hold.complete();
+    }
+  }
+
+  /// Releases parked length reads.
+  void openLengths() {
+    for (final hold in _lengths) {
       if (!hold.isCompleted) hold.complete();
     }
   }
@@ -135,6 +160,7 @@ final class _RenameGate extends IOOverrides {
   void open() {
     openParts();
     openDeletes();
+    openLengths();
     openIndex();
   }
 
@@ -183,6 +209,14 @@ class _GateFile extends _DelegatingFile {
       await _gate.holdPart().future;
     }
     return super.rename(newPath);
+  }
+
+  @override
+  Future<int> length() async {
+    if (_gate.holdLength?.call(path) ?? false) {
+      await _gate.parkLength().future;
+    }
+    return super.length();
   }
 
   @override
@@ -339,7 +373,6 @@ class _DelegatingFile implements File {
   String toString() => _target.toString();
 }
 
-
 Future<void> waitFor(bool Function() condition) async {
   final deadline = DateTime.now().add(const Duration(seconds: 5));
   while (!condition()) {
@@ -365,9 +398,11 @@ void main() {
   late OfflineTestSession session;
   late OfflineRepository repository;
   late bool stall;
+
   /// Stream requests that stay open after their first 4 bytes, so a test can
   /// park one download mid-transfer while another finishes.
   late int stallStreams;
+
   /// When set, a stalled response continues once this completes.
   Completer<void>? stallRelease;
   late bool ignoreRange;
@@ -1114,6 +1149,90 @@ void main() {
           await directory.list().where((e) => e.path.contains(id)).isEmpty,
           isTrue,
         );
+        expect(session.jsonCalls, calls);
+        expect(tokens, downloads);
+      } finally {
+        gate.open();
+        gate.restore(previous);
+      }
+    },
+  );
+
+  test(
+    'a length check in flight when the directory reopens pauses the download',
+    () async {
+      // A is already complete and settled on disk.
+      await repository.enqueue(movie);
+      await waitFor(
+        () => repository.entries.single.status == OfflineStatus.complete,
+      );
+      final firstId = repository.entries.single.id;
+      // B's final length read is the last asynchronous step before it would
+      // register a commit: the reopen below lands inside exactly that window.
+      var heldOnce = false;
+      final gate = _RenameGate(
+        holdLength: (path) {
+          if (heldOnce || !path.endsWith('.part')) return false;
+          return heldOnce = true;
+        },
+      );
+      final previous = gate.install();
+      late OfflineRepository reopened;
+      try {
+        await repository.enqueue(secondMovie);
+        final secondId = repository.entries
+            .firstWhere((e) => e.itemId == secondMovie.id)
+            .id;
+        await gate.lengthPaused.future.timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => fail('The final length read was never held'),
+        );
+        // Restart with no login session: only the directory can be trusted.
+        session.endpoint = null;
+        session.accessToken = null;
+        session.userId = null;
+        final calls = session.jsonCalls;
+        final downloads = List<String?>.of(tokens);
+        repository.dispose();
+        reopened = OfflineRepository(directory: directory, session: session);
+        repository = reopened;
+        await reopened.initialize();
+        // The stale transfer registered no commit, so the reopen reads the
+        // index as it stands and B stays an unfinished download.
+        final unfinished = reopened.entries.firstWhere((e) => e.id == secondId);
+        expect(unfinished.status, OfflineStatus.paused);
+        expect(File('${directory.path}/$secondId.mkv').existsSync(), isFalse);
+        expect(
+          File('${directory.path}/$secondId.mkv.part').existsSync(),
+          isTrue,
+        );
+        final finished = reopened.entries.firstWhere((e) => e.id == firstId);
+        expect(finished.status, OfflineStatus.complete);
+        expect(
+          await (await reopened.completedFile(firstId)).readAsBytes(),
+          data,
+        );
+        // Releasing the stale read must neither rename the part nor replace the
+        // index the reopened repository already settled.
+        gate.openLengths();
+        await pumpEventLoop(120);
+        expect(File('${directory.path}/$secondId.mkv').existsSync(), isFalse);
+        expect(
+          File('${directory.path}/$secondId.mkv.part').existsSync(),
+          isTrue,
+        );
+        final persisted = jsonDecode(
+          await File('${directory.path}/index.json').readAsString(),
+        ) as List<dynamic>;
+        final record = persisted.cast<Map<String, dynamic>>().firstWhere(
+          (raw) => raw['id'] == secondId,
+        );
+        expect(record['status'], OfflineStatus.paused.name);
+        expect(
+          reopened.entries.firstWhere((e) => e.id == secondId).status,
+          OfflineStatus.paused,
+        );
+        await expectLater(reopened.completedFile(secondId), throwsStateError);
         expect(session.jsonCalls, calls);
         expect(tokens, downloads);
       } finally {

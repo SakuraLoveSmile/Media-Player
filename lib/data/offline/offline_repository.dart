@@ -403,13 +403,18 @@ class OfflineRepository extends ChangeNotifier {
       }
       await output.close();
       output = null;
+      // This length read is the last asynchronous step before a commit is
+      // registered, so another repository can reopen this directory and settle
+      // the index while it is pending. Decide pause-versus-commit only after it
+      // returns: a transfer that no longer belongs to a live repository must
+      // pause, never replace the index the reopen already settled.
+      final complete =
+          entry.received == entry.total && await part.length() == entry.total;
       if (transfer.cancelled || !canResume(entry)) {
         entry.status = OfflineStatus.paused;
+      } else if (!complete) {
+        throw StateError('连接中断，文件未完整下载，可继续重试');
       } else {
-        if (entry.received != entry.total ||
-            await part.length() != entry.total) {
-          throw StateError('连接中断，文件未完整下载，可继续重试');
-        }
         commit = _state.begin();
         await _commit(entry, transfer, part);
       }
