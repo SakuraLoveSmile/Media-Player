@@ -1,7 +1,7 @@
 # F4：反馈组件与在线更新
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
-- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4；2026-11-16 升级到 0.9.1 并接入宿主诊断日志，见 §6）、设置页、GitHub Releases 在线更新、发布工作流
+- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4；2026-11-16 升级到 0.9.1 并接入宿主诊断日志，见 §6；2026-11-23 升级到 0.10.0，见 §7）、设置页、GitHub Releases 在线更新、发布工作流
 - 版本：`v0.2.3`（`0.2.3+5`）已发布，升级 `feedback_widget` 至 0.8.6；更新日志改为每版手写
 - 结论：**`v0.2.0`–`v0.2.3` 均已发布；0.8.6 的灵感球背景更新已随 v0.2.3 上线，真机体验待确认**
 
@@ -9,7 +9,7 @@
 
 | 项 | 决定 | 依据 |
 |---|---|---|
-| 反馈组件版本 | `feedback_widget` **0.9.1**，Git tag `v0.9.1`（commit `f63dda8257354ef29b29521af6f1cbb2d2554b66`，`flutter/feedback` 子目录；0.9.1 修复「能力未确认时只允许一张图」与 Windows 宿主 `pub get` 失败，宿主 API 保持兼容） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
+| 反馈组件版本 | `feedback_widget` **0.10.0**，Git tag `v0.10.0`（commit `bd5a235abab32adabe42de99d9d4a01fa291e0dd`，`flutter/feedback` 子目录；0.10.0 把默认入口改为光束唤醒并新增灵感球入场动画，本应用显式使用 orb + viewport，宿主 API 兼容） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
 | 宿主诊断日志 | `FeedbackDiagnosticsRecorder` 收集 dio 请求事件（方法 + 归一化路径、状态码、耗时）与 Flutter/平台错误；`buildFeedbackConfig` 默认挂 `logProvider`，面板打开时导出 JSONL，失败/无事件不阻断提交 | Feedback integration.md §5.6「宿主日志接入是必过的接入验收项」；只写白名单标量，请求体、凭据、完整 URL 与异常文本不进入缓冲 |
 | 反馈服务 | 生产地址 `https://feedback.xn--fhqths51enha.cn`，`appId = dev.mediaplayer.media_player`，`appName = Media Player` | 迁移前的历史决定（当时与 Android applicationId 一致）。应用标识已统一为 `cn.sakuralovesmile.mediaplayer`，此 appId 保持不变：它是反馈服务端侧的软件主键，改动会使历史反馈与面板登录态落到新软件下 |
 | 反馈默认开关 | release/profile 默认开启；debug 与 `flutter test` 默认关闭；可用 `FEEDBACK_ENABLED` / `FEEDBACK_API_BASE` / `FEEDBACK_APP_ID` / `FEEDBACK_APP_NAME` 覆盖 | 开发与既有测试不受影响；发布构建显式传 `--dart-define` |
@@ -215,3 +215,13 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - 发布：提交 `1e1740b`（发布准备）与 `b2a72db`（功能），签名标签 `v0.4.5`；main CI [43889746106](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/43889746106) 4 job 成功；发布流水线 [43891165511](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/43891165511) 首跑因 Android NDK 下载损坏失败，重跑失败 job 后全部成功。
 - [Release v0.4.5](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.5)：2026-11-16T15:12:40Z 公开，非草稿、非预发布、Latest；3 个资产 `MediaPlayer-android.apk` / `MediaPlayer-windows-x64.zip` / `MediaPlayer-macos.zip`，body 为用户向日志 `release/notes/v0.4.5.md`。
 - 尚未验证：真机安装新包后提交一条反馈并在管理后台预览日志附件；Windows 更新安装未在真机执行（Release 构建已通过 vendoring 构建）。
+
+## 7. feedback_widget 0.10.0 同步（2026-11-23）
+
+- 升级：`feedback_widget` 从 v0.9.1（`f63dda82`）到 **v0.10.0**（tag `v0.10.0`，commit `bd5a235`）；`pubspec.yaml` 与两处 Windows CI vendoring（`.github/workflows/app-ci.yml`、`.github/workflows/release.yml`）同步到同一 commit，`pubspec.lock` 的 resolved-ref 与 version 已更新为 0.10.0。
+- 默认值变化与宿主选择：0.10.0 把组件默认入口从「贴边标签」改成「光束唤醒」（双指长按 700ms 或 ⌘/Ctrl+Shift+F 唤出后先圈选），默认截图改为视口截图。本应用的 `buildFeedbackConfig` 一直显式传 `FeedbackLauncherMode.orb` + `FeedbackCaptureMode.viewport`，入口、截图与待机行为保持原样，**不启用光束唤醒**；是否切换属于产品决定，不与本次同步混做。
+- 用户可感知：反馈面板「设置」新增「唤醒效果」，可选七种灵感球入场动画（`FeedbackOrbEntrance`，默认小珠浮现），按应用保存在本机；已开启唤醒手势时，灵感球在双指中点浮现并播放该动画（0.9.1 只是把球恢复成完整球）。
+- 宿主 API 兼容，无需改代码：新增的「入口样式」「唤醒动效」偏好只在宿主 `launcherMode == beam` 时出现在面板里；唤醒手势与截图开关解耦（`_wakeAvailable` 改按入口模式判定）；`FeedbackWakeShortcut` 已加入 `FeedbackConfig` 但没有从包入口导出，宿主暂时无法改快捷键（本应用 orb 模式，无影响）；`decodeWakeGestures(null)` 改为回落「双指长按」，但宿主已托管唤醒手势，不读该默认值。
+- 本地验证：`./tool/check_layering.sh` ok；`flutter analyze` 无问题；`flutter test` **1627 项通过**；`services/watch_together` 的 `dart pub get` ok。工具链 Flutter 3.47.7 / Dart 3.13.5（与 CI 一致）。
+- 版本与发布：`0.4.9+1795400157`（tag `v0.4.9`），发布记录见 §7.1。
+
