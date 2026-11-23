@@ -5,12 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app/accent_settings.dart';
 import '../../app/admin_providers.dart';
 import '../../app/feedback_config.dart';
 import '../../app/feedback_orb_settings.dart';
 import '../../app/general_settings.dart';
-import '../../app/theme_mode_settings.dart';
 import '../../app/update_channel_settings.dart';
 import '../../app/update_providers.dart';
 import '../../core/config/app_config.dart';
@@ -20,7 +18,6 @@ import '../../ui/app_controls.dart';
 import '../../ui/app_dialog.dart';
 import '../../ui/app_page.dart';
 import '../../ui/servers_section.dart';
-import '../../ui/theme/app_accent.dart';
 import '../../ui/theme/app_tokens.dart';
 import 'backup_settings_section.dart';
 import 'moviepilot_config_dialog.dart';
@@ -45,19 +42,6 @@ class SettingsPage extends ConsumerWidget {
     final UpdateChannel channel =
         ref.watch(updateChannelControllerProvider).value ??
         UpdateChannel.stable;
-    // App-wide appearance. The root MaterialApp watches the same provider, so
-    // a tap here repaints every page without a restart.
-    final AsyncValue<ThemeMode> themeModeAsync = ref.watch(
-      themeModeControllerProvider,
-    );
-    final ThemeMode themeMode = themeModeAsync.value ?? ThemeMode.system;
-    // App-wide accent (设置 → 外观 → 主题色). The root MaterialApp watches the
-    // same provider, so a tap here re-tints every page without a restart.
-    final AsyncValue<AccentPreference> accentAsync = ref.watch(
-      accentControllerProvider,
-    );
-    final AccentPreference accent =
-        accentAsync.value ?? AccentPreference.defaults;
     final packageInfo = ref.watch(appVersionProvider).value;
     final String version = packageInfo == null
         ? AppConfig.appVersion
@@ -113,105 +97,18 @@ class SettingsPage extends ConsumerWidget {
             ),
           AppSection(
             header: '外观',
-            footer: '播放页始终使用深色，不受此设置影响',
             children: <Widget>[
-              ListTile(
-                leading: Icon(Icons.contrast, color: palette.primary),
-                title: const Text('主题模式'),
-                subtitle: Text(
-                  themeModeAsync.isLoading
-                      ? '读取中…'
-                      : '当前：${_themeModeLabel(themeMode)}',
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  0,
-                  AppSpacing.lg,
-                  AppSpacing.sm,
-                ),
-                child: Wrap(
-                  spacing: AppSpacing.sm,
-                  runSpacing: AppSpacing.sm,
-                  children: <Widget>[
-                    for (final ThemeMode mode in ThemeMode.values)
-                      ChoiceChip(
-                        key: Key('settings-theme-${mode.name}'),
-                        label: Text(_themeModeLabel(mode)),
-                        selected: themeMode == mode,
-                        onSelected: themeModeAsync.isLoading
-                            ? null
-                            : (_) => unawaited(
-                                _selectThemeMode(context, ref, mode),
-                              ),
-                      ),
-                  ],
-                ),
-              ),
-              ListTile(
-                leading: Icon(Icons.palette_outlined, color: palette.primary),
-                title: const Text('主题色'),
-                subtitle: Text(
-                  accentAsync.isLoading ? '读取中…' : '当前：${_accentLabel(accent)}',
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  0,
-                  AppSpacing.lg,
-                  AppSpacing.sm,
-                ),
-                child: Wrap(
-                  spacing: AppSpacing.sm,
-                  runSpacing: AppSpacing.sm,
-                  children: <Widget>[
-                    for (final AppAccentPreset preset in AppAccentPresets.all)
-                      ChoiceChip(
-                        key: Key('settings-accent-${preset.name}'),
-                        avatar: _AccentDot(color: preset.color),
-                        label: Text(preset.label),
-                        // While Monet is on the system colour wins, so no preset
-                        // chip reads as selected; the stored preset is only the
-                        // fallback for platforms without dynamic colour.
-                        selected:
-                            accent.mode != AccentMode.monet &&
-                            (accent.preset ?? 'default') == preset.name,
-                        onSelected: accentAsync.isLoading
-                            ? null
-                            : (_) => unawaited(
-                                _selectAccent(context, ref, preset.name),
-                              ),
-                      ),
-                  ],
-                ),
-              ),
               ListTile(
                 key: const Key('settings-appearance'),
                 leading: Icon(Icons.tune, color: palette.primary),
                 title: const Text('外观'),
-                subtitle: const Text('导航栏样式'),
+                subtitle: const Text('主题、导航栏与动画'),
                 trailing: Icon(
                   Icons.chevron_right,
                   color: palette.outline,
                   size: 20,
                 ),
                 onTap: () => context.push(AppRoutes.settingsAppearance),
-              ),
-              SwitchListTile(
-                key: const Key('settings-monet'),
-                secondary: Icon(
-                  Icons.auto_awesome_outlined,
-                  color: palette.primary,
-                ),
-                title: const Text('跟随系统 (Monet)'),
-                subtitle: const Text('Android 12+ 使用系统主题色；不可用时回退到上方主题色'),
-                value: accent.mode == AccentMode.monet,
-                onChanged: accentAsync.isLoading
-                    ? null
-                    : (bool enabled) =>
-                          unawaited(_setMonet(context, ref, enabled)),
               ),
             ],
           ),
@@ -678,48 +575,6 @@ class SettingsPage extends ConsumerWidget {
     }
   }
 
-  /// Persists the appearance mode; failures keep the previous palette.
-  Future<void> _selectThemeMode(
-    BuildContext context,
-    WidgetRef ref,
-    ThemeMode mode,
-  ) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await ref.read(themeModeControllerProvider.notifier).setMode(mode);
-    } on ThemeModeSettingsException catch (error) {
-      messenger.showSnackBar(SnackBar(content: Text(error.message)));
-    }
-  }
-
-  /// Persists the accent preset; failures keep the previous colour.
-  Future<void> _selectAccent(
-    BuildContext context,
-    WidgetRef ref,
-    String name,
-  ) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await ref.read(accentControllerProvider.notifier).selectPreset(name);
-    } on AccentSettingsException catch (error) {
-      messenger.showSnackBar(SnackBar(content: Text(error.message)));
-    }
-  }
-
-  /// Persists the Monet toggle; failures keep the previous colour.
-  Future<void> _setMonet(
-    BuildContext context,
-    WidgetRef ref,
-    bool enabled,
-  ) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await ref.read(accentControllerProvider.notifier).setMonet(enabled);
-    } on AccentSettingsException catch (error) {
-      messenger.showSnackBar(SnackBar(content: Text(error.message)));
-    }
-  }
-
   /// Runs one check, then reports the outcome. `check()` itself ignores
   /// concurrent taps, so the UI can stay simple here.
   Future<void> _checkForUpdate(BuildContext context, WidgetRef ref) async {
@@ -1167,41 +1022,6 @@ class _GestureRow extends StatelessWidget {
   }
 }
 
-String _themeModeLabel(ThemeMode mode) {
-  return switch (mode) {
-    ThemeMode.system => '跟随系统',
-    ThemeMode.light => '浅色',
-    ThemeMode.dark => '深色',
-  };
-}
-
-String _accentLabel(AccentPreference preference) {
-  if (preference.mode == AccentMode.monet) return '跟随系统 (Monet)';
-  return AppAccentPresets.byName(preference.preset)?.label ?? '默认';
-}
-
-/// A small colour swatch shown inside each accent preset chip.
-class _AccentDot extends StatelessWidget {
-  const _AccentDot({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 18,
-      height: 18,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: 1,
-        ),
-      ),
-    );
-  }
-}
 
 String _idleStyleLabel(FeedbackOrbIdleStyle style) {
   return switch (style) {

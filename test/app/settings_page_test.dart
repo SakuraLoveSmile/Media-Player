@@ -7,7 +7,6 @@ import 'package:feedback_widget/feedback_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:media_player/app/accent_settings.dart';
 import 'package:media_player/app/admin_providers.dart';
 import 'package:media_player/app/backup_settings.dart';
 import 'package:media_player/app/feedback_config.dart';
@@ -17,7 +16,6 @@ import 'package:media_player/app/hidden_libraries.dart';
 import 'package:media_player/app/playback_settings.dart';
 import 'package:media_player/app/request_notification_settings.dart';
 import 'package:media_player/app/servers.dart';
-import 'package:media_player/app/theme_mode_settings.dart';
 import 'package:media_player/app/update_channel_settings.dart';
 import 'package:media_player/app/update_providers.dart';
 import 'package:media_player/core/config/app_config.dart';
@@ -136,10 +134,9 @@ void main() {
     BackupService? backupService,
     bool isAdmin = false,
   }) async {
-    // The settings list now holds six sections (about/update, appearance,
-    // 播放/缓存, 求片, feedback, 备份/还原). A 600pt test window would keep the
-    // lower rows out of the lazy ListView's build range, so use a tall
-    // phone-height surface.
+    // The settings list holds many sections and 关于 is last. A 600pt test
+    // window would keep the lower rows out of the lazy ListView's build range,
+    // so use a tall phone-height surface.
     await tester.binding.setSurfaceSize(const Size(800, 2000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -155,14 +152,6 @@ void main() {
             (ref) async => store ?? InMemoryKeyValueStore(),
           ),
           updateChannelStoreProvider.overrideWith(
-            (ref) async => store ?? InMemoryKeyValueStore(),
-          ),
-          // The 外观 selector reads the same app store.
-          themeModeStoreProvider.overrideWith(
-            (ref) async => store ?? InMemoryKeyValueStore(),
-          ),
-          // The 外观 accent chips + Monet switch read the same app store.
-          accentStoreProvider.overrideWith(
             (ref) async => store ?? InMemoryKeyValueStore(),
           ),
           // The 播放/缓存 section reads the same app store.
@@ -292,12 +281,6 @@ void main() {
             (ref) async => InMemoryKeyValueStore(),
           ),
           requestNotificationStoreProvider.overrideWith(
-            (ref) async => InMemoryKeyValueStore(),
-          ),
-          themeModeStoreProvider.overrideWith(
-            (ref) async => InMemoryKeyValueStore(),
-          ),
-          accentStoreProvider.overrideWith(
             (ref) async => InMemoryKeyValueStore(),
           ),
           playbackSettingsStoreProvider.overrideWith(
@@ -611,42 +594,22 @@ void main() {
     expect(find.text('保存失败，请稍后重试'), findsOneWidget);
   });
 
-  testWidgets('the accent chips and Monet switch render and persist', (
-    tester,
-  ) async {
-    final store = InMemoryKeyValueStore();
-    await pumpSettings(tester, store: store);
+  testWidgets('the appearance section only holds the 外观 entry', (tester) async {
+    await pumpSettings(tester);
 
-    expect(find.text('主题色'), findsOneWidget);
-    expect(find.text('当前：默认'), findsOneWidget);
-    expect(
-      tester
-          .widget<ChoiceChip>(find.byKey(const Key('settings-accent-default')))
-          .selected,
-      isTrue,
-    );
-    expect(
-      tester
-          .widget<SwitchListTile>(find.byKey(const Key('settings-monet')))
-          .value,
-      isFalse,
-    );
+    expect(find.byKey(const Key('settings-appearance')), findsOneWidget);
+    // Only the section header and the entry title read 外观: a second entry
+    // appearing in the group would break this count.
+    expect(find.text('外观'), findsNWidgets(2));
+    expect(find.text('主题、导航栏与动画'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('settings-accent-green')));
-    await tester.pumpAndSettle();
-    expect(jsonDecode((await store.read(accentStorageKey))!), <String, Object?>{
-      'mode': 'preset',
-      'preset': 'green',
-    });
-    expect(find.text('当前：绿'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('settings-monet')));
-    await tester.pumpAndSettle();
-    expect(jsonDecode((await store.read(accentStorageKey))!), <String, Object?>{
-      'mode': 'monet',
-      'preset': 'green',
-    });
-    expect(find.text('当前：跟随系统 (Monet)'), findsOneWidget);
+    // The theme mode / accent controls moved to the dedicated 外观 page, so the
+    // first-level list must not hold them any more.
+    expect(find.byKey(const Key('settings-theme-dark')), findsNothing);
+    expect(find.byKey(const Key('settings-accent-default')), findsNothing);
+    expect(find.byKey(const Key('settings-monet')), findsNothing);
+    expect(find.text('主题模式'), findsNothing);
+    expect(find.text('主题色'), findsNothing);
   });
 
   testWidgets('the playback section shows persisted values', (tester) async {

@@ -293,11 +293,11 @@ void main() {
 
     expect(find.text('设置'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.byKey(const Key('settings-theme-dark')),
+      find.byKey(const Key('settings-appearance')),
       300,
       scrollable: find.byType(Scrollable).last,
     );
-    expect(find.byKey(const Key('settings-theme-dark')), findsOneWidget);
+    expect(find.byKey(const Key('settings-appearance')), findsOneWidget);
   });
 
   testWidgets('the account action opens the server switcher sheet', (
