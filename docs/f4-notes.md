@@ -225,3 +225,10 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - 本地验证：`./tool/check_layering.sh` ok；`flutter analyze` 无问题；`flutter test` **1627 项通过**；`services/watch_together` 的 `dart pub get` ok。工具链 Flutter 3.47.7 / Dart 3.13.5（与 CI 一致）。
 - 版本与发布：`0.4.9+1795400157`（tag `v0.4.9`），发布记录见 §7.1。
 
+### 7.1 发布记录（2026-11-23）
+
+- 提交 `9b5566d`（升级）与 `a754574`（用户日志），签名标签 `v0.4.9`（`0.4.9+1795400157`）。
+- main CI [45099392114](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45099392114) 4 个 job 成功（analyze-test / android / windows / macos）；发布流水线 [45100035119](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45100035119) 全部 job 成功（validate、三平台构建、一起看镜像、发布 Release）。
+- [Release v0.4.9](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.9)：2026-11-23T02:32:42Z 公开，非草稿、非预发布、Latest；3 个资产 `MediaPlayer-android.apk`（118,027,081 B）、`MediaPlayer-windows-x64.zip`（35,451,432 B）、`MediaPlayer-macos.zip`（43,471,885 B），均带 `sha256:` digest；body 为用户向日志 `release/notes/v0.4.9.md`。
+- 尚未验证：真机从 0.4.8 测试包覆盖安装并走完「检查更新 → 下载 → 安装」；反馈面板「设置 → 唤醒效果」的真机预览（含手势唤出时的入场动画）；Windows 更新安装（Release 构建已通过）。
+
