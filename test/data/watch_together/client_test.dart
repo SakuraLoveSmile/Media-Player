@@ -395,4 +395,44 @@ void main() {
     expect(client.reconnecting, isFalse);
     expect(client.error, contains('另一台设备'));
   });
+
+  test('legacy percent-encoded Chinese domain recovers as punycode', () async {
+    const stored =
+        'https://watch.%E4%B8%8A%E6%9D%89%E4%B9%9D%E6%9C%88.cn/watch/v1';
+    await store.write(WatchTogetherClient.serviceKey, stored);
+    client.dispose();
+    client = WatchTogetherClient(session: session, store: store);
+    await client.initialize();
+    expect(client.error, isNull);
+    final base = client.baseUrl.toString();
+    expect(base, 'https://watch.xn--fhqths51enha.cn/watch/v1');
+    expect(base, isNot(contains('%')));
+    expect(client.baseUrl!.path, '/watch/v1');
+  });
+
+  test('Chinese domain is stored and requested as punycode', () async {
+    await client.configure(Uri.parse('https://watch.上杉九月.cn'));
+    final base = client.baseUrl!;
+    expect(base.host, 'watch.xn--fhqths51enha.cn');
+    expect(base.path, '/watch/v1');
+    expect(base.toString(), 'https://watch.xn--fhqths51enha.cn/watch/v1');
+    expect(base.toString(), isNot(contains('%')));
+    expect(await store.read(WatchTogetherClient.serviceKey), base.toString());
+  });
+
+  test('public HTTP is still rejected for a Chinese domain', () async {
+    await expectLater(
+      client.configure(Uri.parse('http://watch.上杉九月.cn')),
+      throwsA(
+        isA<WatchTogetherException>().having(
+          (e) => e.code,
+          'code',
+          'INSECURE_URL',
+        ),
+      ),
+    );
+    // The rejected address never replaces the working one.
+    expect(client.baseUrl!.host, '127.0.0.1');
+    expect(client.baseUrl!.path, '/watch/v1');
+  });
 }

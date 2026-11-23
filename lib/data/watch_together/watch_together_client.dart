@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/network/url_normalizer.dart';
 import '../auth/api_session.dart';
 import '../storage/key_value_store.dart';
 import 'models.dart';
@@ -104,7 +105,21 @@ class WatchTogetherClient extends ChangeNotifier {
         '请输入不含账号或参数的 HTTP(S) 服务地址',
       );
     }
-    final ip = InternetAddress.tryParse(uri.host);
+    // A non-ASCII host (e.g. `watch.上杉九月.cn`) reaches us percent-encoded by
+    // [Uri], which DNS never resolves. Canonicalize it to the ASCII (punycode)
+    // form before the network checks below; the same call also repairs values
+    // persisted by older builds. Presentation-only Unicode never reaches
+    // `_baseUrl`, the store, or a request URL.
+    final canonical = UrlNormalizer.normalize(uri.toString());
+    if (canonical == null) {
+      throw const WatchTogetherException(
+        'INVALID_URL',
+        '请输入不含账号或参数的 HTTP(S) 服务地址',
+      );
+    }
+    final address = Uri.parse(canonical);
+    final host = address.host;
+    final ip = InternetAddress.tryParse(host);
     final bytes = ip?.rawAddress;
     final privateV4 =
         bytes != null &&
@@ -118,19 +133,17 @@ class WatchTogetherClient extends ChangeNotifier {
         ((bytes[0] & 0xfe) == 0xfc ||
             (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80));
     final private =
-        uri.host == 'localhost' ||
-        uri.host.endsWith('.local') ||
+        host == 'localhost' ||
+        host.endsWith('.local') ||
         ip?.isLoopback == true ||
         privateV4 ||
         privateV6;
-    if (uri.scheme == 'http' && !private) {
+    if (address.scheme == 'http' && !private) {
       throw const WatchTogetherException('INSECURE_URL', '公网一起看服务必须使用 HTTPS');
     }
-    var path = uri.path.replaceFirst(RegExp(r'/+$'), '');
-    if (path.isEmpty) {
-      path = '/watch/v1';
-    }
-    return uri.replace(path: path);
+    // UrlNormalizer already drops trailing slashes from the path.
+    final path = address.path.isEmpty ? '/watch/v1' : address.path;
+    return address.replace(path: path);
   }
 
   Future<void> configure(Uri? url) async {
