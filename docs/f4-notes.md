@@ -242,4 +242,10 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - 本地验证：`./tool/check_layering.sh` ok；`flutter analyze` 无问题；`flutter test` **1629 项通过**（含改写后的宿主设置、设置页切换、接线用例）；Flutter 3.47.7 / Dart 3.13.5。
 - 上游配套：Feedback 仓库提交 `fd48f69` 在接入指南 §1.2 步骤表新增「宿主设置托管」一行、§4.2.1 补「接入时就接管」口径，并让 `examples/flutter` 演示宿主托管（analyze 通过、40 项示例测试通过，本机独立复跑）。
 - 发布：`0.4.10+1795411788`（tag `v0.4.10`），记录见 §8.1。
+### 8.1 发布记录（2026-11-23）
+
+- 提交 `a758895`（升级 + 设置迁移 + 版本准备 `0.4.10+1795411788`），签名标签 `v0.4.10`。
+- main CI [45118352219](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45118352219) 4 个 job 成功；发布流水线 [45119104092](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45119104092) 全部 job 成功。
+- [Release v0.4.10](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.10)：2026-11-23T05:45:37Z 公开、非草稿、非预发布、Latest；三个资产 `MediaPlayer-android.apk`（117,568,665 B）、`MediaPlayer-windows-x64.zip`（35,406,352 B）、`MediaPlayer-macos.zip`（43,383,208 B）均带 `sha256:` digest，正文为用户向日志 `release/notes/v0.4.10.md`。
+- 尚未验证：真机从 0.4.9 覆盖安装到 0.4.10 并走完「检查更新 → 下载 → 安装」；双指长按唤醒与水波纹/波光、七种入场动画的真机观感；Windows 更新安装（Release 构建已通过）。
 
