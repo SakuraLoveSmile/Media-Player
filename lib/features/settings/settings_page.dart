@@ -73,9 +73,15 @@ class SettingsPage extends ConsumerWidget {
       ignoreSslControllerProvider,
     );
     final bool ignoreSsl = ignoreSslAsync.value ?? false;
-    final AsyncValue<FeedbackOrbSettings>? orbSettings = feedbackEnabled
+    final AsyncValue<FeedbackOrbSettings>? feedbackSettings = feedbackEnabled
         ? ref.watch(feedbackOrbSettingsProvider)
         : null;
+    // Tiles that only apply to one launcher follow the current choice; while the
+    // stored value is still loading the defaults (beam) decide, so the list never
+    // flashes between both variants.
+    final FeedbackLauncherStyle launcherStyle =
+        feedbackSettings?.value?.launcherStyle ??
+        FeedbackOrbSettings.defaults.launcherStyle;
 
     return AppPage(
       title: '设置',
@@ -278,47 +284,126 @@ class SettingsPage extends ConsumerWidget {
                   ),
                 ),
                 ListTile(
-                  leading: Icon(Icons.circle_outlined, color: palette.tertiary),
-                  title: const Text('灵感球样式'),
+                  leading: Icon(Icons.ads_click, color: palette.primary),
+                  title: const Text('反馈入口'),
                   subtitle: Text(
-                    _orbSettingsSubtitle(orbSettings, (FeedbackOrbSettings s) {
-                      return '当前：${_idleStyleLabel(s.idleStyle)}';
-                    }),
+                    _feedbackSettingsSubtitle(
+                      feedbackSettings,
+                      (FeedbackOrbSettings s) =>
+                          '当前：${_launcherStyleLabel(s.launcherStyle)}',
+                    ),
                   ),
                   trailing:
-                      _orbSettingsTrailing(orbSettings) ??
+                      _feedbackSettingsTrailing(feedbackSettings) ??
                       Icon(
                         Icons.chevron_right,
                         color: palette.outline,
                         size: 20,
                       ),
-                  onTap: orbSettings == null
+                  onTap: feedbackSettings == null
                       ? null
                       : () => unawaited(
-                          _pickOrbIdleStyle(context, ref, orbSettings),
+                          _pickLauncherStyle(context, ref, feedbackSettings),
                         ),
                 ),
                 ListTile(
                   leading: Icon(Icons.gesture, color: palette.secondary),
-                  title: const Text('唤醒灵感球'),
+                  title: const Text('唤醒方式'),
                   subtitle: Text(
-                    _orbSettingsSubtitle(orbSettings, (FeedbackOrbSettings s) {
-                      return '当前：${_wakeGesturesLabel(s.wakeGestures)}';
-                    }),
+                    _feedbackSettingsSubtitle(
+                      feedbackSettings,
+                      (FeedbackOrbSettings s) =>
+                          '当前：${_wakeGesturesLabel(s.wakeGestures)}',
+                    ),
                   ),
                   trailing:
-                      _orbSettingsTrailing(orbSettings) ??
+                      _feedbackSettingsTrailing(feedbackSettings) ??
                       Icon(
                         Icons.chevron_right,
                         color: palette.outline,
                         size: 20,
                       ),
-                  onTap: orbSettings == null
+                  onTap: feedbackSettings == null
                       ? null
                       : () => unawaited(
-                          _pickWakeGestures(context, ref, orbSettings),
+                          _pickWakeGestures(context, ref, feedbackSettings),
                         ),
                 ),
+                if (launcherStyle == FeedbackLauncherStyle.beam)
+                  ListTile(
+                    leading: Icon(Icons.waves, color: palette.tertiary),
+                    title: const Text('唤醒动效'),
+                    subtitle: Text(
+                      _feedbackSettingsSubtitle(
+                        feedbackSettings,
+                        (FeedbackOrbSettings s) =>
+                            '当前：${_wakeVisualLabel(s.wakeVisual)}',
+                      ),
+                    ),
+                    trailing:
+                        _feedbackSettingsTrailing(feedbackSettings) ??
+                        Icon(
+                          Icons.chevron_right,
+                          color: palette.outline,
+                          size: 20,
+                        ),
+                    onTap: feedbackSettings == null
+                        ? null
+                        : () => unawaited(
+                            _pickWakeVisual(context, ref, feedbackSettings),
+                          ),
+                  ),
+                if (launcherStyle == FeedbackLauncherStyle.orb) ...<Widget>[
+                  ListTile(
+                    leading: Icon(
+                      Icons.circle_outlined,
+                      color: palette.tertiary,
+                    ),
+                    title: const Text('灵感球样式'),
+                    subtitle: Text(
+                      _feedbackSettingsSubtitle(
+                        feedbackSettings,
+                        (FeedbackOrbSettings s) =>
+                            '当前：${_idleStyleLabel(s.idleStyle)}',
+                      ),
+                    ),
+                    trailing:
+                        _feedbackSettingsTrailing(feedbackSettings) ??
+                        Icon(
+                          Icons.chevron_right,
+                          color: palette.outline,
+                          size: 20,
+                        ),
+                    onTap: feedbackSettings == null
+                        ? null
+                        : () => unawaited(
+                            _pickOrbIdleStyle(context, ref, feedbackSettings),
+                          ),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.auto_awesome, color: palette.primary),
+                    title: const Text('唤醒效果'),
+                    subtitle: Text(
+                      _feedbackSettingsSubtitle(
+                        feedbackSettings,
+                        (FeedbackOrbSettings s) =>
+                            '当前：${s.orbEntrance.label}',
+                      ),
+                    ),
+                    trailing:
+                        _feedbackSettingsTrailing(feedbackSettings) ??
+                        Icon(
+                          Icons.chevron_right,
+                          color: palette.outline,
+                          size: 20,
+                        ),
+                    onTap: feedbackSettings == null
+                        ? null
+                        : () => unawaited(
+                            _pickOrbEntrance(context, ref, feedbackSettings),
+                          ),
+                  ),
+                ],
               ],
             ),
           ],
@@ -660,7 +745,7 @@ class SettingsPage extends ConsumerWidget {
     }
   }
 
-  String _orbSettingsSubtitle(
+  String _feedbackSettingsSubtitle(
     AsyncValue<FeedbackOrbSettings>? async,
     String Function(FeedbackOrbSettings) describe,
   ) {
@@ -671,12 +756,165 @@ class SettingsPage extends ConsumerWidget {
     return describe(value);
   }
 
-  Widget? _orbSettingsTrailing(AsyncValue<FeedbackOrbSettings>? async) {
+  Widget? _feedbackSettingsTrailing(AsyncValue<FeedbackOrbSettings>? async) {
     if (async == null || !async.isLoading) return null;
     return const SizedBox(
       width: 16,
       height: 16,
       child: CircularProgressIndicator(strokeWidth: 2),
+    );
+  }
+
+  /// 通用单选对话框：每项是 (值, 标题, 说明)，选中后返回该值。
+  Future<T?> _pickChoice<T>(
+    BuildContext context, {
+    required String title,
+    required String description,
+    required T current,
+    required List<(T, String, String)> entries,
+  }) {
+    final ColorScheme palette = Theme.of(context).colorScheme;
+    return showAppDialog<T>(
+      context: context,
+      builder: (BuildContext dialogContext) => AppDialog(
+        title: title,
+        maxWidth: 360,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              description,
+              style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                color: palette.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            for (final (T value, String label, String hint) in entries)
+              _ChoiceRow(
+                selected: current == value,
+                title: label,
+                subtitle: hint,
+                palette: palette,
+                onTap: () => Navigator.of(dialogContext).pop(value),
+              ),
+          ],
+        ),
+        actions: <Widget>[
+          AppButton(
+            label: '取消',
+            variant: AppButtonVariant.plain,
+            onPressed: () => Navigator.of(dialogContext).pop(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickLauncherStyle(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<FeedbackOrbSettings> async,
+  ) async {
+    if (async.hasError) {
+      ref.invalidate(feedbackOrbSettingsProvider);
+      return;
+    }
+    final FeedbackOrbSettings? current = async.value;
+    if (current == null) return;
+    final FeedbackLauncherStyle? selected =
+        await _pickChoice<FeedbackLauncherStyle>(
+          context,
+          title: '反馈入口',
+          description: '两种入口都可以用唤醒方式打开；面板内的设置已隐藏，反馈设置都在这里。',
+          current: current.launcherStyle,
+          entries: const <(FeedbackLauncherStyle, String, String)>[
+            (
+              FeedbackLauncherStyle.beam,
+              '光束唤醒',
+              '平时没有入口：双指长按或快捷键唤起，先圈出问题位置再填表',
+            ),
+            (
+              FeedbackLauncherStyle.orb,
+              '灵感球',
+              '右侧常驻玻璃球：点一下反馈，拖到问题处松手后进入局部圈选',
+            ),
+          ],
+        );
+    if (selected == null || selected == current.launcherStyle) return;
+    if (!context.mounted) return;
+    await _saveFeedbackSettings(
+      context,
+      ref
+          .read(feedbackOrbSettingsProvider.notifier)
+          .setLauncherStyle(selected),
+    );
+  }
+
+  Future<void> _pickWakeVisual(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<FeedbackOrbSettings> async,
+  ) async {
+    if (async.hasError) {
+      ref.invalidate(feedbackOrbSettingsProvider);
+      return;
+    }
+    final FeedbackOrbSettings? current = async.value;
+    if (current == null) return;
+    final FeedbackWakeVisual? selected = await _pickChoice<FeedbackWakeVisual>(
+      context,
+      title: '唤醒动效',
+      description: '光束唤醒后、圈选前的动效，只在「光束唤醒」入口下生效。',
+      current: current.wakeVisual,
+      entries: const <(FeedbackWakeVisual, String, String)>[
+        (
+          FeedbackWakeVisual.ripple,
+          '水波纹（默认）',
+          '水波从两指中点向外扩散，画面在波峰处轻轻折动',
+        ),
+        (
+          FeedbackWakeVisual.aurora,
+          '波光',
+          '冰青、暖黄与粉紫的柔光从指尖铺开，在屏幕边缘淡出',
+        ),
+      ],
+    );
+    if (selected == null || selected == current.wakeVisual) return;
+    if (!context.mounted) return;
+    await _saveFeedbackSettings(
+      context,
+      ref.read(feedbackOrbSettingsProvider.notifier).setWakeVisual(selected),
+    );
+  }
+
+  Future<void> _pickOrbEntrance(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<FeedbackOrbSettings> async,
+  ) async {
+    if (async.hasError) {
+      ref.invalidate(feedbackOrbSettingsProvider);
+      return;
+    }
+    final FeedbackOrbSettings? current = async.value;
+    if (current == null) return;
+    final FeedbackOrbEntrance? selected =
+        await _pickChoice<FeedbackOrbEntrance>(
+          context,
+          title: '唤醒效果',
+          description: '用唤醒手势呼出灵感球时播放的入场动画，最后的球体相同。',
+          current: current.orbEntrance,
+          entries: <(FeedbackOrbEntrance, String, String)>[
+            for (final FeedbackOrbEntrance entrance
+                in FeedbackOrbEntrance.values)
+              (entrance, entrance.label, _orbEntranceDescription(entrance)),
+          ],
+        );
+    if (selected == null || selected == current.orbEntrance) return;
+    if (!context.mounted) return;
+    await _saveFeedbackSettings(
+      context,
+      ref.read(feedbackOrbSettingsProvider.notifier).setOrbEntrance(selected),
     );
   }
 
@@ -691,39 +929,20 @@ class SettingsPage extends ConsumerWidget {
     }
     final FeedbackOrbSettings? current = async.value;
     if (current == null) return;
-    final ColorScheme palette = Theme.of(context).colorScheme;
     final FeedbackOrbIdleStyle? selected =
-        await showAppDialog<FeedbackOrbIdleStyle>(
-          context: context,
-          builder: (BuildContext dialogContext) => AppDialog(
-            title: '灵感球样式',
-            maxWidth: 340,
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                for (final FeedbackOrbIdleStyle style
-                    in FeedbackOrbIdleStyle.values)
-                  _ChoiceRow(
-                    selected: current.idleStyle == style,
-                    title: _idleStyleLabel(style),
-                    subtitle: _idleStyleDescription(style),
-                    palette: palette,
-                    onTap: () => Navigator.of(dialogContext).pop(style),
-                  ),
-              ],
-            ),
-            actions: <Widget>[
-              AppButton(
-                label: '取消',
-                variant: AppButtonVariant.plain,
-                onPressed: () => Navigator.of(dialogContext).pop(),
-              ),
-            ],
-          ),
+        await _pickChoice<FeedbackOrbIdleStyle>(
+          context,
+          title: '灵感球样式',
+          description: '闲置 5 秒后的样子；选择「隐藏」时用唤醒手势呼出。',
+          current: current.idleStyle,
+          entries: <(FeedbackOrbIdleStyle, String, String)>[
+            for (final FeedbackOrbIdleStyle style in FeedbackOrbIdleStyle.values)
+              (style, _idleStyleLabel(style), _idleStyleDescription(style)),
+          ],
         );
     if (selected == null || selected == current.idleStyle) return;
     if (!context.mounted) return;
-    await _saveOrbSettings(
+    await _saveFeedbackSettings(
       context,
       ref.read(feedbackOrbSettingsProvider.notifier).setIdleStyle(selected),
     );
@@ -752,14 +971,14 @@ class SettingsPage extends ConsumerWidget {
               builder:
                   (BuildContext context, void Function(VoidCallback) setState) {
                     return AppDialog(
-                      title: '唤醒灵感球',
+                      title: '唤醒方式',
                       maxWidth: 360,
                       content: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(
-                            '默认关闭；只在 App 内生效，松手后再拖球截图。',
+                            '可同时开启，只在当前 App 内生效。光束唤醒会先圈选问题位置，灵感球会先浮出球体。',
                             style: Theme.of(context).textTheme.bodySmall!
                                 .copyWith(color: palette.onSurfaceVariant),
                           ),
@@ -808,13 +1027,16 @@ class SettingsPage extends ConsumerWidget {
         );
     if (selected == null) return;
     if (!context.mounted) return;
-    await _saveOrbSettings(
+    await _saveFeedbackSettings(
       context,
       ref.read(feedbackOrbSettingsProvider.notifier).setWakeGestures(selected),
     );
   }
 
-  Future<void> _saveOrbSettings(BuildContext context, Future<void> save) async {
+  Future<void> _saveFeedbackSettings(
+    BuildContext context,
+    Future<void> save,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await save;
@@ -994,6 +1216,32 @@ String _idleStyleDescription(FeedbackOrbIdleStyle style) {
     FeedbackOrbIdleStyle.handle => '闲置后收成右侧小把手',
     FeedbackOrbIdleStyle.edge => '闲置后贴边显示半个球',
     FeedbackOrbIdleStyle.hidden => '闲置时隐藏入口；完整球与唤醒手势仍可用',
+  };
+}
+
+String _launcherStyleLabel(FeedbackLauncherStyle style) {
+  return switch (style) {
+    FeedbackLauncherStyle.beam => '光束唤醒',
+    FeedbackLauncherStyle.orb => '灵感球',
+  };
+}
+
+String _wakeVisualLabel(FeedbackWakeVisual visual) {
+  return switch (visual) {
+    FeedbackWakeVisual.ripple => '水波纹',
+    FeedbackWakeVisual.aurora => '波光',
+  };
+}
+
+String _orbEntranceDescription(FeedbackOrbEntrance entrance) {
+  return switch (entrance) {
+    FeedbackOrbEntrance.bead => '小玻璃珠从略扁的形状长大，轻轻回弹',
+    FeedbackOrbEntrance.join => '两颗珠沿两指连线合拢，连成一颗玻璃球',
+    FeedbackOrbEntrance.reveal => '斜弧从左上扫过球面，逐渐露出折射',
+    FeedbackOrbEntrance.dent => '页面局部先内凹，再从凹面过渡到凸面',
+    FeedbackOrbEntrance.turn => '倾斜的窄镜转向正面，映出球后的内容',
+    FeedbackOrbEntrance.drop => '水滴向右上提起，留在触点的细尾收回',
+    FeedbackOrbEntrance.corners => '四个取景角连成圆缘，球心开始折射',
   };
 }
 

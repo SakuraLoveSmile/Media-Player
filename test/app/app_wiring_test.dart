@@ -245,43 +245,50 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await _pumpApp(tester, feedbackEnabled: true);
 
-    // The orb lives above the router, so it is present on the login page.
-    expect(find.byKey(const Key('feedback-orb')), findsOneWidget);
+    // The default launcher is the beam wake, so there is no persistent orb.
+    final FeedbackWidget widget = tester.widget<FeedbackWidget>(
+      find.byType(FeedbackWidget),
+    );
+    expect(widget.hideSettings, isTrue);
+    expect(widget.launcherStyle, FeedbackLauncherStyle.beam);
+    expect(find.byKey(const Key('feedback-orb')), findsNothing);
 
     await _openSettings(tester);
     expect(find.text('问题反馈'), findsOneWidget);
   });
-  testWidgets('in-panel orb settings round-trip through the host store', (
+
+  testWidgets('stored host settings reach the feedback widget', (
     WidgetTester tester,
   ) async {
     final InMemoryKeyValueStore store = InMemoryKeyValueStore();
+    await store.write(feedbackLauncherStyleStorageKey, 'orb');
+    await store.write(feedbackWakeVisualStorageKey, 'aurora');
+    await store.write(feedbackOrbEntranceStorageKey, 'corners');
+    await store.write(feedbackOrbIdleStorageKey, 'edge');
+    await store.write(
+      feedbackWakeGesturesStorageKey,
+      jsonEncode(<String>['two-finger-hold', 'three-finger-swipe-up']),
+    );
     await _pumpApp(tester, feedbackEnabled: true, orbStore: store);
 
-    final FeedbackWidget initial = tester.widget<FeedbackWidget>(
+    final FeedbackWidget widget = tester.widget<FeedbackWidget>(
       find.byType(FeedbackWidget),
     );
-    expect(initial.orbIdleStyle, FeedbackOrbIdleStyle.handle);
-    expect(initial.wakeGestures, isEmpty);
-
-    // The panel calls the host callbacks; the host must persist and feed the
-    // new value back into the layer.
-    initial.onOrbIdleStyleChanged!(FeedbackOrbIdleStyle.hidden);
-    initial.onWakeGesturesChanged!(<FeedbackWakeGesture>{
+    expect(widget.hideSettings, isTrue);
+    expect(widget.launcherStyle, FeedbackLauncherStyle.orb);
+    expect(widget.wakeVisual, FeedbackWakeVisual.aurora);
+    expect(widget.orbEntrance, FeedbackOrbEntrance.corners);
+    expect(widget.orbIdleStyle, FeedbackOrbIdleStyle.edge);
+    expect(widget.wakeGestures, <FeedbackWakeGesture>{
       FeedbackWakeGesture.twoFingerHold,
+      FeedbackWakeGesture.threeFingerSwipeUp,
     });
-    await tester.pumpAndSettle();
-
-    expect(await store.read(feedbackOrbIdleStorageKey), 'hidden');
-    expect(
-      jsonDecode((await store.read(feedbackWakeGesturesStorageKey))!),
-      <String>['two-finger-hold'],
-    );
-    final FeedbackWidget rebuilt = tester.widget<FeedbackWidget>(
-      find.byType(FeedbackWidget),
-    );
-    expect(rebuilt.orbIdleStyle, FeedbackOrbIdleStyle.hidden);
-    expect(rebuilt.wakeGestures, <FeedbackWakeGesture>{
-      FeedbackWakeGesture.twoFingerHold,
-    });
+    // The host owns every choice: the panel neither renders nor writes them.
+    expect(widget.onLauncherStyleChanged, isNull);
+    expect(widget.onWakeVisualChanged, isNull);
+    expect(widget.onOrbEntranceChanged, isNull);
+    expect(widget.onOrbIdleStyleChanged, isNull);
+    expect(widget.onWakeGesturesChanged, isNull);
+    expect(find.byKey(const Key('feedback-orb')), findsOneWidget);
   });
 }

@@ -227,9 +227,9 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
     // store is still resolving the brand default applies.
     final AccentPreference accentPreference =
         ref.watch(accentControllerProvider).value ?? AccentPreference.defaults;
-    // Host-managed orb preferences: watched only when the layer is mounted so
-    // debug builds and tests never touch the bootstrap/store providers.
-    final FeedbackOrbSettings orbSettings = feedbackService == null
+    // Host-managed feedback preferences: watched only when the layer is mounted
+    // so debug builds and tests never touch the bootstrap/store providers.
+    final FeedbackOrbSettings feedbackSettings = feedbackService == null
         ? FeedbackOrbSettings.defaults
         : ref.watch(feedbackOrbSettingsProvider).value ??
               FeedbackOrbSettings.defaults;
@@ -274,26 +274,15 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
                   appVersion: feedbackAppVersion,
                   showLauncher: pageLabel != 'player',
                 ),
-                orbIdleStyle: orbSettings.idleStyle,
-                onOrbIdleStyleChanged: (FeedbackOrbIdleStyle style) {
-                  unawaited(
-                    _persistOrbSettings(
-                      ref
-                          .read(feedbackOrbSettingsProvider.notifier)
-                          .setIdleStyle(style),
-                    ),
-                  );
-                },
-                wakeGestures: orbSettings.wakeGestures,
-                onWakeGesturesChanged: (Set<FeedbackWakeGesture> gestures) {
-                  unawaited(
-                    _persistOrbSettings(
-                      ref
-                          .read(feedbackOrbSettingsProvider.notifier)
-                          .setWakeGestures(gestures),
-                    ),
-                  );
-                },
+                // Every feedback setting is a host value, and the in-panel
+                // settings page is hidden: the panel keeps only the server
+                // settings, everything user-facing lives in 设置 → 反馈.
+                hideSettings: true,
+                launcherStyle: feedbackSettings.launcherStyle,
+                wakeVisual: feedbackSettings.wakeVisual,
+                orbEntrance: feedbackSettings.orbEntrance,
+                orbIdleStyle: feedbackSettings.idleStyle,
+                wakeGestures: feedbackSettings.wakeGestures,
                 child: routerChild,
               );
             },
@@ -362,17 +351,6 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
         ),
       ],
     );
-  }
-
-  /// Persists a change coming from the in-panel feedback settings. The panel
-  /// has no error surface, so a failure is only logged; the settings page
-  /// performs the same writes with visible error feedback.
-  Future<void> _persistOrbSettings(Future<void> save) async {
-    try {
-      await save;
-    } catch (error) {
-      debugPrint('[feedback] 保存灵感球设置失败：$error');
-    }
   }
 
   static String? _formatVersion(PackageInfo? info) =>

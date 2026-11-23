@@ -490,12 +490,12 @@ void main() {
     expect(await store.read(ignoreSslStorageKey), 'true');
     expect(find.text('已开启，重启后生效'), findsOneWidget);
   });
-  testWidgets('orb settings only appear when feedback is configured', (
+  testWidgets('feedback settings only appear when feedback is configured', (
     tester,
   ) async {
     await pumpSettings(tester, feedback: null);
-    expect(find.text('灵感球样式'), findsNothing);
-    expect(find.text('唤醒灵感球'), findsNothing);
+    expect(find.text('反馈入口'), findsNothing);
+    expect(find.text('唤醒方式'), findsNothing);
 
     await pumpSettings(
       tester,
@@ -504,14 +504,46 @@ void main() {
         appId: 'dev.mediaplayer.media_player',
       ),
     );
+    expect(find.text('反馈入口'), findsOneWidget);
+    expect(find.text('唤醒方式'), findsOneWidget);
+    // The default launcher is the beam wake: no persistent orb, so the orb-only
+    // rows stay hidden and the beam-only wake effect is the one on offer.
+    expect(find.text('当前：光束唤醒'), findsOneWidget);
+    expect(find.text('当前：双指长按'), findsOneWidget);
+    expect(find.text('唤醒动效'), findsOneWidget);
+    expect(find.text('当前：水波纹'), findsOneWidget);
+    expect(find.text('灵感球样式'), findsNothing);
+    expect(find.text('唤醒效果'), findsNothing);
+  });
+
+  testWidgets('switching to the orb swaps the rows and persists the choice', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    await pumpSettings(
+      tester,
+      feedback: const FeedbackServiceConfig(
+        apiBase: 'https://feedback.test',
+        appId: 'dev.mediaplayer.media_player',
+      ),
+      store: store,
+    );
+
+    await tester.tap(find.text('反馈入口'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('灵感球'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前：灵感球'), findsOneWidget);
     expect(find.text('灵感球样式'), findsOneWidget);
-    expect(find.text('唤醒灵感球'), findsOneWidget);
-    expect(find.text('当前：小把手'), findsOneWidget);
-    expect(find.text('当前：已关闭'), findsOneWidget);
+    expect(find.text('唤醒效果'), findsOneWidget);
+    expect(find.text('唤醒动效'), findsNothing);
+    expect(await store.read(feedbackLauncherStyleStorageKey), 'orb');
   });
 
   testWidgets('selecting a hidden orb style persists it', (tester) async {
     final store = InMemoryKeyValueStore();
+    await store.write(feedbackLauncherStyleStorageKey, 'orb');
     await pumpSettings(
       tester,
       feedback: const FeedbackServiceConfig(
@@ -545,19 +577,20 @@ void main() {
       store: store,
     );
 
-    await tester.tap(find.text('唤醒灵感球'));
+    await tester.tap(find.text('唤醒方式'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('双指长按'));
+    // The two-finger long press is on by default; add another gesture.
+    await tester.tap(find.text('三指上滑'));
     await tester.pump();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
-    expect(find.text('当前：双指长按'), findsOneWidget);
+    expect(find.text('当前：双指长按、三指上滑'), findsOneWidget);
     final raw = await store.read(feedbackWakeGesturesStorageKey);
-    expect(jsonDecode(raw!), contains('two-finger-hold'));
+    expect(jsonDecode(raw!), contains('three-finger-swipe-up'));
   });
 
-  testWidgets('a failed orb preference write keeps the old value and warns', (
+  testWidgets('a failed preference write keeps the old value and warns', (
     tester,
   ) async {
     await pumpSettings(
@@ -777,7 +810,8 @@ void main() {
 
 class _ThrowingStore implements KeyValueStore {
   @override
-  Future<String?> read(String key) async => null;
+  Future<String?> read(String key) async =>
+      key == feedbackLauncherStyleStorageKey ? 'orb' : null;
 
   @override
   Future<void> write(String key, String value) async {

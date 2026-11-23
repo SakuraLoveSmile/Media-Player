@@ -20,15 +20,23 @@ Future<FeedbackOrbSettings> _load(ProviderContainer container) =>
     container.read(feedbackOrbSettingsProvider.future);
 
 void main() {
-  test('defaults to the collapsed handle and no wake gesture', () async {
+  test('defaults mirror the component: beam, ripple, bead, gesture on', () async {
     final settings = await _load(_container(InMemoryKeyValueStore()));
 
+    expect(settings.launcherStyle, FeedbackLauncherStyle.beam);
+    expect(settings.wakeVisual, FeedbackWakeVisual.ripple);
+    expect(settings.orbEntrance, FeedbackOrbEntrance.bead);
     expect(settings.idleStyle, FeedbackOrbIdleStyle.handle);
-    expect(settings.wakeGestures, isEmpty);
+    expect(settings.wakeGestures, <FeedbackWakeGesture>{
+      FeedbackWakeGesture.twoFingerHold,
+    });
   });
 
   test('loads persisted values and normalizes their order', () async {
     final store = InMemoryKeyValueStore();
+    await store.write(feedbackLauncherStyleStorageKey, 'orb');
+    await store.write(feedbackWakeVisualStorageKey, 'aurora');
+    await store.write(feedbackOrbEntranceStorageKey, 'corners');
     await store.write(feedbackOrbIdleStorageKey, 'hidden');
     await store.write(
       feedbackWakeGesturesStorageKey,
@@ -37,6 +45,9 @@ void main() {
 
     final settings = await _load(_container(store));
 
+    expect(settings.launcherStyle, FeedbackLauncherStyle.orb);
+    expect(settings.wakeVisual, FeedbackWakeVisual.aurora);
+    expect(settings.orbEntrance, FeedbackOrbEntrance.corners);
     expect(settings.idleStyle, FeedbackOrbIdleStyle.hidden);
     expect(settings.wakeGestures, <FeedbackWakeGesture>{
       FeedbackWakeGesture.threeFingerSwipeUp,
@@ -46,11 +57,17 @@ void main() {
 
   test('unknown or corrupted stored values fall back safely', () async {
     final store = InMemoryKeyValueStore();
+    await store.write(feedbackLauncherStyleStorageKey, 'beam-ish');
+    await store.write(feedbackWakeVisualStorageKey, 'sparkle');
+    await store.write(feedbackOrbEntranceStorageKey, 'warp');
     await store.write(feedbackOrbIdleStorageKey, 'bogus');
     await store.write(feedbackWakeGesturesStorageKey, '{not json');
 
     final settings = await _load(_container(store));
 
+    expect(settings.launcherStyle, FeedbackLauncherStyle.beam);
+    expect(settings.wakeVisual, FeedbackWakeVisual.ripple);
+    expect(settings.orbEntrance, FeedbackOrbEntrance.bead);
     expect(settings.idleStyle, FeedbackOrbIdleStyle.handle);
     expect(settings.wakeGestures, isEmpty);
   });
@@ -69,6 +86,25 @@ void main() {
       container.read(feedbackOrbSettingsProvider).value?.idleStyle,
       FeedbackOrbIdleStyle.edge,
     );
+  });
+
+  test('the launcher, wake visual and entrance persist by name', () async {
+    final store = InMemoryKeyValueStore();
+    final container = _container(store);
+    await _load(container);
+    final controller = container.read(feedbackOrbSettingsProvider.notifier);
+
+    await controller.setLauncherStyle(FeedbackLauncherStyle.orb);
+    await controller.setWakeVisual(FeedbackWakeVisual.aurora);
+    await controller.setOrbEntrance(FeedbackOrbEntrance.turn);
+
+    expect(await store.read(feedbackLauncherStyleStorageKey), 'orb');
+    expect(await store.read(feedbackWakeVisualStorageKey), 'aurora');
+    expect(await store.read(feedbackOrbEntranceStorageKey), 'turn');
+    final settings = container.read(feedbackOrbSettingsProvider).value;
+    expect(settings?.launcherStyle, FeedbackLauncherStyle.orb);
+    expect(settings?.wakeVisual, FeedbackWakeVisual.aurora);
+    expect(settings?.orbEntrance, FeedbackOrbEntrance.turn);
   });
 
   test('setWakeGestures persists stable ids and updates the state', () async {
@@ -109,7 +145,10 @@ void main() {
     );
     expect(
       container.read(feedbackOrbSettingsProvider).value?.wakeGestures,
-      <FeedbackWakeGesture>{FeedbackWakeGesture.threeFingerSwipeUp},
+      <FeedbackWakeGesture>{
+        FeedbackWakeGesture.twoFingerHold,
+        FeedbackWakeGesture.threeFingerSwipeUp,
+      },
     );
 
     await controller.toggleWakeGesture(
@@ -118,7 +157,7 @@ void main() {
     );
     expect(
       container.read(feedbackOrbSettingsProvider).value?.wakeGestures,
-      isEmpty,
+      <FeedbackWakeGesture>{FeedbackWakeGesture.twoFingerHold},
     );
   });
 

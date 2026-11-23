@@ -1,7 +1,7 @@
 # F4：反馈组件与在线更新
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
-- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4；2026-11-16 升级到 0.9.1 并接入宿主诊断日志，见 §6；2026-11-23 升级到 0.10.0，见 §7）、设置页、GitHub Releases 在线更新、发布工作流
+- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4；2026-11-16 升级到 0.9.1 并接入宿主诊断日志，见 §6；2026-11-23 升级到 0.10.0，见 §7；同日升级到 0.11.0 并把设置迁到宿主，见 §8）、设置页、GitHub Releases 在线更新、发布工作流
 - 版本：`v0.2.3`（`0.2.3+5`）已发布，升级 `feedback_widget` 至 0.8.6；更新日志改为每版手写
 - 结论：**`v0.2.0`–`v0.2.3` 均已发布；0.8.6 的灵感球背景更新已随 v0.2.3 上线，真机体验待确认**
 
@@ -9,11 +9,11 @@
 
 | 项 | 决定 | 依据 |
 |---|---|---|
-| 反馈组件版本 | `feedback_widget` **0.10.0**，Git tag `v0.10.0`（commit `bd5a235abab32adabe42de99d9d4a01fa291e0dd`，`flutter/feedback` 子目录；0.10.0 把默认入口改为光束唤醒并新增灵感球入场动画，本应用显式使用 orb + viewport，宿主 API 兼容） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
+| 反馈组件版本 | `feedback_widget` **0.11.0**，Git tag `v0.11.0`（commit `a6c940cdf27e83155b18057b629218073f74ceb3`，`flutter/feedback` 子目录；0.11.0 支持宿主托管入口样式 / 唤醒动效 / 灵感球入场，并导出 `FeedbackWakeShortcut`） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
 | 宿主诊断日志 | `FeedbackDiagnosticsRecorder` 收集 dio 请求事件（方法 + 归一化路径、状态码、耗时）与 Flutter/平台错误；`buildFeedbackConfig` 默认挂 `logProvider`，面板打开时导出 JSONL，失败/无事件不阻断提交 | Feedback integration.md §5.6「宿主日志接入是必过的接入验收项」；只写白名单标量，请求体、凭据、完整 URL 与异常文本不进入缓冲 |
 | 反馈服务 | 生产地址 `https://feedback.xn--fhqths51enha.cn`，`appId = dev.mediaplayer.media_player`，`appName = Media Player` | 迁移前的历史决定（当时与 Android applicationId 一致）。应用标识已统一为 `cn.sakuralovesmile.mediaplayer`，此 appId 保持不变：它是反馈服务端侧的软件主键，改动会使历史反馈与面板登录态落到新软件下 |
 | 反馈默认开关 | release/profile 默认开启；debug 与 `flutter test` 默认关闭；可用 `FEEDBACK_ENABLED` / `FEEDBACK_API_BASE` / `FEEDBACK_APP_ID` / `FEEDBACK_APP_NAME` 覆盖 | 开发与既有测试不受影响；发布构建显式传 `--dart-define` |
-| 反馈入口 | 亮色主题、右侧灵感球（orb）+ 视口截图；播放页隐藏悬浮球；登录页服务器地址/用户名包 `FeedbackCaptureMask` | 与 app 亮色主题一致；避免遮挡播放控件；截图不泄露地址/账号 |
+| 反馈入口 | 亮色主题、视口截图；入口样式由用户在「设置 → 反馈」选择，默认光束唤醒（双指长按 / ⌘·Ctrl+Shift+F），可切回右侧灵感球；面板设置页只留服务器设置；播放页隐藏入口；登录页服务器地址/用户名包 `FeedbackCaptureMask` | 与 app 亮色主题一致；避免遮挡播放控件；截图不泄露地址/账号；设置集中在宿主，避免两处重复 |
 | 更新源 | GitHub Releases API（`SakuraLoveSmile/Media-Player`，public），只接受正式 Release | 用户确认：不引入仓库内清单与镜像维护；API 匿名限额足够个人使用 |
 | 更新入口 | 启动静默检查（仅 release/profile，发现更新弹一次弹窗）+ 设置页手动「检查更新」 | 兼顾“自动发现”与可手动重试 |
 | 安装范围 | Android APK / macOS zip / Windows zip 三平台原地更新 | 契约目标三平台；iOS/Linux 不在范围 |
@@ -231,4 +231,15 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - main CI [45099392114](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45099392114) 4 个 job 成功（analyze-test / android / windows / macos）；发布流水线 [45100035119](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45100035119) 全部 job 成功（validate、三平台构建、一起看镜像、发布 Release）。
 - [Release v0.4.9](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.9)：2026-11-23T02:32:42Z 公开，非草稿、非预发布、Latest；3 个资产 `MediaPlayer-android.apk`（118,027,081 B）、`MediaPlayer-windows-x64.zip`（35,451,432 B）、`MediaPlayer-macos.zip`（43,471,885 B），均带 `sha256:` digest；body 为用户向日志 `release/notes/v0.4.9.md`。
 - 尚未验证：真机从 0.4.8 测试包覆盖安装并走完「检查更新 → 下载 → 安装」；反馈面板「设置 → 唤醒效果」的真机预览（含手势唤出时的入场动画）；Windows 更新安装（Release 构建已通过）。
+## 8. feedback_widget 0.11.0 与设置迁到宿主（2026-11-23）
+
+- 升级：`feedback_widget` 从 v0.10.0（`bd5a235`）到 **v0.11.0**（tag `v0.11.0`，commit `a6c940c`）；`pubspec.yaml`、`pubspec.lock` 与两处 Windows CI vendoring 同步到同一 commit。
+- 为什么升：0.11.0 之前入口样式 / 唤醒动效 / 灵感球入场只能写组件本机偏好，面板强行渲染、宿主无法接管，同一组设置同时出现在宿主设置页和组件面板里。0.11.0 把这三项也做成可选宿主值（与 0.8.4 的待机样式、唤醒手势同一语义），并新增 `hideSettings`。
+- 本应用的接法：`lib/app/feedback_orb_settings.dart` 升级为五项宿主设置（`launcherStyle` / `wakeVisual` / `orbEntrance` / `idleStyle` / `wakeGestures`）并持久化；`lib/app/app.dart` 把五个值传给反馈层、不再传面板回调；`feedback_layer.dart` 设 `hideSettings: true`。面板设置页只剩服务器设置，五个选择都在「设置 → 反馈」。
+- 重建时序（接入要点）：组件拿到宿主值后不会自己改值——用户在宿主设置页改选 → 控制器写盘并更新 provider → `FeedbackWidget` 用新值重建才生效。`FeedbackOrbSettings` 是不可变值对象、`updateShouldNotify` 逐字段比较，重建不会重置面板草稿。
+- 默认值与体验变化：默认 `launcherStyle = beam` + 唤醒方式「双指长按」（沿用 0.11.0 默认），升级后不再有常驻灵感球；桌面用 ⌘/Ctrl+Shift+F，移动端双指长按，也可在设置里一键切回灵感球。`buildFeedbackConfig` 仍保留 `launcherMode: orb` + `captureMode: viewport`，作为设置未就绪时的回退。
+- 设置页：新增「反馈入口」「唤醒动效」「唤醒效果」，原「唤醒灵感球」改名「唤醒方式」；`灵感球样式` 与 `唤醒效果` 只在入口为灵感球时显示，`唤醒动效` 只在光束唤醒时显示。
+- 本地验证：`./tool/check_layering.sh` ok；`flutter analyze` 无问题；`flutter test` **1629 项通过**（含改写后的宿主设置、设置页切换、接线用例）；Flutter 3.47.7 / Dart 3.13.5。
+- 上游配套：Feedback 仓库提交 `fd48f69` 在接入指南 §1.2 步骤表新增「宿主设置托管」一行、§4.2.1 补「接入时就接管」口径，并让 `examples/flutter` 演示宿主托管（analyze 通过、40 项示例测试通过，本机独立复跑）。
+- 发布：`0.4.10+1795411788`（tag `v0.4.10`），记录见 §8.1。
 

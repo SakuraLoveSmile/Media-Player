@@ -141,8 +141,10 @@ FeedbackConfig buildFeedbackConfig({
     pageLabel: pageLabel,
     side: FeedbackSide.right,
     theme: FeedbackThemeMode.light,
-    // Explicit: orb launcher + capture the current viewport on invoke. The
-    // package defaults are `tab` / `off`, so these must be stated.
+    // Fallbacks only: the launcher style is host-managed (设置 → 反馈 →
+    // 反馈入口), so the component uses the stored choice. This mode and the
+    // viewport capture still apply when that value is unavailable (store not
+    // loaded yet), which keeps the orb + screenshot behaviour as the safety net.
     launcherMode: FeedbackLauncherMode.orb,
     captureMode: FeedbackCaptureMode.viewport,
     // 30% up the right edge keeps the orb clear of the bottom navigation bar;

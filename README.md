@@ -14,7 +14,7 @@
   - F2：媒体库页在 macOS 实机加载 13 个视图与真实海报（见 `docs/f2-notes.md`）
   - B5 + F3：macOS release 与 Android（Mi 10）真机直连起播、暂停跨心跳、退出位置落盘、续播误差 <1s、退出会话归零（见 `docs/b5-notes.md`）
   - M2：macOS + Android 已签核（见 `docs/m2-signoff.md`）；Windows 拆为 M2-W，验收条件见契约 §8.1
-  - F4：反馈组件（feedback_widget 0.10.0，含宿主诊断日志采集）+ 设置页 + 在线更新（检查/下载/三平台安装）已实现并发布 `v0.2.3`（见 `docs/f4-notes.md`）；真机更新体验待确认
+  - F4：反馈组件（feedback_widget 0.11.0，宿主托管入口与唤醒设置，含宿主诊断日志采集）+ 设置页 + 在线更新（检查/下载/三平台安装）已实现并发布 `v0.2.3`（见 `docs/f4-notes.md`）；真机更新体验待确认
   - WAN：公网 HTTPS 直连在 OnePlus 实机验证；0.4.6 同步卡片地址到登录配置，0.4.7 修复 http:// 公网地址导致 PlaybackInfo 301 的播放失败
   - MP-TT01 / MP-WT01：离线下载/播放、MPV 画质设置、自建服务一起看（已合入 main，验证与测试版发布记录见 `docs/tasks/20261114-mp-wt01-watch-together.md`）
   - PGS、HDR：待验证

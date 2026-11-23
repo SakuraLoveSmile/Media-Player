@@ -6,32 +6,61 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/storage/key_value_store.dart';
 import 'providers.dart';
 
-/// Storage keys for the host-managed feedback orb preferences.
-///
-/// The values are host-owned: the widget only renders them and reports changes
-/// through its callbacks (feedback_widget >= 0.8.4).
+/// Storage keys for the host-managed feedback preferences (feedback_widget
+/// >= 0.11.0). The values are host-owned: the widget only renders them and
+/// reports in-panel changes through its callbacks.
+const String feedbackLauncherStyleStorageKey = 'feedback.launcher_style.v1';
+const String feedbackWakeVisualStorageKey = 'feedback.wake_visual.v1';
+const String feedbackOrbEntranceStorageKey = 'feedback.orb_entrance.v1';
 const String feedbackOrbIdleStorageKey = 'feedback.orb_idle_style.v1';
 const String feedbackWakeGesturesStorageKey = 'feedback.wake_gestures.v1';
 
-/// Host-managed feedback orb preferences shown on the settings page.
+/// Host-managed feedback preferences shown on the settings page.
+///
+/// Every field is handed to [FeedbackWidget] as a value, so the component's own
+/// settings page never renders these choices (the layer also sets
+/// `hideSettings`).
 class FeedbackOrbSettings {
   const FeedbackOrbSettings({
+    this.launcherStyle = FeedbackLauncherStyle.beam,
+    this.wakeVisual = FeedbackWakeVisual.ripple,
+    this.orbEntrance = FeedbackOrbEntrance.bead,
     this.idleStyle = FeedbackOrbIdleStyle.handle,
-    this.wakeGestures = const <FeedbackWakeGesture>{},
+    this.wakeGestures = const <FeedbackWakeGesture>{
+      FeedbackWakeGesture.twoFingerHold,
+    },
   });
 
-  /// Defaults match the component's own defaults: a collapsed handle and no
-  /// wake gesture.
+  /// Defaults mirror the component's own 0.11.0 defaults: beam wake with the
+  /// ripple effect and the two-finger long press, plus a collapsed orb handle.
   static const FeedbackOrbSettings defaults = FeedbackOrbSettings();
 
+  /// 光束唤醒 or 灵感球; rendered instead of the component's own choice.
+  final FeedbackLauncherStyle launcherStyle;
+
+  /// Ripple / aurora wake animation (only used by the beam launcher).
+  final FeedbackWakeVisual wakeVisual;
+
+  /// Entrance animation played when a wake gesture summons the orb.
+  final FeedbackOrbEntrance orbEntrance;
+
+  /// Idle (collapsed) orb style; only meaningful for the orb launcher.
   final FeedbackOrbIdleStyle idleStyle;
+
+  /// Wake gestures; an empty set disables gesture summoning.
   final Set<FeedbackWakeGesture> wakeGestures;
 
   FeedbackOrbSettings copyWith({
+    FeedbackLauncherStyle? launcherStyle,
+    FeedbackWakeVisual? wakeVisual,
+    FeedbackOrbEntrance? orbEntrance,
     FeedbackOrbIdleStyle? idleStyle,
     Set<FeedbackWakeGesture>? wakeGestures,
   }) {
     return FeedbackOrbSettings(
+      launcherStyle: launcherStyle ?? this.launcherStyle,
+      wakeVisual: wakeVisual ?? this.wakeVisual,
+      orbEntrance: orbEntrance ?? this.orbEntrance,
       idleStyle: idleStyle ?? this.idleStyle,
       wakeGestures: wakeGestures ?? this.wakeGestures,
     );
@@ -40,12 +69,18 @@ class FeedbackOrbSettings {
   @override
   bool operator ==(Object other) {
     return other is FeedbackOrbSettings &&
+        other.launcherStyle == launcherStyle &&
+        other.wakeVisual == wakeVisual &&
+        other.orbEntrance == orbEntrance &&
         other.idleStyle == idleStyle &&
         _sameGestures(other.wakeGestures, wakeGestures);
   }
 
   @override
   int get hashCode => Object.hash(
+    launcherStyle,
+    wakeVisual,
+    orbEntrance,
     idleStyle,
     Object.hashAll(FeedbackWakeGesture.values.where(wakeGestures.contains)),
   );
@@ -66,7 +101,7 @@ class FeedbackOrbSettingsException implements Exception {
   String toString() => message;
 }
 
-/// Key/value store backing the feedback orb preferences.
+/// Key/value store backing the feedback preferences.
 ///
 /// Reads the store created once by [bootstrapProvider] so the app never opens a
 /// second credential backend. Tests override it with an in-memory store.
@@ -76,7 +111,7 @@ final FutureProvider<KeyValueStore?> feedbackOrbStoreProvider =
       return services.store;
     });
 
-/// Loads and persists the host-managed orb style / wake gestures.
+/// Loads and persists the host-managed feedback preferences.
 ///
 /// Storage errors while loading fall back to [FeedbackOrbSettings.defaults] so
 /// the settings page stays usable; write errors surface as
@@ -89,12 +124,62 @@ class FeedbackOrbSettingsController extends AsyncNotifier<FeedbackOrbSettings> {
     );
     if (store == null) return FeedbackOrbSettings.defaults;
     return FeedbackOrbSettings(
-      idleStyle: _decodeIdleStyle(
+      launcherStyle: _decodeEnum(
+        await _readQuietly(store, feedbackLauncherStyleStorageKey),
+        FeedbackLauncherStyle.values,
+        FeedbackOrbSettings.defaults.launcherStyle,
+      ),
+      wakeVisual: _decodeEnum(
+        await _readQuietly(store, feedbackWakeVisualStorageKey),
+        FeedbackWakeVisual.values,
+        FeedbackOrbSettings.defaults.wakeVisual,
+      ),
+      orbEntrance: _decodeEnum(
+        await _readQuietly(store, feedbackOrbEntranceStorageKey),
+        FeedbackOrbEntrance.values,
+        FeedbackOrbSettings.defaults.orbEntrance,
+      ),
+      idleStyle: _decodeEnum(
         await _readQuietly(store, feedbackOrbIdleStorageKey),
+        FeedbackOrbIdleStyle.values,
+        FeedbackOrbSettings.defaults.idleStyle,
       ),
       wakeGestures: _decodeWakeGestures(
         await _readQuietly(store, feedbackWakeGesturesStorageKey),
       ),
+    );
+  }
+
+  Future<void> setLauncherStyle(FeedbackLauncherStyle style) async {
+    final FeedbackOrbSettings current =
+        state.value ?? FeedbackOrbSettings.defaults;
+    if (current.launcherStyle == style) return;
+    await _persist(
+      feedbackLauncherStyleStorageKey,
+      style.name,
+      (FeedbackOrbSettings latest) => latest.copyWith(launcherStyle: style),
+    );
+  }
+
+  Future<void> setWakeVisual(FeedbackWakeVisual visual) async {
+    final FeedbackOrbSettings current =
+        state.value ?? FeedbackOrbSettings.defaults;
+    if (current.wakeVisual == visual) return;
+    await _persist(
+      feedbackWakeVisualStorageKey,
+      visual.name,
+      (FeedbackOrbSettings latest) => latest.copyWith(wakeVisual: visual),
+    );
+  }
+
+  Future<void> setOrbEntrance(FeedbackOrbEntrance entrance) async {
+    final FeedbackOrbSettings current =
+        state.value ?? FeedbackOrbSettings.defaults;
+    if (current.orbEntrance == entrance) return;
+    await _persist(
+      feedbackOrbEntranceStorageKey,
+      entrance.name,
+      (FeedbackOrbSettings latest) => latest.copyWith(orbEntrance: entrance),
     );
   }
 
@@ -178,15 +263,18 @@ class FeedbackOrbSettingsController extends AsyncNotifier<FeedbackOrbSettings> {
   }
 }
 
-FeedbackOrbIdleStyle _decodeIdleStyle(String? raw) {
-  for (final FeedbackOrbIdleStyle style in FeedbackOrbIdleStyle.values) {
-    if (style.name == raw?.trim()) return style;
+T _decodeEnum<T extends Enum>(String? raw, List<T> values, T fallback) {
+  final String? name = raw?.trim();
+  for (final T candidate in values) {
+    if (candidate.name == name) return candidate;
   }
-  return FeedbackOrbIdleStyle.handle;
+  return fallback;
 }
 
 Set<FeedbackWakeGesture> _decodeWakeGestures(String? raw) {
-  if (raw == null || raw.trim().isEmpty) return const <FeedbackWakeGesture>{};
+  if (raw == null || raw.trim().isEmpty) {
+    return FeedbackOrbSettings.defaults.wakeGestures;
+  }
   try {
     final Object? decoded = jsonDecode(raw);
     if (decoded is! List<Object?>) return const <FeedbackWakeGesture>{};

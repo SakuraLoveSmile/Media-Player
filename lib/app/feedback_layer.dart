@@ -27,10 +27,17 @@ class FeedbackOverlay extends StatelessWidget {
     required this.navigatorKey,
     required this.config,
     required this.child,
+    this.launcherStyle,
+    this.onLauncherStyleChanged,
+    this.wakeVisual,
+    this.onWakeVisualChanged,
+    this.orbEntrance,
+    this.onOrbEntranceChanged,
     this.orbIdleStyle,
     this.onOrbIdleStyleChanged,
     this.wakeGestures,
     this.onWakeGesturesChanged,
+    this.hideSettings = false,
   });
 
   /// Root-owned controller (stable identity across rebuilds).
@@ -45,6 +52,20 @@ class FeedbackOverlay extends StatelessWidget {
 
   /// The router subtree passed to `MaterialApp.router`'s builder.
   final Widget child;
+
+  /// Host-managed launcher style / wake visual / orb entrance
+  /// (feedback_widget >= 0.11.0). When non-null the component renders the host
+  /// value instead of its own preference and hides that in-panel setting.
+  final FeedbackLauncherStyle? launcherStyle;
+  final ValueChanged<FeedbackLauncherStyle>? onLauncherStyleChanged;
+  final FeedbackWakeVisual? wakeVisual;
+  final ValueChanged<FeedbackWakeVisual>? onWakeVisualChanged;
+  final FeedbackOrbEntrance? orbEntrance;
+  final ValueChanged<FeedbackOrbEntrance>? onOrbEntranceChanged;
+
+  /// Hides the non-server part of the in-panel settings page: every feedback
+  /// setting lives in the host settings page instead.
+  final bool hideSettings;
 
   /// Host-managed orb idle style (feedback_widget >= 0.8.4). When non-null the
   /// component renders this value instead of persisting its own preference.
@@ -65,6 +86,13 @@ class FeedbackOverlay extends StatelessWidget {
       controller: controller,
       config: config,
       routerChild: child,
+      launcherStyle: launcherStyle,
+      onLauncherStyleChanged: onLauncherStyleChanged,
+      wakeVisual: wakeVisual,
+      onWakeVisualChanged: onWakeVisualChanged,
+      orbEntrance: orbEntrance,
+      onOrbEntranceChanged: onOrbEntranceChanged,
+      hideSettings: hideSettings,
       orbIdleStyle: orbIdleStyle,
       onOrbIdleStyleChanged: onOrbIdleStyleChanged,
       wakeGestures: wakeGestures,
@@ -99,6 +127,13 @@ class _FeedbackLayerBody extends StatelessWidget {
     return FeedbackWidget(
       config: scope.config,
       controller: scope.controller,
+      launcherStyle: scope.launcherStyle,
+      onLauncherStyleChanged: scope.onLauncherStyleChanged,
+      wakeVisual: scope.wakeVisual,
+      onWakeVisualChanged: scope.onWakeVisualChanged,
+      orbEntrance: scope.orbEntrance,
+      onOrbEntranceChanged: scope.onOrbEntranceChanged,
+      hideSettings: scope.hideSettings,
       orbIdleStyle: scope.orbIdleStyle,
       onOrbIdleStyleChanged: scope.onOrbIdleStyleChanged,
       wakeGestures: scope.wakeGestures,
@@ -138,6 +173,13 @@ class _FeedbackScope extends InheritedWidget {
     required this.config,
     required this.routerChild,
     required super.child,
+    this.launcherStyle,
+    this.onLauncherStyleChanged,
+    this.wakeVisual,
+    this.onWakeVisualChanged,
+    this.orbEntrance,
+    this.onOrbEntranceChanged,
+    this.hideSettings = false,
     this.orbIdleStyle,
     this.onOrbIdleStyleChanged,
     this.wakeGestures,
@@ -147,6 +189,13 @@ class _FeedbackScope extends InheritedWidget {
   final FeedbackController controller;
   final FeedbackConfig config;
   final Widget routerChild;
+  final FeedbackLauncherStyle? launcherStyle;
+  final ValueChanged<FeedbackLauncherStyle>? onLauncherStyleChanged;
+  final FeedbackWakeVisual? wakeVisual;
+  final ValueChanged<FeedbackWakeVisual>? onWakeVisualChanged;
+  final FeedbackOrbEntrance? orbEntrance;
+  final ValueChanged<FeedbackOrbEntrance>? onOrbEntranceChanged;
+  final bool hideSettings;
   final FeedbackOrbIdleStyle? orbIdleStyle;
   final ValueChanged<FeedbackOrbIdleStyle>? onOrbIdleStyleChanged;
   final Set<FeedbackWakeGesture>? wakeGestures;
@@ -164,6 +213,13 @@ class _FeedbackScope extends InheritedWidget {
       config != oldWidget.config ||
       controller != oldWidget.controller ||
       routerChild != oldWidget.routerChild ||
+      launcherStyle != oldWidget.launcherStyle ||
+      onLauncherStyleChanged != oldWidget.onLauncherStyleChanged ||
+      wakeVisual != oldWidget.wakeVisual ||
+      onWakeVisualChanged != oldWidget.onWakeVisualChanged ||
+      orbEntrance != oldWidget.orbEntrance ||
+      onOrbEntranceChanged != oldWidget.onOrbEntranceChanged ||
+      hideSettings != oldWidget.hideSettings ||
       orbIdleStyle != oldWidget.orbIdleStyle ||
       onOrbIdleStyleChanged != oldWidget.onOrbIdleStyleChanged ||
       !setEquals(wakeGestures, oldWidget.wakeGestures) ||
