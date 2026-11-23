@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
+import '../../core/network/url_normalizer.dart';
 import '../../core/router/app_routes.dart';
 import '../../data/library/library_service.dart';
 import '../../data/watch_together/watch_together_client.dart';
@@ -65,7 +66,7 @@ class _WatchTogetherPageState extends ConsumerState<WatchTogetherPage> {
       }
       _client = client;
       _library = services.library;
-      _url.text = client.baseUrl?.toString() ?? '';
+      _url.text = UrlNormalizer.display(client.baseUrl?.toString() ?? '');
       client.addListener(_changed);
       if (widget.initialItemId != null) {
         final item = await services.library.item(widget.initialItemId!);
@@ -160,6 +161,7 @@ class _WatchTogetherPageState extends ConsumerState<WatchTogetherPage> {
     final value = _url.text.trim();
     if (value.isEmpty) {
       await _client!.configure(null);
+      if (mounted) _url.text = '';
       return;
     }
     final url = Uri.tryParse(value);
@@ -180,6 +182,11 @@ class _WatchTogetherPageState extends ConsumerState<WatchTogetherPage> {
     }
     if (!mounted) return;
     await _client!.configure(url);
+    // Show the Unicode domain again; the stored value and every request keep
+    // the ASCII punycode canonical form.
+    if (mounted) {
+      _url.text = UrlNormalizer.display(_client!.baseUrl?.toString() ?? '');
+    }
   });
   Future<void> _pick() async {
     if (_library == null || _busy) return;
