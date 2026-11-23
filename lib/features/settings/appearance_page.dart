@@ -4,14 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/accent_settings.dart';
 import '../../app/appearance_settings.dart';
+import '../../app/theme_mode_settings.dart';
 import '../../ui/app_controls.dart';
 import '../../ui/app_loader.dart';
 import '../../ui/app_page.dart';
+import '../../ui/theme/app_accent.dart';
 import '../../ui/theme/app_tokens.dart';
 
-/// 外观 settings (S62): the navigation style Yamby lets you pick between a
-/// floating capsule and the standard bottom bar.
+/// 外观 (S62): the app-wide theme mode / accent plus the navigation style
+/// Yamby lets you pick between a floating capsule and the standard bottom bar.
 class AppearancePage extends ConsumerWidget {
   const AppearancePage({super.key});
 
@@ -28,6 +31,18 @@ class AppearancePage extends ConsumerWidget {
       appearanceSettingsControllerProvider.notifier,
     );
 
+    // App-wide theme + accent. The root MaterialApp watches the same providers,
+    // so a tap here repaints every page without a restart.
+    final AsyncValue<ThemeMode> themeModeAsync = ref.watch(
+      themeModeControllerProvider,
+    );
+    final ThemeMode themeMode = themeModeAsync.value ?? ThemeMode.system;
+    final AsyncValue<AccentPreference> accentAsync = ref.watch(
+      accentControllerProvider,
+    );
+    final AccentPreference accent =
+        accentAsync.value ?? AccentPreference.defaults;
+
     return AppPage(
       title: '外观',
       onBack: () => context.pop(),
@@ -35,6 +50,98 @@ class AppearancePage extends ConsumerWidget {
         key: const Key('appearance-page'),
         padding: const EdgeInsets.only(bottom: AppSpacing.xxxl),
         children: <Widget>[
+          AppSection(
+            header: '主题',
+            footer: '播放页始终使用深色，不受此设置影响',
+            children: <Widget>[
+              ListTile(
+                leading: Icon(Icons.contrast, color: palette.primary),
+                title: const Text('主题模式'),
+                subtitle: Text(
+                  themeModeAsync.isLoading
+                      ? '读取中…'
+                      : '当前：${_themeModeLabel(themeMode)}',
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  0,
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                ),
+                child: Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: <Widget>[
+                    for (final ThemeMode mode in ThemeMode.values)
+                      ChoiceChip(
+                        key: Key('settings-theme-${mode.name}'),
+                        label: Text(_themeModeLabel(mode)),
+                        selected: themeMode == mode,
+                        onSelected: themeModeAsync.isLoading
+                            ? null
+                            : (_) => unawaited(
+                                _selectThemeMode(context, ref, mode),
+                              ),
+                      ),
+                  ],
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.palette_outlined, color: palette.primary),
+                title: const Text('主题色'),
+                subtitle: Text(
+                  accentAsync.isLoading ? '读取中…' : '当前：${_accentLabel(accent)}',
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  0,
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                ),
+                child: Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: <Widget>[
+                    for (final AppAccentPreset preset in AppAccentPresets.all)
+                      ChoiceChip(
+                        key: Key('settings-accent-${preset.name}'),
+                        avatar: _AccentDot(color: preset.color),
+                        label: Text(preset.label),
+                        // While Monet is on the system colour wins, so no preset
+                        // chip reads as selected; the stored preset is only the
+                        // fallback for platforms without dynamic colour.
+                        selected:
+                            accent.mode != AccentMode.monet &&
+                            (accent.preset ?? 'default') == preset.name,
+                        onSelected: accentAsync.isLoading
+                            ? null
+                            : (_) => unawaited(
+                                _selectAccent(context, ref, preset.name),
+                              ),
+                      ),
+                  ],
+                ),
+              ),
+              SwitchListTile(
+                key: const Key('settings-monet'),
+                secondary: Icon(
+                  Icons.auto_awesome_outlined,
+                  color: palette.primary,
+                ),
+                title: const Text('跟随系统 (Monet)'),
+                subtitle: const Text('Android 12+ 使用系统主题色；不可用时回退到上方主题色'),
+                value: accent.mode == AccentMode.monet,
+                onChanged: accentAsync.isLoading
+                    ? null
+                    : (bool enabled) =>
+                          unawaited(_setMonet(context, ref, enabled)),
+              ),
+            ],
+          ),
           AppSection(
             header: '导航栏',
             footer: '悬浮胶囊与 Yamby 一致；标准底栏占用底部安全区',
@@ -105,6 +212,7 @@ class AppearancePage extends ConsumerWidget {
                   children: <Widget>[
                     for (final AppLoaderStyle style in AppLoaderStyle.values)
                       InkWell(
+                        // Stable appearance-loader-<style> keys from AppLoaderStyle.keyName.
                         key: Key(style.keyName),
                         borderRadius: BorderRadius.circular(AppRadii.control),
                         onTap: loading
@@ -183,6 +291,84 @@ class AppearancePage extends ConsumerWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// Persists the appearance mode; failures keep the previous palette.
+  Future<void> _selectThemeMode(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeMode mode,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(themeModeControllerProvider.notifier).setMode(mode);
+    } on ThemeModeSettingsException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  /// Persists the accent preset; failures keep the previous colour.
+  Future<void> _selectAccent(
+    BuildContext context,
+    WidgetRef ref,
+    String name,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(accentControllerProvider.notifier).selectPreset(name);
+    } on AccentSettingsException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  /// Persists the Monet toggle; failures keep the previous colour.
+  Future<void> _setMonet(
+    BuildContext context,
+    WidgetRef ref,
+    bool enabled,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(accentControllerProvider.notifier).setMonet(enabled);
+    } on AccentSettingsException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+}
+
+String _themeModeLabel(ThemeMode mode) {
+  return switch (mode) {
+    ThemeMode.system => '跟随系统',
+    ThemeMode.light => '浅色',
+    ThemeMode.dark => '深色',
+  };
+}
+
+String _accentLabel(AccentPreference preference) {
+  if (preference.mode == AccentMode.monet) return '跟随系统 (Monet)';
+  return AppAccentPresets.byName(preference.preset)?.label ?? '默认';
+}
+
+/// A small colour swatch shown inside each accent preset chip.
+class _AccentDot extends StatelessWidget {
+  const _AccentDot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 18,
+      height: 18,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outlineVariant,
+          width: 1,
+        ),
       ),
     );
   }

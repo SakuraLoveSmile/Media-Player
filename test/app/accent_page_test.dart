@@ -17,6 +17,7 @@ import 'package:media_player/data/models/auth_session.dart';
 import 'package:media_player/data/models/server_profile.dart';
 import 'package:media_player/data/storage/key_value_store.dart';
 import 'package:media_player/features/login/login_page.dart';
+import 'package:media_player/features/settings/appearance_page.dart';
 import 'package:media_player/features/settings/settings_page.dart';
 import 'package:media_player/ui/theme/app_accent.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -78,8 +79,8 @@ void main() {
   /// (MaterialApp.theme seed + the Material palette every page reads), not a
   /// settings-only harness.
   Future<void> pumpApp(WidgetTester tester, {KeyValueStore? store}) async {
-    // The settings list holds six sections; a tall surface keeps the accent
-    // chips and the Monet switch inside the lazy ListView's build range.
+    // 设置 and its 外观 sub-page hold many sections; a tall surface keeps the
+    // accent chips and the Monet switch inside the lazy ListView's build range.
     await tester.binding.setSurfaceSize(const Size(800, 2000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -108,6 +109,21 @@ void main() {
   Future<void> openSettings(WidgetTester tester) async {
     await tester.tap(find.byKey(const Key('login-settings')));
     await tester.pumpAndSettle();
+    expect(find.byType(SettingsPage), findsOneWidget);
+  }
+
+  /// 外观 is one level below 设置: the theme and accent controls live there now.
+  Future<void> openAppearance(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('settings-appearance')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppearancePage), findsOneWidget);
+  }
+
+  /// Pops 外观 and re-asserts the settings level the palette is read from.
+  Future<void> backToSettings(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('返回'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppearancePage), findsNothing);
     expect(find.byType(SettingsPage), findsOneWidget);
   }
 
@@ -168,6 +184,7 @@ void main() {
   ) async {
     await pumpApp(tester);
     await openSettings(tester);
+    await openAppearance(tester);
 
     expect(find.text('主题色'), findsOneWidget);
     expect(find.text('当前：默认'), findsOneWidget);
@@ -177,6 +194,8 @@ void main() {
       expect(find.byKey(Key('settings-accent-${preset.name}')), findsOneWidget);
     }
     expect(appPrimary(tester), seedPrimary(appDefaultAccent));
+
+    await backToSettings(tester);
   });
 
   testWidgets(
@@ -196,9 +215,12 @@ void main() {
       );
 
       await openSettings(tester);
+      await openAppearance(tester);
       expect(find.text('当前：紫'), findsOneWidget);
       expect(chipSelected(tester, 'purple'), isTrue);
       expect(chipSelected(tester, 'default'), isFalse);
+
+      await backToSettings(tester);
     },
   );
 
@@ -208,6 +230,7 @@ void main() {
     final store = InMemoryKeyValueStore();
     await pumpApp(tester, store: store);
     await openSettings(tester);
+    await openAppearance(tester);
 
     await pickAccent(tester, 'green');
 
@@ -217,10 +240,14 @@ void main() {
     });
     final Color expected = seedPrimary(AppAccentPresets.green.color);
     expect(appPrimary(tester), expected);
-    expect(pageScheme(tester, SettingsPage).primary, expected);
     expect(find.text('当前：绿'), findsOneWidget);
     expect(chipSelected(tester, 'green'), isTrue);
     expect(chipSelected(tester, 'default'), isFalse);
+
+    // 外观 covers 设置, so the settings palette is only readable again after
+    // popping back one level.
+    await backToSettings(tester);
+    expect(pageScheme(tester, SettingsPage).primary, expected);
 
     // Leaving settings keeps the choice: the login page repaints too.
     await tester.tap(find.byTooltip('返回'));
@@ -235,6 +262,7 @@ void main() {
     final store = InMemoryKeyValueStore();
     await pumpApp(tester, store: store);
     await openSettings(tester);
+    await openAppearance(tester);
 
     await toggleMonet(tester);
 
@@ -253,6 +281,8 @@ void main() {
       'mode': 'default',
     });
     expect(monetOn(tester), isFalse);
+
+    await backToSettings(tester);
   });
 
   testWidgets('picking a preset while Monet is on leaves Monet', (
@@ -261,6 +291,7 @@ void main() {
     final store = InMemoryKeyValueStore();
     await pumpApp(tester, store: store);
     await openSettings(tester);
+    await openAppearance(tester);
 
     await toggleMonet(tester);
     expect(monetOn(tester), isTrue);
@@ -273,6 +304,8 @@ void main() {
       'mode': 'preset',
       'preset': 'orange',
     });
+
+    await backToSettings(tester);
   });
 
   testWidgets(
@@ -283,6 +316,7 @@ void main() {
       final store = InMemoryKeyValueStore();
       await pumpApp(tester, store: store);
       await openSettings(tester);
+      await openAppearance(tester);
 
       await pickAccent(tester, 'green');
       await toggleMonet(tester);
@@ -298,6 +332,8 @@ void main() {
         appPrimary(tester),
         isNot(seedPrimary(const Color(_systemAccent))),
       );
+
+      await backToSettings(tester);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
@@ -310,11 +346,14 @@ void main() {
     final store = InMemoryKeyValueStore();
     await pumpApp(tester, store: store);
     await openSettings(tester);
+    await openAppearance(tester);
 
     await toggleMonet(tester);
 
     expect(monetOn(tester), isTrue);
     expect(appPrimary(tester), seedPrimary(appDefaultAccent));
+
+    await backToSettings(tester);
   }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
   testWidgets('Android applies the system Monet accent when enabled', (
@@ -325,6 +364,7 @@ void main() {
     final store = InMemoryKeyValueStore();
     await pumpApp(tester, store: store);
     await openSettings(tester);
+    await openAppearance(tester);
 
     // Before enabling Monet the brand default still applies.
     expect(appPrimary(tester), seedPrimary(appDefaultAccent));
@@ -333,6 +373,10 @@ void main() {
 
     expect(monetOn(tester), isTrue);
     expect(appPrimary(tester), seedPrimary(const Color(_systemAccent)));
+
+    // 外观 covers 设置, so the settings palette is only readable again after
+    // popping back one level.
+    await backToSettings(tester);
     expect(
       pageScheme(tester, SettingsPage).primary,
       seedPrimary(const Color(_systemAccent)),
@@ -347,6 +391,7 @@ void main() {
       final store = InMemoryKeyValueStore();
       await pumpApp(tester, store: store);
       await openSettings(tester);
+      await openAppearance(tester);
 
       await pickAccent(tester, 'pink');
       expect(appPrimary(tester), seedPrimary(AppAccentPresets.pink.color));
@@ -354,6 +399,8 @@ void main() {
         appPrimary(tester),
         isNot(seedPrimary(const Color(_systemAccent))),
       );
+
+      await backToSettings(tester);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.android),
   );
@@ -363,6 +410,7 @@ void main() {
   ) async {
     await pumpApp(tester, store: _FailingWriteStore());
     await openSettings(tester);
+    await openAppearance(tester);
 
     await pickAccent(tester, 'green');
 
@@ -372,6 +420,7 @@ void main() {
     expect(find.text('当前：默认'), findsOneWidget);
 
     await flushSnackBar(tester);
+    await backToSettings(tester);
   });
 }
 

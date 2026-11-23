@@ -13,6 +13,7 @@ import 'package:media_player/data/models/auth_session.dart';
 import 'package:media_player/data/models/server_profile.dart';
 import 'package:media_player/data/storage/key_value_store.dart';
 import 'package:media_player/features/login/login_page.dart';
+import 'package:media_player/features/settings/appearance_page.dart';
 import 'package:media_player/features/settings/settings_page.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -70,8 +71,8 @@ void main() {
   /// (MaterialApp.themeMode + the Material palette every page reads), not a
   /// settings-only harness.
   Future<void> pumpApp(WidgetTester tester, {KeyValueStore? store}) async {
-    // The settings list holds four sections; a 600pt window would keep the
-    // lower rows outside the lazy ListView's build range.
+    // 设置 and its 外观 sub-page hold many sections; a 600pt window would keep
+    // the lower rows outside the lazy ListView's build range.
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -100,6 +101,21 @@ void main() {
   Future<void> openSettings(WidgetTester tester) async {
     await tester.tap(find.byKey(const Key('login-settings')));
     await tester.pumpAndSettle();
+    expect(find.byType(SettingsPage), findsOneWidget);
+  }
+
+  /// 外观 is one level below 设置: the theme and accent controls live there now.
+  Future<void> openAppearance(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('settings-appearance')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppearancePage), findsOneWidget);
+  }
+
+  /// Pops 外观 and re-asserts the settings level the palette is read from.
+  Future<void> backToSettings(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('返回'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppearancePage), findsNothing);
     expect(find.byType(SettingsPage), findsOneWidget);
   }
 
@@ -134,10 +150,13 @@ void main() {
     expect(pageScheme(tester, LoginPage).brightness, Brightness.dark);
 
     await openSettings(tester);
+    await openAppearance(tester);
     expect(find.text('当前：深色'), findsOneWidget);
     expect(chipSelected(tester, 'dark'), isTrue);
     expect(chipSelected(tester, 'system'), isFalse);
     expect(chipSelected(tester, 'light'), isFalse);
+
+    await backToSettings(tester);
   });
 
   testWidgets('defaults to 跟随系统 and shows all three theme choices', (
@@ -145,6 +164,7 @@ void main() {
   ) async {
     await pumpApp(tester);
     await openSettings(tester);
+    await openAppearance(tester);
 
     expect(find.text('主题模式'), findsOneWidget);
     expect(find.text('当前：跟随系统'), findsOneWidget);
@@ -153,6 +173,8 @@ void main() {
     expect(find.text('浅色'), findsOneWidget);
     expect(find.text('深色'), findsOneWidget);
     expect(appThemeMode(tester), ThemeMode.system);
+
+    await backToSettings(tester);
   });
 
   testWidgets(
@@ -161,6 +183,7 @@ void main() {
       final store = InMemoryKeyValueStore();
       await pumpApp(tester, store: store);
       await openSettings(tester);
+      await openAppearance(tester);
 
       await pickMode(tester, 'dark');
 
@@ -168,6 +191,10 @@ void main() {
       expect(appThemeMode(tester), ThemeMode.dark);
       expect(find.text('当前：深色'), findsOneWidget);
       expect(chipSelected(tester, 'dark'), isTrue);
+
+      // 外观 covers 设置, so the settings palette is only readable again
+      // after popping back one level.
+      await backToSettings(tester);
       final ColorScheme palette = pageScheme(tester, SettingsPage);
       expect(palette.brightness, Brightness.dark);
       expect(
@@ -189,6 +216,7 @@ void main() {
     final store = InMemoryKeyValueStore();
     await pumpApp(tester, store: store);
     await openSettings(tester);
+    await openAppearance(tester);
 
     await pickMode(tester, 'dark');
     await pickMode(tester, 'light');
@@ -196,6 +224,8 @@ void main() {
     expect(await store.read(themeModeStorageKey), 'light');
     expect(appThemeMode(tester), ThemeMode.light);
     expect(find.text('当前：浅色'), findsOneWidget);
+
+    await backToSettings(tester);
     expect(pageScheme(tester, SettingsPage).brightness, Brightness.light);
   });
 
@@ -206,6 +236,7 @@ void main() {
     final store = InMemoryKeyValueStore();
     await pumpApp(tester, store: store);
     await openSettings(tester);
+    await openAppearance(tester);
 
     await pickMode(tester, 'dark');
     await pickMode(tester, 'system');
@@ -213,6 +244,8 @@ void main() {
     expect(await store.read(themeModeStorageKey), 'system');
     expect(appThemeMode(tester), ThemeMode.system);
     expect(find.text('当前：跟随系统'), findsOneWidget);
+
+    await backToSettings(tester);
     // The OS is dark, so following it must resolve to the dark Material palette.
     expect(pageScheme(tester, SettingsPage).brightness, Brightness.dark);
   });
@@ -222,6 +255,7 @@ void main() {
   ) async {
     await pumpApp(tester, store: _FailingWriteStore());
     await openSettings(tester);
+    await openAppearance(tester);
 
     await pickMode(tester, 'dark');
 
@@ -231,6 +265,7 @@ void main() {
     expect(find.text('当前：跟随系统'), findsOneWidget);
 
     await flushSnackBar(tester);
+    await backToSettings(tester);
   });
 }
 

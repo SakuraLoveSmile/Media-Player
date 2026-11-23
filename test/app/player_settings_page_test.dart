@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:media_player/app/accent_settings.dart';
 import 'package:media_player/app/appearance_settings.dart';
 import 'package:media_player/app/playback_settings.dart';
 import 'package:media_player/app/screenshot_settings.dart';
 import 'package:media_player/app/subtitle_style_settings.dart';
+import 'package:media_player/app/theme_mode_settings.dart';
 import 'package:media_player/app/track_prefs_settings.dart';
 import 'package:media_player/data/playback/playback_engine.dart';
 import 'package:media_player/data/playback/playback_settings.dart';
@@ -31,6 +33,8 @@ void main() {
           trackPrefsStoreProvider.overrideWith((ref) async => store),
           subtitleStyleStoreProvider.overrideWith((ref) async => store),
           appearanceSettingsStoreProvider.overrideWith((ref) async => store),
+          themeModeStoreProvider.overrideWith((ref) async => store),
+          accentStoreProvider.overrideWith((ref) async => store),
         ],
         child: MaterialApp(theme: buildAppTheme(Brightness.dark), home: page),
       ),
@@ -43,9 +47,17 @@ void main() {
     await pumpPage(tester, const AppearancePage(), store);
 
     expect(find.byKey(const Key('appearance-page')), findsOneWidget);
+    final Finder standard = find.byKey(const Key('appearance-nav-standard'));
+    // The 主题 section pushes the nav picker below the fold.
+    await tester.scrollUntilVisible(
+      standard,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('悬浮胶囊'), findsWidgets);
 
-    await tester.tap(find.byKey(const Key('appearance-nav-standard')));
+    await tester.tap(standard);
     await tester.pumpAndSettle();
 
     final Map<String, dynamic> json = jsonDecode(
@@ -81,8 +93,16 @@ void main() {
     final store = InMemoryKeyValueStore();
     await pumpPage(tester, const AppearancePage(), store);
 
-    expect(find.byKey(const Key('appearance-loader-dots')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('appearance-loader-dots')));
+    final Finder dots = find.byKey(const Key('appearance-loader-dots'));
+    // The 主题 section pushes the loader picker below the fold.
+    await tester.scrollUntilVisible(
+      dots,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(dots, findsOneWidget);
+    await tester.tap(dots);
     await tester.pumpAndSettle();
 
     final Map<String, dynamic> json = jsonDecode(
