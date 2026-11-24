@@ -320,7 +320,7 @@ jobs:
           set -euo pipefail
           git init -q .ci-feedback
           git -C .ci-feedback remote add origin https://github.com/SakuraLoveSmile/Sakura-Feedback.git
-          git -C .ci-feedback fetch -q --depth 1 origin a6c940cdf27e83155b18057b629218073f74ceb3
+          git -C .ci-feedback fetch -q --depth 1 origin fad2562a6f21d6477dcc8b4e2146c8feae190d00
           git -C .ci-feedback checkout -q --detach FETCH_HEAD
           tr -d '\200-\377' < .ci-feedback/flutter/feedback/pubspec.yaml > .ci-feedback/flutter/feedback/pubspec.ascii.yaml
           mv .ci-feedback/flutter/feedback/pubspec.ascii.yaml .ci-feedback/flutter/feedback/pubspec.yaml

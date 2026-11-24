@@ -1,7 +1,7 @@
 # F4：反馈组件与在线更新
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
-- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4；2026-11-16 升级到 0.9.1 并接入宿主诊断日志，见 §6；2026-11-23 升级到 0.10.0，见 §7；同日升级到 0.11.0 并把设置迁到宿主，见 §8）、设置页、GitHub Releases 在线更新、发布工作流
+- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4；2026-11-16 升级到 0.9.1 并接入宿主诊断日志，见 §6；2026-11-23 升级到 0.10.0，见 §7；同日升级到 0.11.0 并把设置迁到宿主，见 §8；同日升级到 0.14.0，见 §9；同日升级到 0.15.0 并把安卓返回交给组件，见 §10）、设置页、GitHub Releases 在线更新、发布工作流
 - 版本：`v0.2.3`（`0.2.3+5`）已发布，升级 `feedback_widget` 至 0.8.6；更新日志改为每版手写
 - 结论：**`v0.2.0`–`v0.2.3` 均已发布；0.8.6 的灵感球背景更新已随 v0.2.3 上线，真机体验待确认**
 
@@ -9,7 +9,7 @@
 
 | 项 | 决定 | 依据 |
 |---|---|---|
-| 反馈组件版本 | `feedback_widget` **0.11.0**，Git tag `v0.11.0`（commit `a6c940cdf27e83155b18057b629218073f74ceb3`，`flutter/feedback` 子目录；0.11.0 支持宿主托管入口样式 / 唤醒动效 / 灵感球入场，并导出 `FeedbackWakeShortcut`） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
+| 反馈组件版本 | `feedback_widget` **0.15.0**，Git tag `v0.15.0`（commit `fad2562a6f21d6477dcc8b4e2146c8feae190d00`，`flutter/feedback` 子目录；0.15.0 起关闭前先确认用户亲手写的正文 / 手加图片与日志，安卓返回由组件 `didPopRoute` 接管） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
 | 宿主诊断日志 | `FeedbackDiagnosticsRecorder` 收集 dio 请求事件（方法 + 归一化路径、状态码、耗时）与 Flutter/平台错误；`buildFeedbackConfig` 默认挂 `logProvider`，面板打开时导出 JSONL，失败/无事件不阻断提交 | Feedback integration.md §5.6「宿主日志接入是必过的接入验收项」；只写白名单标量，请求体、凭据、完整 URL 与异常文本不进入缓冲 |
 | 反馈服务 | 生产地址 `https://feedback.xn--fhqths51enha.cn`，`appId = dev.mediaplayer.media_player`，`appName = Media Player` | 迁移前的历史决定（当时与 Android applicationId 一致）。应用标识已统一为 `cn.sakuralovesmile.mediaplayer`，此 appId 保持不变：它是反馈服务端侧的软件主键，改动会使历史反馈与面板登录态落到新软件下 |
 | 反馈默认开关 | release/profile 默认开启；debug 与 `flutter test` 默认关闭；可用 `FEEDBACK_ENABLED` / `FEEDBACK_API_BASE` / `FEEDBACK_APP_ID` / `FEEDBACK_APP_NAME` 覆盖 | 开发与既有测试不受影响；发布构建显式传 `--dart-define` |
@@ -249,3 +249,23 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - [Release v0.4.10](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.10)：2026-11-23T05:45:37Z 公开、非草稿、非预发布、Latest；三个资产 `MediaPlayer-android.apk`（117,568,665 B）、`MediaPlayer-windows-x64.zip`（35,406,352 B）、`MediaPlayer-macos.zip`（43,383,208 B）均带 `sha256:` digest，正文为用户向日志 `release/notes/v0.4.10.md`。
 - 尚未验证：真机从 0.4.9 覆盖安装到 0.4.10 并走完「检查更新 → 下载 → 安装」；双指长按唤醒与水波纹/波光、七种入场动画的真机观感；Windows 更新安装（Release 构建已通过）。
 
+## 9. feedback_widget 0.14.0 同步（2026-11-23）
+
+- 升级：`feedback_widget` 从 v0.11.0（`a6c940c`）到 **v0.14.0**（tag `v0.14.0`，commit `b8c0065`）；`pubspec.yaml` 的 Git `ref`、`pubspec.lock` 与两处 Windows CI vendoring（`.github/workflows/app-ci.yml`、`.github/workflows/release.yml`）同步到同一 commit。
+- 中间版本对本应用无影响：0.12.0 只重做管理后台，0.13.0 只改 Web 组件（`launcher-mode=auto`、桌面 `⌥`/`Alt` 拖拽唤醒、首次使用提示），Flutter 包两版都未改；本应用是 Flutter 宿主，`pubspec.lock` 的 version 直接从 0.11.0 跳到 0.14.0。
+- 行为变更（破坏性）：**关闭面板 = 放弃本次未提交的反馈**。关闭按钮 / Esc / 宽屏遮罩 / 宿主 `controller.close()` 都会清空正文、截图、手动图片、日志与上一次提交留下的任务态，面板回到「新建反馈」撰写页；下次呼出按 `captureMode` 重新截图，不再恢复关闭时留下的旧图和草稿。保留访问令牌与登录态、额度、「我的反馈」数据与各家设置；已发出的提交不撤回；截图失败 / 重拍取消 / 提交失败 / 401 / 额度用尽等非关闭中断仍保留草稿。同一会话换图走面板内「重新截图」。
+- 宿主无需改代码：v0.11.0→v0.14.0 的 Flutter 公开属性 / 方法 / 事件未变（diff 只动 `panel.dart` 内部与 `widget.dart` 注释），`lib/app/feedback_layer.dart` 的接线、`feedbackControllerProvider` 与 `handleFeedbackBackPop` 原样可用。
+- 体验取舍：Android 系统返回键走宿主的 `handleFeedbackBackPop` → `controller.close()`，与组件关闭按钮同义，因此按返回键会丢弃已输入内容。这是 0.14.0 上游的既定语义（已知代价是「误关闭会丢已输入文字」），本应用不加二次确认，保持与组件一致（0.15.0 起改由组件接管并弹确认，见 §10）。
+- 接入要求复核（接入指南 §4.2.1 / §9.2，0.14.0 起为必过项）：五项外观设置（入口样式、唤醒方式、唤醒效果、灵感球待机样式、唤醒动效）在 §8 已迁到「设置 → 反馈」并持久化，`hideSettings: true`，启动与改选后回传组件——本次没有新增设置项，只确认仍满足。
+- 本地验证：`services/watch_together` 的 `dart pub get` ok；`./tool/check_layering.sh` ok；`flutter analyze` 无问题；`flutter test` **1629 项通过**。工具链 Flutter 3.47.7 / Dart 3.13.5（与 CI 一致）。
+- 尚未验证：真机「截图 → 不提交关闭 → 再次唤醒」重新截图且回到空白撰写页的手感（组件上游同样把真机复验列为遗留项）；Windows CI 的 vendoring 需等下一次流水线才能证明新 SHA 可用。
+
+## 10. feedback_widget 0.15.0 与安卓返回归组件（2026-11-23）
+
+- 升级：`feedback_widget` 从 v0.14.0（`b8c0065`）到 **v0.15.0**（tag `v0.15.0`，commit `fad2562`）；`pubspec.yaml` 的 Git `ref`、`pubspec.lock` 与两处 Windows CI vendoring（`.github/workflows/app-ci.yml`、`.github/workflows/release.yml`）同步到同一 commit。
+- 0.15.0 新增：①关闭前确认——面板里有**用户亲手写 / 加**的内容（正文、手动添加或编辑过的图片、手动添加的日志）时，关闭按钮 / Esc / 宽屏遮罩 / 安卓返回先弹「放弃这次反馈？」，「继续编辑」原样留下、「放弃」才关闭并丢弃；只有自动截图或自动采集日志时不弹窗。②Flutter 端 `FeedbackWidget.didPopRoute` 接管安卓返回键 / 返回手势，面板打开时走同一条确认并消费事件。公开属性 / 方法 / 事件与 HTTP 契约未变。
+- 宿主要改的地方：本应用原来在 `AppShell.didPopRoute` 里先调 `controller.close()` 再返回 true，那是**程序化关闭**——0.15.0 明确它不弹确认，于是安卓返回会绕开「放弃这次反馈？」静默丢掉已写的字（和面板内关闭按钮不一致）。现在 `handleFeedbackBackPop` 只管宿主自己的导航栈：外层 navigator 上有截图预览 / 确认弹窗时 pop 掉并返回 true，其余一律返回 false，把事件交给组件。
+- 观察者链（这条链是本次接线的根据，测试 `test/app/feedback_back_test.dart` 钉住）：`AppShell`（在 `MaterialApp` 之前注册，最先收到）→ `WidgetsApp`（用 router 时返回 false）→ `FeedbackWidget`（挂在 app router 之上，面板打开时确认并返回 true，宿主页面不被 pop）→ router 的 `RootBackButtonDispatcher`（面板关闭时才 pop 宿主页面）。`handlePopRoute` 按注册顺序询问观察者，第一个返回 true 的中断派发。
+- 副作用与边界：按返回键在有内容的面板里不再立即关闭（多一步确认），无内容时行为与 0.14.0 相同；返回键关闭面板仍然先于路由 pop，不会把页面弹掉；确认弹窗本身按返回 = 「继续编辑」。桌面 Esc 一直由组件内部处理，不经过宿主。
+- 本地验证：`services/watch_together` 的 `dart pub get` ok；`./tool/check_layering.sh` ok；`flutter analyze` 无问题；`flutter test` **1632 项通过**（新增 3 项返回键端到端用例，返回键单元用例按新语义改写）。工具链 Flutter 3.47.7 / Dart 3.13.5。
+- 尚未验证：Android 真机 / 返回手势的体感（含确认弹窗与输入法同时出现时的高度）；Windows CI 的新 vendoring SHA 需等下一次流水线。

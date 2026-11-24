@@ -280,9 +280,9 @@ void main() {
     });
   });
 
-  group('back handling (panel / preview dialog first)', () {
+  group('back handling (outer dialogs first, panel left to the component)', () {
     testWidgets(
-      'returns false when neither a panel nor an outer route is open',
+      'returns false when no outer route is open',
       (WidgetTester tester) async {
         final GlobalKey<NavigatorState> navigatorKey =
             await _pumpOuterNavigator(tester);
@@ -291,17 +291,14 @@ void main() {
 
         expect(navigatorKey.currentState!.canPop(), isFalse);
         expect(
-          handleFeedbackBackPop(
-            navigatorKey: navigatorKey,
-            controller: controller,
-          ),
+          handleFeedbackBackPop(navigatorKey: navigatorKey),
           isFalse,
         );
         expect(controller.isOpen, isFalse);
       },
     );
 
-    testWidgets('closes an open panel and consumes the event', (
+    testWidgets('leaves the panel to the component instead of closing it', (
       WidgetTester tester,
     ) async {
       final GlobalKey<NavigatorState> navigatorKey = await _pumpOuterNavigator(
@@ -311,17 +308,17 @@ void main() {
       addTearDown(controller.dispose);
 
       controller.open();
+      // feedback_widget >= 0.15.0 asks before discarding a draft, and only the
+      // component knows whether the panel holds user-written content. Closing
+      // here would be a programmatic close that skips that confirmation.
       expect(
-        handleFeedbackBackPop(
-          navigatorKey: navigatorKey,
-          controller: controller,
-        ),
-        isTrue,
+        handleFeedbackBackPop(navigatorKey: navigatorKey),
+        isFalse,
       );
-      expect(controller.isOpen, isFalse);
+      expect(controller.isOpen, isTrue);
     });
 
-    testWidgets('pops the outer preview dialog before closing the panel', (
+    testWidgets('pops the outer preview dialog and consumes the event', (
       WidgetTester tester,
     ) async {
       final GlobalKey<NavigatorState> navigatorKey = await _pumpOuterNavigator(
@@ -342,27 +339,18 @@ void main() {
       expect(navigatorKey.currentState!.canPop(), isTrue);
 
       expect(
-        handleFeedbackBackPop(
-          navigatorKey: navigatorKey,
-          controller: controller,
-        ),
+        handleFeedbackBackPop(navigatorKey: navigatorKey),
         isTrue,
       );
       await tester.pumpAndSettle();
 
-      // Dialog dismissed first; the panel stays open for the next back event.
+      // Dialog dismissed first; the panel stays open, and the next back event
+      // belongs to the component.
       expect(find.text('preview'), findsNothing);
       expect(navigatorKey.currentState!.canPop(), isFalse);
       expect(controller.isOpen, isTrue);
-
-      expect(
-        handleFeedbackBackPop(
-          navigatorKey: navigatorKey,
-          controller: controller,
-        ),
-        isTrue,
-      );
-      expect(controller.isOpen, isFalse);
+      expect(handleFeedbackBackPop(navigatorKey: navigatorKey), isFalse);
+      expect(controller.isOpen, isTrue);
     });
   });
 }

@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.4.10+1795411788
+version: 0.4.12+1795484103
 
 environment:
   sdk: ^3.13.5
@@ -46,8 +46,8 @@ dependencies:
   feedback_widget:
     git:
       url: https://github.com/SakuraLoveSmile/Sakura-Feedback.git
-      # v0.11.0：宿主可托管入口样式 / 唤醒动效 / 入场动画等五项设置。
-      ref: a6c940cdf27e83155b18057b629218073f74ceb3
+      # v0.15.0：关闭前确认；安卓返回由组件接管（放弃本次未提交的反馈）。
+      ref: fad2562a6f21d6477dcc8b4e2146c8feae190d00
       path: flutter/feedback
   package_info_plus: ^10.2.2
   crypto: ^3.0.8

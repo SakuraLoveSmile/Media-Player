@@ -143,25 +143,33 @@ class _FeedbackLayerBody extends StatelessWidget {
   }
 }
 
-/// Consumes a system-back (Android) / pop event on behalf of the feedback
-/// layer. Order matters: dismiss a screenshot-preview dialog sitting on the
-/// outer navigator first, then close the panel; only when neither is open does
-/// the event fall through to normal navigation. Returns `true` when consumed.
+/// Host half of the system-back (Android) / pop handling for the feedback
+/// layer.
 ///
-/// Desktop `Esc` is handled inside the component itself; this covers the
-/// platform back gesture, which the host owns because the layer lives above the
-/// router and is therefore not reached by the router's own back handling.
+/// Only the routes the host owns are consumed here: a screenshot-preview or
+/// discard-confirmation dialog pushed on the outer navigator (the one mounted
+/// by [FeedbackOverlay]) is dismissed first. Everything else returns `false`
+/// so the event keeps travelling down the observer chain:
+///
+/// 1. this host observer (registered first, before `MaterialApp` builds),
+/// 2. `WidgetsApp`, which declines because the app uses a router,
+/// 3. `FeedbackWidget` (`feedback_widget >= 0.15.0`), mounted above the app
+///    router, whose `didPopRoute` asks 「放弃这次反馈？」 when the panel holds
+///    text the user typed or files they attached, closes the panel, and
+///    consumes the event — the host page is *not* popped,
+/// 4. the router's own back dispatcher, which pops the host page when the
+///    panel is closed.
+///
+/// Closing the panel here instead (`controller.close()`, what this helper did
+/// before 0.15.0) would be a programmatic close: it skips the component's
+/// confirmation and silently drops what the user wrote. Desktop `Esc` is
+/// handled inside the component itself and never reaches this function.
 bool handleFeedbackBackPop({
   required GlobalKey<NavigatorState> navigatorKey,
-  required FeedbackController controller,
 }) {
   final NavigatorState? outerNav = navigatorKey.currentState;
   if (outerNav != null && outerNav.canPop()) {
-    outerNav.pop(); // dismiss the preview dialog on the outer navigator
-    return true;
-  }
-  if (controller.isOpen) {
-    controller.close();
+    outerNav.pop(); // dismiss the preview / discard dialog on the outer navigator
     return true;
   }
   return false;

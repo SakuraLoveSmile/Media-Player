@@ -69,7 +69,9 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
   void initState() {
     super.initState();
     // Registered before the router exists so this observer is consulted first:
-    // Android back must close the feedback panel before GoRouter pops a route.
+    // Android back dismisses the feedback layer's own dialogs here, and the
+    // component (mounted above the router) then handles the panel before
+    // GoRouter can pop a route.
     WidgetsBinding.instance.addObserver(this);
     _feedbackController = ref.read(feedbackControllerProvider);
     _router = ref.read(appRouterProvider);
@@ -169,12 +171,17 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
     router.push(AppRoutes.myRequests);
   }
 
-  /// Android back / system pop: close the feedback panel before normal
-  /// navigation handles the event.
+  /// Android back / system pop: dismiss the feedback layer's own dialogs and
+  /// leave the rest to the component.
+  ///
+  /// Registered before the router exists so this observer is consulted first
+  /// (see [initState]). Returning `false` for an open panel hands the event to
+  /// `FeedbackWidget.didPopRoute`, which asks before discarding a draft and
+  /// keeps the host page from being popped; the router only gets the event when
+  /// the panel is closed.
   @override
   Future<bool> didPopRoute() async => handleFeedbackBackPop(
     navigatorKey: _feedbackNavigatorKey,
-    controller: _feedbackController,
   );
 
   void _onRouteChanged() {
