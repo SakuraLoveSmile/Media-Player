@@ -497,6 +497,7 @@ void main() {
     expect(find.text('当前：水波纹'), findsOneWidget);
     expect(find.text('灵感球样式'), findsNothing);
     expect(find.text('唤醒效果'), findsNothing);
+    expect(find.text('边缘反射'), findsNothing);
   });
 
   testWidgets('switching to the orb swaps the rows and persists the choice', (
@@ -520,8 +521,33 @@ void main() {
     expect(find.text('当前：灵感球'), findsOneWidget);
     expect(find.text('灵感球样式'), findsOneWidget);
     expect(find.text('唤醒效果'), findsOneWidget);
+    expect(find.text('边缘反射'), findsOneWidget);
     expect(find.text('唤醒动效'), findsNothing);
     expect(await store.read(feedbackLauncherStyleStorageKey), 'orb');
+  });
+
+  testWidgets('the orb reflection switch persists as false', (tester) async {
+    final store = InMemoryKeyValueStore();
+    await store.write(feedbackLauncherStyleStorageKey, 'orb');
+    await pumpSettings(
+      tester,
+      feedback: const FeedbackServiceConfig(
+        apiBase: 'https://feedback.test',
+        appId: 'dev.mediaplayer.media_player',
+      ),
+      store: store,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('settings-feedback-reflection')),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('settings-feedback-reflection')));
+    await tester.pumpAndSettle();
+
+    expect(await store.read(feedbackOrbReflectionStorageKey), 'false');
   });
 
   testWidgets('selecting a hidden orb style persists it', (tester) async {

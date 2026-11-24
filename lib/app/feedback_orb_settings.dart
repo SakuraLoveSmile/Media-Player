@@ -15,6 +15,10 @@ const String feedbackOrbEntranceStorageKey = 'feedback.orb_entrance.v1';
 const String feedbackOrbIdleStorageKey = 'feedback.orb_idle_style.v1';
 const String feedbackWakeGesturesStorageKey = 'feedback.wake_gestures.v1';
 
+/// Whether the orb edge shows the mirrored reflection
+/// (feedback_widget >= 0.16.0). Stored as `true` / `false`.
+const String feedbackOrbReflectionStorageKey = 'feedback.orb_reflection.v1';
+
 /// Host-managed feedback preferences shown on the settings page.
 ///
 /// Every field is handed to [FeedbackWidget] as a value, so the component's own
@@ -29,6 +33,7 @@ class FeedbackOrbSettings {
     this.wakeGestures = const <FeedbackWakeGesture>{
       FeedbackWakeGesture.twoFingerHold,
     },
+    this.reflectionEnabled = true,
   });
 
   /// Defaults mirror the component's own 0.11.0 defaults: beam wake with the
@@ -50,12 +55,16 @@ class FeedbackOrbSettings {
   /// Wake gestures; an empty set disables gesture summoning.
   final Set<FeedbackWakeGesture> wakeGestures;
 
+  /// Orb edge reflection; the glass refraction in the centre stays either way.
+  final bool reflectionEnabled;
+
   FeedbackOrbSettings copyWith({
     FeedbackLauncherStyle? launcherStyle,
     FeedbackWakeVisual? wakeVisual,
     FeedbackOrbEntrance? orbEntrance,
     FeedbackOrbIdleStyle? idleStyle,
     Set<FeedbackWakeGesture>? wakeGestures,
+    bool? reflectionEnabled,
   }) {
     return FeedbackOrbSettings(
       launcherStyle: launcherStyle ?? this.launcherStyle,
@@ -63,6 +72,7 @@ class FeedbackOrbSettings {
       orbEntrance: orbEntrance ?? this.orbEntrance,
       idleStyle: idleStyle ?? this.idleStyle,
       wakeGestures: wakeGestures ?? this.wakeGestures,
+      reflectionEnabled: reflectionEnabled ?? this.reflectionEnabled,
     );
   }
 
@@ -73,6 +83,7 @@ class FeedbackOrbSettings {
         other.wakeVisual == wakeVisual &&
         other.orbEntrance == orbEntrance &&
         other.idleStyle == idleStyle &&
+        other.reflectionEnabled == reflectionEnabled &&
         _sameGestures(other.wakeGestures, wakeGestures);
   }
 
@@ -82,6 +93,7 @@ class FeedbackOrbSettings {
     wakeVisual,
     orbEntrance,
     idleStyle,
+    reflectionEnabled,
     Object.hashAll(FeedbackWakeGesture.values.where(wakeGestures.contains)),
   );
 
@@ -147,6 +159,10 @@ class FeedbackOrbSettingsController extends AsyncNotifier<FeedbackOrbSettings> {
       wakeGestures: _decodeWakeGestures(
         await _readQuietly(store, feedbackWakeGesturesStorageKey),
       ),
+      reflectionEnabled: _decodeBool(
+        await _readQuietly(store, feedbackOrbReflectionStorageKey),
+        FeedbackOrbSettings.defaults.reflectionEnabled,
+      ),
     );
   }
 
@@ -191,6 +207,18 @@ class FeedbackOrbSettingsController extends AsyncNotifier<FeedbackOrbSettings> {
       feedbackOrbIdleStorageKey,
       style.name,
       (FeedbackOrbSettings latest) => latest.copyWith(idleStyle: style),
+    );
+  }
+
+  Future<void> setReflectionEnabled(bool enabled) async {
+    final FeedbackOrbSettings current =
+        state.value ?? FeedbackOrbSettings.defaults;
+    if (current.reflectionEnabled == enabled) return;
+    await _persist(
+      feedbackOrbReflectionStorageKey,
+      enabled.toString(),
+      (FeedbackOrbSettings latest) =>
+          latest.copyWith(reflectionEnabled: enabled),
     );
   }
 
@@ -267,6 +295,16 @@ T _decodeEnum<T extends Enum>(String? raw, List<T> values, T fallback) {
   final String? name = raw?.trim();
   for (final T candidate in values) {
     if (candidate.name == name) return candidate;
+  }
+  return fallback;
+}
+
+bool _decodeBool(String? raw, bool fallback) {
+  switch (raw?.trim().toLowerCase()) {
+    case 'true':
+      return true;
+    case 'false':
+      return false;
   }
   return fallback;
 }

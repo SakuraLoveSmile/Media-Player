@@ -30,6 +30,7 @@ void main() {
     expect(settings.wakeGestures, <FeedbackWakeGesture>{
       FeedbackWakeGesture.twoFingerHold,
     });
+    expect(settings.reflectionEnabled, isTrue);
   });
 
   test('loads persisted values and normalizes their order', () async {
@@ -42,6 +43,7 @@ void main() {
       feedbackWakeGesturesStorageKey,
       jsonEncode(<String>['two-finger-double-tap', 'three-finger-swipe-up']),
     );
+    await store.write(feedbackOrbReflectionStorageKey, 'false');
 
     final settings = await _load(_container(store));
 
@@ -53,6 +55,7 @@ void main() {
       FeedbackWakeGesture.threeFingerSwipeUp,
       FeedbackWakeGesture.twoFingerDoubleTap,
     });
+    expect(settings.reflectionEnabled, isFalse);
   });
 
   test('unknown or corrupted stored values fall back safely', () async {
@@ -62,6 +65,7 @@ void main() {
     await store.write(feedbackOrbEntranceStorageKey, 'warp');
     await store.write(feedbackOrbIdleStorageKey, 'bogus');
     await store.write(feedbackWakeGesturesStorageKey, '{not json');
+    await store.write(feedbackOrbReflectionStorageKey, 'maybe');
 
     final settings = await _load(_container(store));
 
@@ -70,6 +74,7 @@ void main() {
     expect(settings.orbEntrance, FeedbackOrbEntrance.bead);
     expect(settings.idleStyle, FeedbackOrbIdleStyle.handle);
     expect(settings.wakeGestures, isEmpty);
+    expect(settings.reflectionEnabled, isTrue);
   });
 
   test('setIdleStyle persists and updates the state', () async {
@@ -105,6 +110,22 @@ void main() {
     expect(settings?.launcherStyle, FeedbackLauncherStyle.orb);
     expect(settings?.wakeVisual, FeedbackWakeVisual.aurora);
     expect(settings?.orbEntrance, FeedbackOrbEntrance.turn);
+  });
+
+  test('setReflectionEnabled persists the switch and updates the state', () async {
+    final store = InMemoryKeyValueStore();
+    final container = _container(store);
+    await _load(container);
+
+    await container
+        .read(feedbackOrbSettingsProvider.notifier)
+        .setReflectionEnabled(false);
+
+    expect(await store.read(feedbackOrbReflectionStorageKey), 'false');
+    expect(
+      container.read(feedbackOrbSettingsProvider).value?.reflectionEnabled,
+      isFalse,
+    );
   });
 
   test('setWakeGestures persists stable ids and updates the state', () async {

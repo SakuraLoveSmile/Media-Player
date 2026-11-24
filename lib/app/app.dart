@@ -290,6 +290,7 @@ class _MediaPlayerAppState extends ConsumerState<MediaPlayerApp>
                 orbEntrance: feedbackSettings.orbEntrance,
                 orbIdleStyle: feedbackSettings.idleStyle,
                 wakeGestures: feedbackSettings.wakeGestures,
+                orbReflectionEnabled: feedbackSettings.reflectionEnabled,
                 child: routerChild,
               );
             },

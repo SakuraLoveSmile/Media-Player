@@ -22,6 +22,7 @@ Widget _host({
   ValueChanged<FeedbackOrbIdleStyle>? onOrbIdleStyleChanged,
   Set<FeedbackWakeGesture>? wakeGestures,
   ValueChanged<Set<FeedbackWakeGesture>>? onWakeGesturesChanged,
+  bool? orbReflectionEnabled,
 }) {
   return MaterialApp(
     home: FeedbackOverlay(
@@ -35,6 +36,7 @@ Widget _host({
       onOrbIdleStyleChanged: onOrbIdleStyleChanged,
       wakeGestures: wakeGestures,
       onWakeGesturesChanged: onWakeGesturesChanged,
+      orbReflectionEnabled: orbReflectionEnabled,
       child: Navigator(
         key: routerKey,
         onGenerateRoute: (RouteSettings settings) => MaterialPageRoute<void>(
@@ -222,6 +224,7 @@ void main() {
             feedbackNavigatorKey: feedbackNavigatorKey,
             routerKey: routerKey,
             orbIdleStyle: FeedbackOrbIdleStyle.hidden,
+            orbReflectionEnabled: false,
             onOrbIdleStyleChanged: (FeedbackOrbIdleStyle style) {
               changedStyle = style;
             },
@@ -242,6 +245,9 @@ void main() {
         expect(widget.wakeGestures, <FeedbackWakeGesture>{
           FeedbackWakeGesture.twoFingerHold,
         });
+        // v0.16.0: the host value reaches the component (hideSettings keeps
+        // the in-panel switch hidden).
+        expect(widget.orbReflectionEnabled, isFalse);
         // v0.8.5: the hidden style only hides the idle/collapsed entry. The full
         // orb is shown first; after the idle timer the launcher slot disappears
         // (the controller can still open the panel).

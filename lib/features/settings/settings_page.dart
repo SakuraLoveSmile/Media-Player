@@ -300,6 +300,18 @@ class SettingsPage extends ConsumerWidget {
                             _pickOrbEntrance(context, ref, feedbackSettings),
                           ),
                   ),
+                  SwitchListTile(
+                    key: const Key('settings-feedback-reflection'),
+                    secondary: Icon(Icons.flip, color: palette.primary),
+                    title: const Text('边缘反射'),
+                    subtitle: const Text('球缘映出倒影；关闭后只保留球心的玻璃折射'),
+                    value: feedbackSettings?.value?.reflectionEnabled ?? true,
+                    onChanged: feedbackSettings?.value == null
+                        ? null
+                        : (bool value) => unawaited(
+                            _setReflection(context, ref, value),
+                          ),
+                  ),
                 ],
               ],
             ),
@@ -885,6 +897,19 @@ class SettingsPage extends ConsumerWidget {
     await _saveFeedbackSettings(
       context,
       ref.read(feedbackOrbSettingsProvider.notifier).setWakeGestures(selected),
+    );
+  }
+
+  Future<void> _setReflection(
+    BuildContext context,
+    WidgetRef ref,
+    bool enabled,
+  ) async {
+    await _saveFeedbackSettings(
+      context,
+      ref
+          .read(feedbackOrbSettingsProvider.notifier)
+          .setReflectionEnabled(enabled),
     );
   }
 

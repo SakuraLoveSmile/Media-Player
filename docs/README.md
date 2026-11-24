@@ -15,7 +15,7 @@
 - [F2 媒体库页](f2-notes.md) — 视图切换、海报网格、分页与各状态的实机截图。
 - [B5 播放编排与 F3 播放页](b5-notes.md) — PlaybackInfo/URL 回退/上报/续播/直连判定的实机矩阵与 T5-BUG-1/2。
 - [M2 签核记录](m2-signoff.md) — macOS + Android 已签；Windows 拆为 M2-W，验收条件见契约 §8.1。
-- [F4 反馈与在线更新](f4-notes.md) — feedback_widget 0.15.0 接入（宿主托管反馈外观设置、关闭前确认、含宿主诊断日志）、设置页、GitHub Releases 在线更新与验证记录。
+- [F4 反馈与在线更新](f4-notes.md) — feedback_widget 0.16.0 接入（宿主托管反馈外观设置含灵感球边缘反射、关闭前确认、含宿主诊断日志）、设置页、GitHub Releases 在线更新与验证记录。
 - [发布与在线更新流程](release.md) — tag 发布、三平台资产、Android 固定签名与更新安装行为。
 - [MoviePilot 求片](moviepilot-request-notes.md) — 搜索→订阅→前台轮询进度→Emby 入库的全链路实现、逐片提交与仍需真实实例核实的 7 项。
 - [剧集选季与单集播放执行记录](series-selection-csim4lhdf81m1k7wib615fdv.plan.md) — 本任务冻结计划、实现范围与验证限制；历史证据（Android 主路径、人耳听音、服务端无视频转码与退出后停止）来自执行 `8d4fb649` 与其最终产物 `a724cf61…47eb52`；本轮补证实测手机长文本视觉（长剧名、简介、季条横向滚动与 4 季切换、两行分集名、观看状态、末集可达）与错误态加重试，状态定稿“待体验”；macOS 按用户决定移出本轮必要验收且本轮未取得原生证据，特别篇 0、超过 60 集与 Windows 仍未验证。

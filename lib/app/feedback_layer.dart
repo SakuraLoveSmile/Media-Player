@@ -37,6 +37,7 @@ class FeedbackOverlay extends StatelessWidget {
     this.onOrbIdleStyleChanged,
     this.wakeGestures,
     this.onWakeGesturesChanged,
+    this.orbReflectionEnabled,
     this.hideSettings = false,
   });
 
@@ -80,6 +81,10 @@ class FeedbackOverlay extends StatelessWidget {
 
   final ValueChanged<Set<FeedbackWakeGesture>>? onWakeGesturesChanged;
 
+  /// Host-managed orb edge reflection (feedback_widget >= 0.16.0). The
+  /// in-panel switch stays hidden, so a value is all the component needs.
+  final bool? orbReflectionEnabled;
+
   @override
   Widget build(BuildContext context) {
     return _FeedbackScope(
@@ -97,6 +102,7 @@ class FeedbackOverlay extends StatelessWidget {
       onOrbIdleStyleChanged: onOrbIdleStyleChanged,
       wakeGestures: wakeGestures,
       onWakeGesturesChanged: onWakeGesturesChanged,
+      orbReflectionEnabled: orbReflectionEnabled,
       child: Navigator(
         key: navigatorKey,
         onGenerateRoute: (RouteSettings settings) => PageRouteBuilder<void>(
@@ -138,6 +144,7 @@ class _FeedbackLayerBody extends StatelessWidget {
       onOrbIdleStyleChanged: scope.onOrbIdleStyleChanged,
       wakeGestures: scope.wakeGestures,
       onWakeGesturesChanged: scope.onWakeGesturesChanged,
+      orbReflectionEnabled: scope.orbReflectionEnabled,
       child: scope.routerChild,
     );
   }
@@ -192,6 +199,7 @@ class _FeedbackScope extends InheritedWidget {
     this.onOrbIdleStyleChanged,
     this.wakeGestures,
     this.onWakeGesturesChanged,
+    this.orbReflectionEnabled,
   });
 
   final FeedbackController controller;
@@ -208,6 +216,7 @@ class _FeedbackScope extends InheritedWidget {
   final ValueChanged<FeedbackOrbIdleStyle>? onOrbIdleStyleChanged;
   final Set<FeedbackWakeGesture>? wakeGestures;
   final ValueChanged<Set<FeedbackWakeGesture>>? onWakeGesturesChanged;
+  final bool? orbReflectionEnabled;
 
   static _FeedbackScope of(BuildContext context) {
     final _FeedbackScope? scope = context
@@ -231,5 +240,6 @@ class _FeedbackScope extends InheritedWidget {
       orbIdleStyle != oldWidget.orbIdleStyle ||
       onOrbIdleStyleChanged != oldWidget.onOrbIdleStyleChanged ||
       !setEquals(wakeGestures, oldWidget.wakeGestures) ||
-      onWakeGesturesChanged != oldWidget.onWakeGesturesChanged;
+      onWakeGesturesChanged != oldWidget.onWakeGesturesChanged ||
+      orbReflectionEnabled != oldWidget.orbReflectionEnabled;
 }

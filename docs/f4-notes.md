@@ -1,7 +1,7 @@
 # F4：反馈组件与在线更新
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
-- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4；2026-11-16 升级到 0.9.1 并接入宿主诊断日志，见 §6；2026-11-23 升级到 0.10.0，见 §7；同日升级到 0.11.0 并把设置迁到宿主，见 §8；同日升级到 0.14.0，见 §9；同日升级到 0.15.0 并把安卓返回交给组件，见 §10）、设置页、GitHub Releases 在线更新、发布工作流
+- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4；2026-11-16 升级到 0.9.1 并接入宿主诊断日志，见 §6；2026-11-23 升级到 0.10.0，见 §7；同日升级到 0.11.0 并把设置迁到宿主，见 §8；同日升级到 0.14.0，见 §9；同日升级到 0.15.0 并把安卓返回交给组件，见 §10；2026-11-24 升级到 0.16.0 并托管灵感球边缘反射，见 §11）、设置页、GitHub Releases 在线更新、发布工作流
 - 版本：`v0.2.3`（`0.2.3+5`）已发布，升级 `feedback_widget` 至 0.8.6；更新日志改为每版手写
 - 结论：**`v0.2.0`–`v0.2.3` 均已发布；0.8.6 的灵感球背景更新已随 v0.2.3 上线，真机体验待确认**
 
@@ -9,7 +9,7 @@
 
 | 项 | 决定 | 依据 |
 |---|---|---|
-| 反馈组件版本 | `feedback_widget` **0.15.0**，Git tag `v0.15.0`（commit `fad2562a6f21d6477dcc8b4e2146c8feae190d00`，`flutter/feedback` 子目录；0.15.0 起关闭前先确认用户亲手写的正文 / 手加图片与日志，安卓返回由组件 `didPopRoute` 接管） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
+| 反馈组件版本 | `feedback_widget` **0.16.0**，Git tag `v0.16.0`（commit `abc22328ac02a47a4e8e40c7c454e6687c8c7e7a`，`flutter/feedback` 子目录；0.16.0 起提供灵感球边缘反射开关与新版圈选，关闭前确认与组件接管安卓返回沿用） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
 | 宿主诊断日志 | `FeedbackDiagnosticsRecorder` 收集 dio 请求事件（方法 + 归一化路径、状态码、耗时）与 Flutter/平台错误；`buildFeedbackConfig` 默认挂 `logProvider`，面板打开时导出 JSONL，失败/无事件不阻断提交 | Feedback integration.md §5.6「宿主日志接入是必过的接入验收项」；只写白名单标量，请求体、凭据、完整 URL 与异常文本不进入缓冲 |
 | 反馈服务 | 生产地址 `https://feedback.xn--fhqths51enha.cn`，`appId = dev.mediaplayer.media_player`，`appName = Media Player` | 迁移前的历史决定（当时与 Android applicationId 一致）。应用标识已统一为 `cn.sakuralovesmile.mediaplayer`，此 appId 保持不变：它是反馈服务端侧的软件主键，改动会使历史反馈与面板登录态落到新软件下 |
 | 反馈默认开关 | release/profile 默认开启；debug 与 `flutter test` 默认关闭；可用 `FEEDBACK_ENABLED` / `FEEDBACK_API_BASE` / `FEEDBACK_APP_ID` / `FEEDBACK_APP_NAME` 覆盖 | 开发与既有测试不受影响；发布构建显式传 `--dart-define` |
@@ -277,3 +277,11 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - main CI [45306402775](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45306402775) 4 个 job 成功（analyze-test / android / windows / macos）；发布流水线 [45307396168](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45307396168) 全部 job 成功（validate、三平台构建、一起看镜像、发布 Release）。
 - [Release v0.4.12](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.12)：2026-11-24T01:53:51Z 公开、非草稿、非预发布、Latest；三个资产 `MediaPlayer-android.apk`（117,568,669 B）、`MediaPlayer-macos.zip`（43,397,930 B）、`MediaPlayer-windows-x64.zip`（35,410,246 B）均带 `sha256:` digest，正文为用户向日志 `release/notes/v0.4.12.md`。
 - 尚未验证：真机从 0.4.10 覆盖安装到 0.4.12 并走完「检查更新 → 下载 → 安装」；安卓真机返回键与「放弃这次反馈？」确认弹窗的观感（含输入法弹出时的高度）；Windows 更新安装（Release 构建已通过）。
+
+## 11. feedback_widget 0.16.0 与灵感球边缘反射（2026-11-24）
+
+- 升级：`feedback_widget` 从 v0.15.0（`fad2562`）到 **v0.16.0**（tag `v0.16.0`，commit `abc22328`）；`pubspec.yaml` 的 Git `ref`、`pubspec.lock` 与两处 Windows CI vendoring（`.github/workflows/app-ci.yml`、`.github/workflows/release.yml`）同步到同一 commit。
+- 0.16.0 新增：①灵感球「边缘反射」开关（`orbReflectionEnabled` / `onOrbReflectionChanged`），按应用记住、默认开启；关闭后球缘不再映出翻转的文字与图标、边缘反光减弱，球心的玻璃折射与拖动变形照旧。②水波纹沿当前页面向外扩散、文字线条随波峰轻微弯折，浅色页面上波光更清晰。③新版圈选：选区可整体拖动、拖四角缩放、在同一张截图上重画；选框贴近底边时底部按钮让位并延续截图底色。公开属性/方法/事件与 HTTP 契约未变，`didPopRoute` 与提交链路没动，关闭前确认与安卓返回归组件继续沿用 §10 的接线。
+- 宿主要改的地方：本应用 `hideSettings: true`，外观设置全部由「设置 → 反馈」托管（§8、§9 的必过项）。0.16.0 这个开关在组件里属于灵感球设置，面板隐藏后用户无从改选，所以第六项也搬到宿主：`FeedbackOrbSettings.reflectionEnabled`（默认 `true`，键 `feedback.orb_reflection.v1`，值损坏/缺失回落开启）→ `FeedbackOverlay.orbReflectionEnabled` → 组件；设置页在「灵感球」分组新增「边缘反射」开关，与组件面板的分组一致（只在灵感球入口下显示，光束唤醒下没有球体可看）。宿主只传值、不传回调：面板设置已隐藏，不存在面板内改选。
+- 本地验证：`services/watch_together` 的 `dart pub get` ok；`./tool/check_layering.sh` ok；`flutter analyze` 无问题；`flutter test` **1639 项通过**（新增：边缘反射默认值与持久化、设置页开关落盘；`feedback_layer_test` 补了宿主值透传断言）。工具链 Flutter 3.47.7 / Dart 3.13.5（与 CI 一致）。
+- 尚未验证：真机上关掉「边缘反射」后球缘观感、以及新版圈选（拖动缩放、重画、底部按钮让位）的手感；Windows CI 的新 vendoring SHA 需等下一次流水线才能证明。
