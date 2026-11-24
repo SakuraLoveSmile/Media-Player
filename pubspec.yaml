@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.4.14+1795506051
+version: 0.4.15+1795510761
 
 environment:
   sdk: ^3.13.5
@@ -46,8 +46,8 @@ dependencies:
   feedback_widget:
     git:
       url: https://github.com/SakuraLoveSmile/Sakura-Feedback.git
-      # v0.16.0：新版圈选；灵感球边缘反射由宿主托管（可关闭）。
-      ref: abc22328ac02a47a4e8e40c7c454e6687c8c7e7a
+      # v0.17.0：唤醒后示范手绘圈选；外观设置仍由宿主托管。
+      ref: 9b8ddcdeac85b105587bd1052bbe758d8a8a130e
       path: flutter/feedback
   package_info_plus: ^10.2.2
   crypto: ^3.0.8

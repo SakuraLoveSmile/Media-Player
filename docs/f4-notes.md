@@ -1,7 +1,7 @@
 # F4：反馈组件与在线更新
 
 - 日期：2026-11-02（本地 Asia/Taipei；验证跨至 11-03 凌晨）
-- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4；2026-11-16 升级到 0.9.1 并接入宿主诊断日志，见 §6；2026-11-23 升级到 0.10.0，见 §7；同日升级到 0.11.0 并把设置迁到宿主，见 §8；同日升级到 0.14.0，见 §9；同日升级到 0.15.0 并把安卓返回交给组件，见 §10；2026-11-24 升级到 0.16.0 并托管灵感球边缘反射，见 §11）、设置页、GitHub Releases 在线更新、发布工作流
+- 范围：接入 Feedback 组件（`feedback_widget` 0.8.4；2026-11-16 升级到 0.9.1 并接入宿主诊断日志，见 §6；2026-11-23 升级到 0.10.0，见 §7；同日升级到 0.11.0 并把设置迁到宿主，见 §8；同日升级到 0.14.0，见 §9；同日升级到 0.15.0 并把安卓返回交给组件，见 §10；2026-11-24 升级到 0.16.0 并托管灵感球边缘反射，见 §11；同日升级到 0.17.0 并在唤醒触点示范手绘圈选，见 §12）、设置页、GitHub Releases 在线更新、发布工作流
 - 版本：`v0.2.3`（`0.2.3+5`）已发布，升级 `feedback_widget` 至 0.8.6；更新日志改为每版手写
 - 结论：**`v0.2.0`–`v0.2.3` 均已发布；0.8.6 的灵感球背景更新已随 v0.2.3 上线，真机体验待确认**
 
@@ -9,7 +9,7 @@
 
 | 项 | 决定 | 依据 |
 |---|---|---|
-| 反馈组件版本 | `feedback_widget` **0.16.0**，Git tag `v0.16.0`（commit `abc22328ac02a47a4e8e40c7c454e6687c8c7e7a`，`flutter/feedback` 子目录；0.16.0 起提供灵感球边缘反射开关与新版圈选，关闭前确认与组件接管安卓返回沿用） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
+| 反馈组件版本 | `feedback_widget` **0.17.0**，Git tag `v0.17.0`（commit `9b8ddcdeac85b105587bd1052bbe758d8a8a130e`，`flutter/feedback` 子目录；0.17.0 起唤醒后示范手绘圈选，新版圈选、灵感球边缘反射、关闭前确认与组件接管安卓返回沿用） | Feedback 仓库最新正式标签；public 仓库用 HTTPS Git 依赖，CI 无需 deploy key |
 | 宿主诊断日志 | `FeedbackDiagnosticsRecorder` 收集 dio 请求事件（方法 + 归一化路径、状态码、耗时）与 Flutter/平台错误；`buildFeedbackConfig` 默认挂 `logProvider`，面板打开时导出 JSONL，失败/无事件不阻断提交 | Feedback integration.md §5.6「宿主日志接入是必过的接入验收项」；只写白名单标量，请求体、凭据、完整 URL 与异常文本不进入缓冲 |
 | 反馈服务 | 生产地址 `https://feedback.xn--fhqths51enha.cn`，`appId = dev.mediaplayer.media_player`，`appName = Media Player` | 迁移前的历史决定（当时与 Android applicationId 一致）。应用标识已统一为 `cn.sakuralovesmile.mediaplayer`，此 appId 保持不变：它是反馈服务端侧的软件主键，改动会使历史反馈与面板登录态落到新软件下 |
 | 反馈默认开关 | release/profile 默认开启；debug 与 `flutter test` 默认关闭；可用 `FEEDBACK_ENABLED` / `FEEDBACK_API_BASE` / `FEEDBACK_APP_ID` / `FEEDBACK_APP_NAME` 覆盖 | 开发与既有测试不受影响；发布构建显式传 `--dart-define` |
@@ -293,3 +293,10 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - main CI [45350118659](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45350118659) 4 个 job 成功（analyze-test / android / windows / macos）；Windows 通过同时证明 0.16.0 的新 vendoring SHA 可用。发布流水线 [45351156164](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45351156164) 全部 job 成功（validate、三平台构建、一起看镜像、发布 Release）。
 - [Release v0.4.14](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.14)：2026-11-24T07:59:17Z 公开、非草稿、非预发布、Latest；三个资产 `MediaPlayer-android.apk`（117,732,625 B）、`MediaPlayer-macos.zip`（43,408,708 B）、`MediaPlayer-windows-x64.zip`（35,417,682 B）均带 `sha256:` digest，正文为用户向日志 `release/notes/v0.4.14.md`。
 - 尚未验证：真机上「边缘反射」开关关闭后的球缘观感与新版圈选（拖动缩放、重画、底部让位）的手感；从 0.4.12 覆盖安装到 0.4.14 并走完「检查更新 → 下载 → 安装」（三平台）；Windows 更新安装。
+## 12. feedback_widget 0.17.0 与唤醒触点的手绘圈选示范（2026-11-24）
+
+- 升级：`feedback_widget` 从 v0.16.0（`abc22328`）到 **v0.17.0**（tag `v0.17.0`，commit `9b8ddcdeac85b105587bd1052bbe758d8a8a130e`）；`pubspec.yaml` 的 Git `ref`、`pubspec.lock`（`resolved-ref` 与 `version: "0.17.0"`）与两处 Windows CI vendoring（`.github/workflows/app-ci.yml`、`.github/workflows/release.yml`）同步到同一 commit。
+- 0.17.0 新增（`CHANGELOG.md` 与 `flutter/feedback/lib/src/capture_selection.dart` 的 diff 为据）：水波纹 / 波光结束后，在刚才的触点附近画一个青绿色手绘圈，示范怎么圈出问题位置；双指唤醒时示例出现在两指中间。每次唤醒只演示一次，用户落指即接管、点「重画」可直接重新圈选；开启系统「减少动态效果」时只显示静态提示，不做动画。
+- 宿主无需改代码：v0.16.0→v0.17.0 的 Flutter 侧只改 `capture_selection.dart`（新增 `_LassoGuidePainter` 与引导层、`_guideDismissed` 状态），公开属性 / 方法 / 事件、`didPopRoute`、提交链路与 HTTP 契约均未变；`lassoFirst` 由组件在 `widget.dart` 内部决定，宿主传的外观设置（§11 的六项、`hideSettings: true`）原样沿用。
+- 本地验证：`services/watch_together` 的 `dart pub get` ok；`./tool/check_layering.sh` ok；`flutter analyze` 无问题；`flutter test` **1639 项通过**。本次没有新增测试：0.17.0 只动组件内部渲染，宿主测试对公开 API 与宿主设置透传的断言（§11 那批）原样覆盖，`pub get` 后解析到的包已确认是 `9b8ddcde`（`version: "0.17.0"`，含 `feedback-lasso-guide` 引导层）。工具链 Flutter 3.47.7 / Dart 3.13.5（与 CI 一致）。
+- 尚未验证：真机上唤醒后手绘圈选示范的观感（示例位置、双指唤醒时落在两指中间、「减少动态效果」下的静态提示、落指即接管与「重画」）；Windows CI 的新 vendoring SHA `9b8ddcde` 需等本次流水线才能证明。
