@@ -60,6 +60,8 @@ class RoomServer {
   bool redirect = false;
   Uri? socketRedirect;
   Completer<void>? entering;
+  int? failStatus;
+  String? failCode;
   Completer<void>? ending;
   Map<String, dynamic> current = roomJson();
   Uri get uri => Uri.parse('http://127.0.0.1:${server.port}');
@@ -106,6 +108,13 @@ class RoomServer {
         return;
       }
       await utf8.decoder.bind(request).join();
+      if (failStatus != null) {
+        request.response.statusCode = failStatus!;
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({'error': {'code': failCode}}));
+        await request.response.close();
+        return;
+      }
       Map<String, dynamic> data;
       if (request.uri.path.endsWith('/health')) {
         if (redirect) {
@@ -434,5 +443,71 @@ void main() {
     // The rejected address never replaces the working one.
     expect(client.baseUrl!.host, '127.0.0.1');
     expect(client.baseUrl!.path, '/watch/v1');
+  });
+
+  test('a site prefix without v1 is completed to the API path', () async {
+    await client.configure(Uri.parse('https://watch.上杉九月.cn/watch/'));
+    expect(client.baseUrl!.path, '/watch/v1');
+    expect(client.baseUrl.toString(), 'https://watch.xn--fhqths51enha.cn/watch/v1');
+    expect(
+      await store.read(WatchTogetherClient.serviceKey),
+      'https://watch.xn--fhqths51enha.cn/watch/v1',
+    );
+
+    // Site root, the bare `/watch` prefix and the full prefix are one base.
+    for (final input in const [
+      'https://watch.上杉九月.cn',
+      'https://watch.上杉九月.cn/watch',
+      'https://watch.上杉九月.cn/watch/v1',
+    ]) {
+      await client.configure(Uri.parse(input));
+      expect(client.baseUrl!.path, '/watch/v1', reason: input);
+      expect(
+        client.baseUrl.toString(),
+        'https://watch.xn--fhqths51enha.cn/watch/v1',
+        reason: input,
+      );
+      expect(
+        await store.read(WatchTogetherClient.serviceKey),
+        'https://watch.xn--fhqths51enha.cn/watch/v1',
+        reason: input,
+      );
+    }
+  });
+
+  test('server error codes carry their own message, not the fallback', () async {
+    server.failStatus = 404;
+    server.failCode = 'NOT_FOUND';
+    await expectLater(
+      client.create(itemId: 'movie'),
+      throwsA(
+        isA<WatchTogetherException>()
+            .having((e) => e.code, 'code', 'NOT_FOUND')
+            .having((e) => e.message, 'message', contains('服务地址无效'))
+            .having(
+              (e) => e.message,
+              'message',
+              isNot('一起看操作失败，请稍后重试'),
+            ),
+      ),
+    );
+    expect(client.error, contains('服务地址无效'));
+
+    server.failStatus = 503;
+    server.failCode = 'EMBY_UNAVAILABLE';
+    await expectLater(
+      client.create(itemId: 'movie'),
+      throwsA(
+        isA<WatchTogetherException>()
+            .having((e) => e.code, 'code', 'EMBY_UNAVAILABLE')
+            .having((e) => e.message, 'message', contains('媒体服务器暂不可用'))
+            .having(
+              (e) => e.message,
+              'message',
+              isNot('一起看操作失败，请稍后重试'),
+            ),
+      ),
+    );
+    expect(client.error, contains('媒体服务器暂不可用'));
   });
 }
