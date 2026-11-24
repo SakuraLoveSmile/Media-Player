@@ -269,3 +269,11 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - 副作用与边界：按返回键在有内容的面板里不再立即关闭（多一步确认），无内容时行为与 0.14.0 相同；返回键关闭面板仍然先于路由 pop，不会把页面弹掉；确认弹窗本身按返回 = 「继续编辑」。桌面 Esc 一直由组件内部处理，不经过宿主。
 - 本地验证：`services/watch_together` 的 `dart pub get` ok；`./tool/check_layering.sh` ok；`flutter analyze` 无问题；`flutter test` **1632 项通过**（新增 3 项返回键端到端用例，返回键单元用例按新语义改写）。工具链 Flutter 3.47.7 / Dart 3.13.5。
 - 尚未验证：Android 真机 / 返回手势的体感（含确认弹窗与输入法同时出现时的高度）；Windows CI 的新 vendoring SHA 需等下一次流水线。
+
+### 10.1 发布记录（2026-11-24）
+
+- 提交 `c2a94f8`（0.14/0.15 两轮升级 + 版本准备 `0.4.12+1795484103`），签名标签 `v0.4.12`（GPG Good signature）。
+- 本次是 `v0.4.11-pilot.1795421811` 之后的首个正式版：同时带上一起并入 main 的两项 Kaneo 改动——外观设置移入二级菜单「设置 → 外观」，一起看服务地址的中文域名规范化为 punycode（界面仍显示中文）。
+- main CI [45306402775](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45306402775) 4 个 job 成功（analyze-test / android / windows / macos）；发布流水线 [45307396168](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45307396168) 全部 job 成功（validate、三平台构建、一起看镜像、发布 Release）。
+- [Release v0.4.12](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.12)：2026-11-24T01:53:51Z 公开、非草稿、非预发布、Latest；三个资产 `MediaPlayer-android.apk`（117,568,669 B）、`MediaPlayer-macos.zip`（43,397,930 B）、`MediaPlayer-windows-x64.zip`（35,410,246 B）均带 `sha256:` digest，正文为用户向日志 `release/notes/v0.4.12.md`。
+- 尚未验证：真机从 0.4.10 覆盖安装到 0.4.12 并走完「检查更新 → 下载 → 安装」；安卓真机返回键与「放弃这次反馈？」确认弹窗的观感（含输入法弹出时的高度）；Windows 更新安装（Release 构建已通过）。
