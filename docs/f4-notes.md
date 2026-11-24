@@ -300,3 +300,10 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - 宿主无需改代码：v0.16.0→v0.17.0 的 Flutter 侧只改 `capture_selection.dart`（新增 `_LassoGuidePainter` 与引导层、`_guideDismissed` 状态），公开属性 / 方法 / 事件、`didPopRoute`、提交链路与 HTTP 契约均未变；`lassoFirst` 由组件在 `widget.dart` 内部决定，宿主传的外观设置（§11 的六项、`hideSettings: true`）原样沿用。
 - 本地验证：`services/watch_together` 的 `dart pub get` ok；`./tool/check_layering.sh` ok；`flutter analyze` 无问题；`flutter test` **1639 项通过**。本次没有新增测试：0.17.0 只动组件内部渲染，宿主测试对公开 API 与宿主设置透传的断言（§11 那批）原样覆盖，`pub get` 后解析到的包已确认是 `9b8ddcde`（`version: "0.17.0"`，含 `feedback-lasso-guide` 引导层）。工具链 Flutter 3.47.7 / Dart 3.13.5（与 CI 一致）。
 - 尚未验证：真机上唤醒后手绘圈选示范的观感（示例位置、双指唤醒时落在两指中间、「减少动态效果」下的静态提示、落指即接管与「重画」）；Windows CI 的新 vendoring SHA `9b8ddcde` 需等本次流水线才能证明。
+
+### 12.1 发布记录（2026-11-24）
+
+- 提交 `5eda330`（0.17.0 升级 + 版本准备 `0.4.15+1795510761`），签名标签 `v0.4.15`（GPG Good signature）。
+- main CI [45361272608](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45361272608) 4 个 job 成功（analyze-test / windows / macos / android）；Windows 通过同时证明 0.17.0 的新 vendoring SHA `9b8ddcde` 可用。发布流水线 [45362800363](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45362800363) 全部 job 成功（validate、三平台构建、一起看镜像、发布 Release）。
+- [Release v0.4.15](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.15)：2026-11-24T09:19:29Z 公开、非草稿、非预发布、Latest；三个资产 `MediaPlayer-android.apk`（117,732,625 B）、`MediaPlayer-macos.zip`（43,423,327 B）、`MediaPlayer-windows-x64.zip`（35,422,001 B）均带 `sha256:` digest，正文为用户向日志 `release/notes/v0.4.15.md`。
+- 尚未验证：真机上唤醒后手绘圈选示范的观感（示例位置、双指唤醒时落在两指中间、「减少动态效果」下的静态提示、落指即接管与「重画」）；从 0.4.14 覆盖安装到 0.4.15 并走完「检查更新 → 下载 → 安装」（三平台）；Windows 更新安装。
