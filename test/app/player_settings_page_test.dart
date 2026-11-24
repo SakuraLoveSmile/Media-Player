@@ -151,8 +151,130 @@ void main() {
     expect(json['autoPlayNext'], false);
   });
 
+  /// The 播放/缓存 partition now sits below 交互, so the migrated cases render
+  /// the page on a tall canvas and reset the surface afterwards.
+  Future<void> pumpPlayer(
+    WidgetTester tester,
+    InMemoryKeyValueStore store,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpPage(tester, const PlayerSettingsPage(), store);
+  }
+
+  /// The 播放/缓存 number fields re-key on their value, so locate them through
+  /// the stable wrapper key.
+  Finder field(String key) => find.descendant(
+    of: find.byKey(Key(key)),
+    matching: find.byType(TextFormField),
+  );
+
+  testWidgets('the playback section shows persisted values', (tester) async {
+    final store = InMemoryKeyValueStore();
+    await store.write(
+      PlaybackSettings.storageKey,
+      jsonEncode(
+        const PlaybackSettings(
+          hwdecEnabled: false,
+          cacheSecs: 45,
+          demuxerMaxBytes: 200 * 1024 * 1024,
+        ).toJson(),
+      ),
+    );
+    await pumpPlayer(tester, store);
+
+    expect(find.text('播放/缓存'), findsOneWidget);
+    expect(
+      tester
+          .widget<SwitchListTile>(find.byKey(const Key('settings-hwdec')))
+          .value,
+      isFalse,
+    );
+    expect(
+      tester.widget<TextFormField>(field('settings-cache-secs')).initialValue,
+      '45',
+    );
+    expect(
+      tester
+          .widget<TextFormField>(field('settings-demuxer-max-mb'))
+          .initialValue,
+      '200',
+    );
+
+    // The partition was migrated into this page and must stay between 交互 and
+    // 音轨语言.
+    final double interactionTop = tester.getTopLeft(find.text('交互')).dy;
+    final double playbackTop = tester.getTopLeft(find.text('播放/缓存')).dy;
+    final double audioTop = tester.getTopLeft(find.text('音轨语言')).dy;
+    expect(interactionTop, lessThan(playbackTop));
+    expect(playbackTop, lessThan(audioTop));
+  });
+
+  testWidgets('the hwdec switch persists the choice', (tester) async {
+    final store = InMemoryKeyValueStore();
+    await pumpPlayer(tester, store);
+
+    expect(
+      tester
+          .widget<SwitchListTile>(find.byKey(const Key('settings-hwdec')))
+          .value,
+      isTrue,
+    );
+    await tester.tap(find.byKey(const Key('settings-hwdec')));
+    await tester.pumpAndSettle();
+
+    final raw = await store.read(PlaybackSettings.storageKey);
+    expect(jsonDecode(raw!)['hwdecEnabled'], isFalse);
+  });
+
+  testWidgets('cache fields persist on submit', (tester) async {
+    final store = InMemoryKeyValueStore();
+    await pumpPlayer(tester, store);
+
+    await tester.ensureVisible(field('settings-cache-secs'));
+    await tester.enterText(field('settings-cache-secs'), '60');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(
+      jsonDecode((await store.read(PlaybackSettings.storageKey))!)['cacheSecs'],
+      60,
+    );
+
+    await tester.ensureVisible(field('settings-demuxer-max-mb'));
+    await tester.enterText(field('settings-demuxer-max-mb'), '256');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(
+      jsonDecode(
+        (await store.read(PlaybackSettings.storageKey))!,
+      )['demuxerMaxBytes'],
+      256 * 1024 * 1024,
+    );
+  });
+
+  testWidgets('a non-positive cache value warns and does not write', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    await pumpPlayer(tester, store);
+
+    await tester.ensureVisible(field('settings-cache-secs'));
+    await tester.enterText(field('settings-cache-secs'), '0');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.text('请输入正整数'), findsOneWidget);
+    expect(await store.read(PlaybackSettings.storageKey), isNull);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('the language chips persist track prefs (S33)', (tester) async {
     final store = InMemoryKeyValueStore();
+    // The 播放/缓存 partition pushes both language rows below the test viewport,
+    // so render on a tall canvas.
+    await tester.binding.setSurfaceSize(const Size(800, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpPage(tester, const PlayerSettingsPage(), store);
 
     await tester.tap(find.byKey(const Key('settings-audio-lang-chi')));

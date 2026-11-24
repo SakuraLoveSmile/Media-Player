@@ -21,7 +21,6 @@ import '../../ui/servers_section.dart';
 import '../../ui/theme/app_tokens.dart';
 import 'backup_settings_section.dart';
 import 'moviepilot_config_dialog.dart';
-import 'playback_settings_section.dart';
 import 'request_notification_settings_tile.dart';
 import 'update_dialog.dart';
 
@@ -128,7 +127,6 @@ class SettingsPage extends ConsumerWidget {
               ),
             ],
           ),
-          const PlaybackSettingsSection(),
           AppSection(
             header: '求片',
             children: <Widget>[
@@ -406,7 +404,7 @@ class SettingsPage extends ConsumerWidget {
                   color: palette.primary,
                 ),
                 title: const Text('播放器'),
-                subtitle: const Text('交互、自动连播与音轨/字幕语言偏好'),
+                subtitle: const Text('交互、自动连播、硬解与缓存、音轨/字幕语言偏好'),
                 trailing: Icon(
                   Icons.chevron_right,
                   color: palette.outline,

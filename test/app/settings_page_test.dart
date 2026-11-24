@@ -13,7 +13,6 @@ import 'package:media_player/app/feedback_config.dart';
 import 'package:media_player/app/feedback_orb_settings.dart';
 import 'package:media_player/app/general_settings.dart';
 import 'package:media_player/app/hidden_libraries.dart';
-import 'package:media_player/app/playback_settings.dart';
 import 'package:media_player/app/request_notification_settings.dart';
 import 'package:media_player/app/servers.dart';
 import 'package:media_player/app/update_channel_settings.dart';
@@ -154,10 +153,6 @@ void main() {
           updateChannelStoreProvider.overrideWith(
             (ref) async => store ?? InMemoryKeyValueStore(),
           ),
-          // The 播放/缓存 section reads the same app store.
-          playbackSettingsStoreProvider.overrideWith(
-            (ref) async => store ?? InMemoryKeyValueStore(),
-          ),
           // The 服务器 section reads the same app store; without an override it
           // would await the real bootstrap and never settle.
           serverDirectoryStoreProvider.overrideWith(
@@ -203,13 +198,6 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
   }
-
-  /// The 播放/缓存 number fields re-key on their value, so locate them through
-  /// the stable wrapper key.
-  Finder field(String key) => find.descendant(
-    of: find.byKey(Key(key)),
-    matching: find.byType(TextFormField),
-  );
 
   /// S73: 关于 moved to the bottom of the list (Yamby order), so tests that
   /// assert on its rows have to scroll there first.
@@ -281,9 +269,6 @@ void main() {
             (ref) async => InMemoryKeyValueStore(),
           ),
           requestNotificationStoreProvider.overrideWith(
-            (ref) async => InMemoryKeyValueStore(),
-          ),
-          playbackSettingsStoreProvider.overrideWith(
             (ref) async => InMemoryKeyValueStore(),
           ),
           serverDirectoryStoreProvider.overrideWith(
@@ -638,95 +623,42 @@ void main() {
     expect(find.text('主题色'), findsNothing);
   });
 
-  testWidgets('the playback section shows persisted values', (tester) async {
-    final store = InMemoryKeyValueStore();
-    await store.write(
-      PlaybackSettings.storageKey,
-      jsonEncode(
-        const PlaybackSettings(
-          hwdecEnabled: false,
-          cacheSecs: 45,
-          demuxerMaxBytes: 200 * 1024 * 1024,
-        ).toJson(),
-      ),
-    );
-    await pumpSettings(tester, store: store);
-
-    expect(find.text('播放/缓存'), findsOneWidget);
-    expect(
-      tester
-          .widget<SwitchListTile>(find.byKey(const Key('settings-hwdec')))
-          .value,
-      isFalse,
-    );
-    expect(
-      tester.widget<TextFormField>(field('settings-cache-secs')).initialValue,
-      '45',
-    );
-    expect(
-      tester
-          .widget<TextFormField>(field('settings-demuxer-max-mb'))
-          .initialValue,
-      '200',
-    );
-  });
-
-  testWidgets('the hwdec switch persists the choice', (tester) async {
-    final store = InMemoryKeyValueStore();
-    await pumpSettings(tester, store: store);
-
-    expect(
-      tester
-          .widget<SwitchListTile>(find.byKey(const Key('settings-hwdec')))
-          .value,
-      isTrue,
-    );
-    await tester.tap(find.byKey(const Key('settings-hwdec')));
-    await tester.pumpAndSettle();
-
-    final raw = await store.read(PlaybackSettings.storageKey);
-    expect(jsonDecode(raw!)['hwdecEnabled'], isFalse);
-  });
-
-  testWidgets('cache fields persist on submit', (tester) async {
-    final store = InMemoryKeyValueStore();
-    await pumpSettings(tester, store: store);
-
-    await tester.ensureVisible(field('settings-cache-secs'));
-    await tester.enterText(field('settings-cache-secs'), '60');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    expect(
-      jsonDecode((await store.read(PlaybackSettings.storageKey))!)['cacheSecs'],
-      60,
-    );
-
-    await tester.ensureVisible(field('settings-demuxer-max-mb'));
-    await tester.enterText(field('settings-demuxer-max-mb'), '256');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    expect(
-      jsonDecode(
-        (await store.read(PlaybackSettings.storageKey))!,
-      )['demuxerMaxBytes'],
-      256 * 1024 * 1024,
-    );
-  });
-
-  testWidgets('a non-positive cache value warns and does not write', (
+  testWidgets('the first-level page only links to the 播放器 page', (
     tester,
   ) async {
-    final store = InMemoryKeyValueStore();
-    await pumpSettings(tester, store: store);
+    await pumpSettings(tester);
 
-    await tester.ensureVisible(field('settings-cache-secs'));
-    await tester.enterText(field('settings-cache-secs'), '0');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    // The 播放/缓存 partition moved into 设置 → 播放器, so the first-level list
+    // keeps only the entry tile and no inline controls.
+    expect(find.text('播放/缓存'), findsNothing);
+    expect(find.byKey(const Key('settings-hwdec')), findsNothing);
+    expect(find.byKey(const Key('settings-cache-secs')), findsNothing);
+    expect(find.byKey(const Key('settings-demuxer-max-mb')), findsNothing);
+
+    final Finder entry = find.byKey(const Key('settings-player'));
+    await tester.scrollUntilVisible(
+      entry,
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
 
-    expect(find.text('请输入正整数'), findsOneWidget);
-    expect(await store.read(PlaybackSettings.storageKey), isNull);
-    await flushSnackBar(tester);
+    expect(entry, findsOneWidget);
+    expect(
+      find.descendant(
+        of: entry,
+        matching: find.text('交互、自动连播、硬解与缓存、音轨/字幕语言偏好'),
+      ),
+      findsOneWidget,
+    );
+    // Still absent after scrolling the whole list.
+    expect(find.text('播放/缓存'), findsNothing);
+    expect(find.byKey(const Key('settings-hwdec')), findsNothing);
   });
 
   testWidgets('export saves a JSON backup containing the whitelisted prefs', (

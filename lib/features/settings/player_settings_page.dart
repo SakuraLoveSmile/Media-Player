@@ -10,9 +10,11 @@ import '../../data/playback/playback_settings.dart';
 import '../../data/playback/track_prefs.dart';
 import '../../ui/app_page.dart';
 import '../../ui/theme/app_tokens.dart';
+import 'playback_settings_section.dart';
 
-/// 播放器 settings (S33): playback interaction switches plus the audio/subtitle
-/// language preferences that drive automatic track selection.
+/// 播放器 settings (S33): playback interaction switches, the playback/cache
+/// partition migrated from the first-level settings page, plus the
+/// audio/subtitle language preferences that drive automatic track selection.
 class PlayerSettingsPage extends ConsumerWidget {
   const PlayerSettingsPage({super.key});
 
@@ -78,6 +80,7 @@ class PlayerSettingsPage extends ConsumerWidget {
               ),
             ],
           ),
+          const PlaybackSettingsSection(),
           _LanguageSection(
             header: '音轨语言',
             keyPrefix: 'settings-audio-lang',
