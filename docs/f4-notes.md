@@ -285,3 +285,11 @@ GitHub Releases `latest` JSON、资产 `digest`（SHA-256）与 zip 字节。
 - 宿主要改的地方：本应用 `hideSettings: true`，外观设置全部由「设置 → 反馈」托管（§8、§9 的必过项）。0.16.0 这个开关在组件里属于灵感球设置，面板隐藏后用户无从改选，所以第六项也搬到宿主：`FeedbackOrbSettings.reflectionEnabled`（默认 `true`，键 `feedback.orb_reflection.v1`，值损坏/缺失回落开启）→ `FeedbackOverlay.orbReflectionEnabled` → 组件；设置页在「灵感球」分组新增「边缘反射」开关，与组件面板的分组一致（只在灵感球入口下显示，光束唤醒下没有球体可看）。宿主只传值、不传回调：面板设置已隐藏，不存在面板内改选。
 - 本地验证：`services/watch_together` 的 `dart pub get` ok；`./tool/check_layering.sh` ok；`flutter analyze` 无问题；`flutter test` **1639 项通过**（新增：边缘反射默认值与持久化、设置页开关落盘；`feedback_layer_test` 补了宿主值透传断言）。工具链 Flutter 3.47.7 / Dart 3.13.5（与 CI 一致）。
 - 尚未验证：真机上关掉「边缘反射」后球缘观感、以及新版圈选（拖动缩放、重画、底部按钮让位）的手感；Windows CI 的新 vendoring SHA 需等下一次流水线才能证明。
+
+### 11.1 发布记录（2026-11-24）
+
+- 提交 `093b949`（0.16.0 升级 + 宿主托管边缘反射 + 版本准备 `0.4.14+1795506051`），签名标签 `v0.4.14`（GPG Good signature）。
+- 版本顺延：`v0.4.13-pilot.1795504512` 已占用 0.4.13。正式版若取 0.4.13，pilot 用户收不到这次更新（正式 Release 没有构建号，同版本不算更新），因此取 0.4.14；先例是 pilot 0.4.11 → 正式 0.4.12。
+- main CI [45350118659](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45350118659) 4 个 job 成功（analyze-test / android / windows / macos）；Windows 通过同时证明 0.16.0 的新 vendoring SHA 可用。发布流水线 [45351156164](https://github.com/SakuraLoveSmile/Media-Player/actions/runs/45351156164) 全部 job 成功（validate、三平台构建、一起看镜像、发布 Release）。
+- [Release v0.4.14](https://github.com/SakuraLoveSmile/Media-Player/releases/tag/v0.4.14)：2026-11-24T07:59:17Z 公开、非草稿、非预发布、Latest；三个资产 `MediaPlayer-android.apk`（117,732,625 B）、`MediaPlayer-macos.zip`（43,408,708 B）、`MediaPlayer-windows-x64.zip`（35,417,682 B）均带 `sha256:` digest，正文为用户向日志 `release/notes/v0.4.14.md`。
+- 尚未验证：真机上「边缘反射」开关关闭后的球缘观感与新版圈选（拖动缩放、重画、底部让位）的手感；从 0.4.12 覆盖安装到 0.4.14 并走完「检查更新 → 下载 → 安装」（三平台）；Windows 更新安装。
