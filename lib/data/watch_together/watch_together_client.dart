@@ -141,8 +141,13 @@ class WatchTogetherClient extends ChangeNotifier {
     if (address.scheme == 'http' && !private) {
       throw const WatchTogetherException('INSECURE_URL', '公网一起看服务必须使用 HTTPS');
     }
-    // UrlNormalizer already drops trailing slashes from the path.
-    final path = address.path.isEmpty ? '/watch/v1' : address.path;
+    // UrlNormalizer already drops trailing slashes. A site root and a reverse
+    // proxy prefix that stops short of the API version (`/watch`) are completed
+    // here, so `https://host/watch/` reaches `/watch/v1` instead of 404ing.
+    final path = switch (address.path) {
+      '' || '/watch' => '/watch/v1',
+      final other => other,
+    };
     return address.replace(path: path);
   }
 
@@ -827,6 +832,14 @@ String _message(String code) => switch (code) {
   'SERVER_NOT_ALLOWED' => '当前服务器与一起看服务不匹配',
   'NOT_MEMBER' => '你已不在此房间',
   'RATE_LIMITED' => '操作太频繁，请稍后再试',
+  'NOT_FOUND' => '服务地址无效：应填写站点根地址或 /watch/v1 前缀',
+  'EMBY_UNAVAILABLE' => '媒体服务器暂不可用，请稍后再试',
+  'INVALID_REQUEST' => '请求无效，请更新一起看服务后重试',
+  'WATCH_CAPACITY' => '一起看服务已满，请稍后再试',
+  'WATCH_UNAVAILABLE' => '一起看服务正在维护，请稍后再试',
+  'ORIGIN_FORBIDDEN' => '此客户端不允许连接一起看服务',
+  'ROOM_CHANGED' => '影片已变化，请重新加入房间',
+  'CHANGE_IN_PROGRESS' => '正在更换影片，请稍后再操作',
   _ => '一起看操作失败，请稍后重试',
 };
 

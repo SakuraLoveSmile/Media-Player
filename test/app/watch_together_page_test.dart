@@ -415,4 +415,34 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'saving a site prefix without v1 completes the API path',
+    (tester) async {
+      await pumpPage(tester);
+      await tester.enterText(
+        find.byKey(const Key('watch-service-url')),
+        'https://watch.上杉九月.cn/watch/',
+      );
+      await tester.tap(find.text('保存服务地址'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('信任这个一起看服务？'), findsOneWidget);
+      await tester.tap(find.text('确认'));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pumpAndSettle();
+      final field = tester.widget<TextField>(
+        find.byKey(const Key('watch-service-url')),
+      );
+      expect(field.controller!.text, 'https://watch.上杉九月.cn/watch/v1');
+      expect(field.controller!.text, isNot(contains('%')));
+      expect(
+        await store.read(WatchTogetherClient.serviceKey),
+        'https://watch.xn--fhqths51enha.cn/watch/v1',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
