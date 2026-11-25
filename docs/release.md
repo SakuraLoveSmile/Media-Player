@@ -109,8 +109,13 @@ KaneoPilot 的发布调度复用同一个工作流，但走预发布通道，契
   `v<version>-pilot.<build_number>` 并指向 `target_sha`。另需附带
   `kaneopilot-release.json`，且与 Actions artifact `kaneopilot-provenance` 内的同一文件
   逐字节一致（调度侧会下载比对）。
-- 正文：存在 `release/notes/<tag>.md` 时照旧使用；预发布通常没有手写日志，此时由流水线
-  生成一句简短的预发布说明。客户端只查正式 Release，预发布不会出现在更新提示里。
+- 正文：存在 `release/notes/<tag>.md` 时照旧使用；没有手写日志时由
+  `.github/scripts/pilot_notes.py`（按 `github.workflow_sha` 稀疏检出到 `pilot-tools/`，
+  因此目标树早于脚本也能用）从冻结的 `task_manifest_json` 根成员渲染
+  `@反馈人：一句话说明解决了什么问题`（`reporter` / `summary` 由 KaneoPilot 冻结计划时写入，
+  缺失时才回退到旧的「KaneoPilot 预发布构建 … 批次 …」一行）。开启「接收测试版」的用户会在
+  更新弹窗里看到这段正文，所以不得只写批次号。渲染脚本的单测：
+  `cd .github/scripts && python3 -m unittest test_pilot_notes`。
 - 失败策略与正式流程一致：`task_manifest_sha256` 不符、HEAD 与 `target_sha` 不符、
   资产缺失、同名 Release 已存在，都在构建或发布前 fail-closed。
 
