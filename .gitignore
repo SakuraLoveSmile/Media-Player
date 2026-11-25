@@ -16,3 +16,7 @@
 # Release signing material decoded by CI / local release builds.
 /android/app/keystore.jks
 /android/app/key.properties
+
+# Bytecode from the .github/scripts release tooling
+__pycache__/
+*.pyc
