@@ -411,9 +411,7 @@ void main() {
     final Completer<AppServices> bootstrap = Completer<AppServices>();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          bootstrapProvider.overrideWith((ref) => bootstrap.future),
-        ],
+        overrides: [bootstrapProvider.overrideWith((ref) => bootstrap.future)],
         child: MaterialApp(
           theme: buildAppTheme(Brightness.dark),
           home: const PlayerPage(itemId: 'item-1'),
@@ -1903,6 +1901,153 @@ void main() {
       expect(engine.rates.sublist(before), isEmpty);
       expect(engine.rates, isNot(contains(2.0)));
     });
+
+    testWidgets(
+      'a release before the boost lands still restores the base rate',
+      (tester) async {
+        // The engine stalls every write, so the release arrives while the boost
+        // is still in flight - the case the old fire-and-forget pair got wrong
+        // by comparing against a `state.rate` the engine had not written yet.
+        final GatedRateFakePlaybackEngine gated = GatedRateFakePlaybackEngine();
+        await pumpPlayer(tester, createEngine: () => gated);
+        await pickRate(tester, '1.25x');
+        // The gate is armed only now: the 1.25x base must really be applied
+        // before the hold's writes start stalling, or the base would be 1.0x.
+        gated.holdingRates = true;
+        gated.rates.clear();
+        await hideChrome(tester);
+        final Rect area = gestureRect(tester);
+        gated.rateRequests.clear();
+        gated.rateGates.clear();
+
+        final TestGesture hold = await pressAndHold(
+          tester,
+          area.topLeft + const Offset(80, 80),
+        );
+        // The boost reached the engine but is still stalled there.
+        expect(gated.rateRequests, <double>[2.0]);
+        expect(gated.rates, isEmpty);
+        expect(gated.stalledRates, 1);
+
+        await hold.up();
+        await tester.pump();
+        // Serialised: the restore is queued behind the boost, not issued on top
+        // of it, and the release did not skip it by reading `state.rate`.
+        expect(gated.rateGates, hasLength(1));
+        expect(gated.rates, isEmpty);
+
+        // Opening the boost lets the queued restore reach the engine, where it
+        // stalls on its own gate: one write at a time, boost first.
+        expect(gated.releaseNextRate(), isTrue);
+        await tester.pumpAndSettle();
+        expect(gated.rateRequests, <double>[2.0, 1.25]);
+        expect(gated.rates, <double>[2.0]);
+
+        expect(gated.releaseNextRate(), isTrue);
+        await tester.pumpAndSettle();
+        expect(gated.rates, <double>[2.0, 1.25]);
+        expect(gated.releaseNextRate(), isFalse);
+        expect(gated.rates.last, 1.25);
+        expect(find.textContaining(holdCapsule), findsNothing);
+        expect(find.text('1.25x'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'losing the gesture layer mid-boost still restores the base rate',
+      (tester) async {
+        // Locking the interface tears the gesture layer down while the finger is
+        // still down - the same re-layout a lock screen forces - so the restore
+        // hinges on `PlayerGestureLayer.dispose()` reaching _endHold.
+        final GatedRateFakePlaybackEngine gated = GatedRateFakePlaybackEngine();
+        await pumpPlayer(tester, createEngine: () => gated);
+        await pickRate(tester, '1.25x');
+        gated.holdingRates = true;
+        gated.rates.clear();
+        final Rect area = gestureRect(tester);
+        gated.rateRequests.clear();
+        gated.rateGates.clear();
+
+        // The chrome stays up so the lock control is live; this point sits clear
+        // of the top/bottom bars, the side rails and the centred transport row,
+        // so the long press still reaches the gesture layer beneath them.
+        final Offset clear = Offset(
+          area.left + area.width * 0.3,
+          area.top + area.height * 0.3,
+        );
+        final TestGesture hold = await pressAndHold(tester, clear);
+        expect(find.text('2.0x 加速中'), findsOneWidget);
+        expect(gated.rateRequests, <double>[2.0]);
+
+        // A second finger locks the interface: the layer goes away under the
+        // first one, which is exactly what a lock screen re-layout does.
+        await tester.tap(find.byKey(const Key('player-quick-lock')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('player-gesture-area')), findsNothing);
+
+        // Both queued writes land in order once the engine is let through.
+        expect(gated.releaseNextRate(), isTrue);
+        await tester.pumpAndSettle();
+        expect(gated.releaseNextRate(), isTrue);
+        await tester.pumpAndSettle();
+        await hold.up();
+        await tester.pumpAndSettle();
+
+        // Dispose queued the latched base after the boost: no stranded 2.0x.
+        expect(gated.rates, <double>[2.0, 1.25]);
+        expect(gated.rates.last, 1.25);
+        expect(find.textContaining(holdCapsule), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a second hold during the pending restore keeps the latched base rate',
+      (tester) async {
+        // A second hold lands while the restore is still queued. It must take
+        // the logical rate (the latched 1.25x), not the 2.0x this page last
+        // asked for, or the user would be stranded at the boost.
+        final GatedRateFakePlaybackEngine gated = GatedRateFakePlaybackEngine();
+        await pumpPlayer(tester, createEngine: () => gated);
+        await pickRate(tester, '1.25x');
+        gated.holdingRates = true;
+        gated.rates.clear();
+        await hideChrome(tester);
+        final Rect area = gestureRect(tester);
+        gated.rateRequests.clear();
+        gated.rateGates.clear();
+
+        final TestGesture first = await pressAndHold(
+          tester,
+          area.topLeft + const Offset(80, 80),
+        );
+        await first.up();
+        await tester.pump();
+        expect(gated.rateRequests, <double>[2.0]);
+        // The boost is still stalled, so `state.rate` is still 1.25x and the
+        // queue owes 1.25x: the second hold must start from that base.
+        expect(gated.rates, isEmpty);
+
+        final TestGesture second = await pressAndHold(
+          tester,
+          area.topLeft + const Offset(80, 80),
+        );
+        await second.up();
+        await tester.pumpAndSettle();
+
+        while (gated.releaseNextRate()) {
+          await tester.pumpAndSettle();
+        }
+
+        // Real order: boost, latched base, boost again, latched base again. The
+        // second hold neither re-latched 2.0x nor finished on it.
+        expect(gated.rateRequests, <double>[2.0, 1.25, 2.0, 1.25]);
+        expect(gated.rates, <double>[2.0, 1.25, 2.0, 1.25]);
+        expect(gated.rates.last, 1.25);
+        expect(gated.rates, isNot(contains(<double>[2.0, 1.25, 2.0, 2.0])));
+        expect(find.text('1.25x'), findsWidgets);
+        expect(find.textContaining(holdCapsule), findsNothing);
+      },
+    );
   });
 
   testWidgets('the subtitle menu lists off plus every server stream', (
@@ -2411,9 +2556,7 @@ void main() {
     final store = InMemoryKeyValueStore();
     await store.write(
       PlaybackSettings.storageKey,
-      jsonEncode(
-        const PlaybackSettings(seekForwardSeconds: 60).toJson(),
-      ),
+      jsonEncode(const PlaybackSettings(seekForwardSeconds: 60).toJson()),
     );
     await pumpPlayer(tester, store: store);
 
@@ -2437,9 +2580,7 @@ void main() {
     final store = InMemoryKeyValueStore();
     await store.write(
       PlaybackSettings.storageKey,
-      jsonEncode(
-        const PlaybackSettings(seekForwardSeconds: 60).toJson(),
-      ),
+      jsonEncode(const PlaybackSettings(seekForwardSeconds: 60).toJson()),
     );
     await pumpPlayer(tester, store: store);
 
