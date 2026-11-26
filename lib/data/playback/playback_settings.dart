@@ -19,6 +19,8 @@ class PlaybackSettings {
     this.seekOnDrag = false,
     this.autoPlayNext = true,
     this.forceStereo = true,
+    this.seekBackSeconds = defaultSeekStepSeconds,
+    this.seekForwardSeconds = defaultSeekStepSeconds,
     this.mpvQualityPreset = MpvQualityPreset.standard,
     this.mpvCustomConfig = '',
   });
@@ -28,6 +30,29 @@ class PlaybackSettings {
 
   /// 150 MiB, mpv's own demuxer cache default.
   static const int defaultDemuxerMaxBytes = 157286400;
+
+  /// S80: fallback jump length for the back/forward transport buttons. Older
+  /// blobs, older backups and first installs all land here.
+  static const int defaultSeekStepSeconds = 10;
+
+  /// S80: the only jump lengths the settings page offers; a stored value that
+  /// is not in this list is treated as [defaultSeekStepSeconds].
+  static const List<int> seekStepPresets = <int>[5, 10, 15, 30, 60];
+  /// Coerces a stored or edited jump length to one of [seekStepPresets];
+  /// absent, non-numeric, fractional and non-preset values all fall back to
+  /// [defaultSeekStepSeconds].
+  ///
+  /// Non-finite values must be rejected before any `truncate()` / `toInt()`
+  /// call because those throw on `NaN` and `±Infinity`. Fractional values are
+  /// rejected rather than truncated so a hand-edited `5.5` cannot silently
+  /// become the legal 5 s preset; a whole-valued `double` such as `5.0` is
+  /// still accepted.
+  static int normalizeSeekStepSeconds(Object? raw) {
+    if (raw is! num || !raw.isFinite) return defaultSeekStepSeconds;
+    if (raw != raw.truncate()) return defaultSeekStepSeconds;
+    final int value = raw.toInt();
+    return seekStepPresets.contains(value) ? value : defaultSeekStepSeconds;
+  }
 
   factory PlaybackSettings.fromJson(Map<String, dynamic> json) {
     return PlaybackSettings(
@@ -48,6 +73,8 @@ class PlaybackSettings {
         json['mpvQualityPreset'] as String?,
       ),
       mpvCustomConfig: json['mpvCustomConfig'] as String? ?? '',
+      seekBackSeconds: normalizeSeekStepSeconds(json['seekBackSeconds']),
+      seekForwardSeconds: normalizeSeekStepSeconds(json['seekForwardSeconds']),
     );
   }
 
@@ -84,6 +111,11 @@ class PlaybackSettings {
   /// 强制输出立体声.
   final bool forceStereo;
 
+  /// S80: how far a back/forward transport tap jumps, in seconds. Defaults to
+  /// [defaultSeekStepSeconds]; both directions are set independently.
+  final int seekBackSeconds;
+  final int seekForwardSeconds;
+
   /// MP-TT01: path-free mpv quality options, applied on the next playback.
   final MpvQualityPreset mpvQualityPreset;
   final String mpvCustomConfig;
@@ -99,6 +131,8 @@ class PlaybackSettings {
     'seekOnDrag': seekOnDrag,
     'autoPlayNext': autoPlayNext,
     'forceStereo': forceStereo,
+    'seekBackSeconds': seekBackSeconds,
+    'seekForwardSeconds': seekForwardSeconds,
     'mpvQualityPreset': mpvQualityPreset.name,
     'mpvCustomConfig': mpvCustomConfig,
   };
@@ -114,6 +148,8 @@ class PlaybackSettings {
     bool? seekOnDrag,
     bool? autoPlayNext,
     bool? forceStereo,
+    int? seekBackSeconds,
+    int? seekForwardSeconds,
     MpvQualityPreset? mpvQualityPreset,
     String? mpvCustomConfig,
   }) {
@@ -128,6 +164,8 @@ class PlaybackSettings {
       seekOnDrag: seekOnDrag ?? this.seekOnDrag,
       autoPlayNext: autoPlayNext ?? this.autoPlayNext,
       forceStereo: forceStereo ?? this.forceStereo,
+      seekBackSeconds: seekBackSeconds ?? this.seekBackSeconds,
+      seekForwardSeconds: seekForwardSeconds ?? this.seekForwardSeconds,
       mpvQualityPreset: mpvQualityPreset ?? this.mpvQualityPreset,
       mpvCustomConfig: mpvCustomConfig ?? this.mpvCustomConfig,
     );
