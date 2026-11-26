@@ -87,7 +87,13 @@ void main() {
       seeks = <Duration>[];
     });
 
-    Widget pumpLayer(WidgetTester tester, {VoidCallback? onTap}) {
+    Widget pumpLayer(
+      WidgetTester tester, {
+      VoidCallback? onTap,
+      VoidCallback? onHoldStart,
+      VoidCallback? onHoldEnd,
+      double? holdRate,
+    }) {
       return MaterialApp(
         home: Scaffold(
           body: Align(
@@ -103,6 +109,9 @@ void main() {
                 onSeek: seeks.add,
                 brightness: brightness,
                 onTap: onTap,
+                onHoldStart: onHoldStart,
+                onHoldEnd: onHoldEnd,
+                holdRate: holdRate,
               ),
             ),
           ),
@@ -234,6 +243,184 @@ void main() {
       await gesture.up();
       await tester.pump();
       expect(taps, 1);
+    });
+
+    testWidgets('a hold starts once, releases into onHoldEnd, shows the rate', (
+      tester,
+    ) async {
+      int starts = 0;
+      int ends = 0;
+      await tester.pumpWidget(
+        pumpLayer(
+          tester,
+          onHoldStart: () => starts++,
+          onHoldEnd: () => ends++,
+          holdRate: 2.0,
+        ),
+      );
+      await tester.pump();
+
+      // kLongPressTimeout is 500 ms: pump past it and keep the finger down.
+      final gesture = await tester.startGesture(const Offset(200, 200));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(starts, 1);
+      expect(ends, 0);
+      expect(find.text('2.0x 加速中'), findsOneWidget);
+      expect(find.textContaining('音量'), findsNothing);
+      // The capsule reuses the central indicator: always the dark capsule.
+      expect(
+        tester
+            .widget<Material>(
+              find
+                  .ancestor(
+                    of: find.text('2.0x 加速中'),
+                    matching: find.byType(Material),
+                  )
+                  .first,
+            )
+            .color,
+        Colors.black.withValues(alpha: 0.6),
+      );
+
+      // Holding longer must not fire a second start.
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(starts, 1);
+
+      await gesture.up();
+      await tester.pump();
+      expect(ends, 1);
+      expect(find.text('2.0x 加速中'), findsNothing);
+    });
+
+    testWidgets('a cancelled hold also reports its end and hides the capsule', (
+      tester,
+    ) async {
+      int starts = 0;
+      int ends = 0;
+      await tester.pumpWidget(
+        pumpLayer(
+          tester,
+          onHoldStart: () => starts++,
+          onHoldEnd: () => ends++,
+          holdRate: 2.0,
+        ),
+      );
+      await tester.pump();
+
+      final gesture = await tester.startGesture(const Offset(200, 200));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(starts, 1);
+      expect(find.text('2.0x 加速中'), findsOneWidget);
+
+      // A pointer cancel (system gesture takeover, app interruption) must
+      // restore exactly like a release.
+      await gesture.cancel();
+      await tester.pump();
+      expect(ends, 1);
+      expect(find.text('2.0x 加速中'), findsNothing);
+    });
+
+    testWidgets('the capsule reports a base already above the floor', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        pumpLayer(tester, onHoldStart: () {}, holdRate: 3.0),
+      );
+      await tester.pump();
+
+      final gesture = await tester.startGesture(const Offset(200, 200));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('3.0x 加速中'), findsOneWidget);
+      await gesture.up();
+      await tester.pump();
+    });
+
+    testWidgets('without onHoldStart a long press never reaches the layer', (
+      tester,
+    ) async {
+      int taps = 0;
+      // No hold callbacks: the long-press recognizer stays out of the arena, so
+      // the press resolves as a plain tap once the finger lifts.
+      await tester.pumpWidget(pumpLayer(tester, onTap: () => taps++));
+      await tester.pump();
+
+      final gesture = await tester.startGesture(const Offset(200, 200));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.textContaining('加速中'), findsNothing);
+      await gesture.up();
+      await tester.pump();
+      expect(taps, 1);
+    });
+
+    testWidgets('a plain tap does not start a hold', (tester) async {
+      int starts = 0;
+      int taps = 0;
+      await tester.pumpWidget(
+        pumpLayer(
+          tester,
+          onTap: () => taps++,
+          onHoldStart: () => starts++,
+          onHoldEnd: () {},
+          holdRate: 2.0,
+        ),
+      );
+      await tester.pump();
+
+      await tester.tapAt(const Offset(200, 200));
+      await tester.pump();
+      expect(taps, 1);
+      expect(starts, 0);
+      expect(find.textContaining('加速中'), findsNothing);
+    });
+
+    testWidgets('vertical and horizontal drags do not start a hold', (
+      tester,
+    ) async {
+      int starts = 0;
+      await tester.pumpWidget(
+        pumpLayer(
+          tester,
+          onHoldStart: () => starts++,
+          onHoldEnd: () {},
+          holdRate: 2.0,
+        ),
+      );
+      await tester.pump();
+
+      // Right-half vertical: volume.
+      final vertical = await tester.startGesture(const Offset(300, 200));
+      await vertical.moveBy(const Offset(0, -40));
+      await tester.pump(const Duration(milliseconds: 600));
+      await vertical.moveBy(const Offset(0, -60));
+      await tester.pump();
+      expect(volumes, isNotEmpty);
+      expect(starts, 0);
+      expect(find.textContaining('加速中'), findsNothing);
+      await vertical.up();
+      await tester.pump();
+
+      // Horizontal: seek preview.
+      final horizontal = await tester.startGesture(const Offset(200, 200));
+      await horizontal.moveBy(const Offset(40, 0));
+      await tester.pump(const Duration(milliseconds: 600));
+      await horizontal.moveBy(const Offset(80, 0));
+      await tester.pump();
+      expect(find.textContaining('/'), findsOneWidget);
+      expect(starts, 0);
+      expect(find.textContaining('加速中'), findsNothing);
+      await horizontal.up();
+      await tester.pump();
+      expect(seeks, hasLength(1));
+    });
+
+    testWidgets('holdRateFor boosts from 1.25x but never slows 3.0x', (
+      tester,
+    ) async {
+      expect(holdRateFor(1.0), 2.0);
+      expect(holdRateFor(1.25), 2.0);
+      expect(holdRateFor(2.0), 2.0);
+      expect(holdRateFor(3.0), 3.0);
+      expect(kPlayerHoldMinRate, 2.0);
     });
   });
 }

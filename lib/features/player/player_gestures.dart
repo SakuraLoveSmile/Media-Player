@@ -27,10 +27,20 @@ Duration horizontalSeekDelta(double dx, double width, Duration span) =>
 Duration clampDuration(Duration value, Duration max) =>
     value < Duration.zero ? Duration.zero : (value > max ? max : value);
 
+/// Holding the picture plays it faster without touching the chosen speed: the
+/// temporary rate never drops below this floor (S82).
+const double kPlayerHoldMinRate = 2.0;
+
+/// Temporary rate for a held picture: `max(base, kPlayerHoldMinRate)`, so
+/// holding from 1.25x speeds up while an already-fast 3.0x is never slowed.
+double holdRateFor(double baseRate) =>
+    baseRate < kPlayerHoldMinRate ? kPlayerHoldMinRate : baseRate;
+
 enum _GestureKind { brightness, volume, seek }
 
 /// Drag layer over the video surface: left-half vertical = brightness,
-/// right-half vertical = volume, horizontal = seek preview (applied on release).
+/// right-half vertical = volume, horizontal = seek preview (applied on release)
+/// and — when the page offers it — a held picture plays faster (S82).
 ///
 /// Lives below the top / control bars in the player Stack so their sliders and
 /// buttons keep their own input. Levels update live while dragging; only the
@@ -45,6 +55,9 @@ class PlayerGestureLayer extends StatefulWidget {
     required this.onSeek,
     required this.brightness,
     this.onTap,
+    this.onHoldStart,
+    this.onHoldEnd,
+    this.holdRate,
   });
 
   final double volume;
@@ -57,6 +70,18 @@ class PlayerGestureLayer extends StatefulWidget {
   /// A plain tap (no drag) toggles the player controls; drags stay gestures.
   final VoidCallback? onTap;
 
+  /// S82: press-and-hold boosts playback. Without [onHoldStart] the layer keeps
+  /// the long-press recognizer out of the gesture arena, so callers that do not
+  /// offer the shortcut keep exactly the old tap / drag behaviour.
+  final VoidCallback? onHoldStart;
+
+  /// Fired on release and on cancellation, so the page can restore the rate.
+  final VoidCallback? onHoldEnd;
+
+  /// Temporary rate shown in the central capsule while held. Null falls back to
+  /// [kPlayerHoldMinRate] for the label.
+  final double? holdRate;
+
   @override
   State<PlayerGestureLayer> createState() => _PlayerGestureLayerState();
 }
@@ -68,6 +93,10 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   double _brightnessLevel = 0.5;
   Duration _seekTarget = Duration.zero;
 
+  /// True from the long-press start until release / cancel: the capsule is up
+  /// and the page holds the temporary rate.
+  bool _holding = false;
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +107,11 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
     final double value = await widget.brightness.current();
     if (mounted) setState(() => _brightnessLevel = value);
   }
+
+  /// Whether the page offers the press-and-hold boost. Without it the
+  /// long-press callbacks stay null, so the recognizer never enters the arena
+  /// and tap / drag arbitration is untouched.
+  bool get _holds => widget.onHoldStart != null;
 
   @override
   Widget build(BuildContext context) {
@@ -101,7 +135,10 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
             onHorizontalDragUpdate: _horizontalUpdate,
             onHorizontalDragEnd: _horizontalEnd,
             onTap: widget.onTap,
-            child: _kind == null
+            onLongPressStart: _holds ? _holdStart : null,
+            onLongPressEnd: _holds ? _holdEnd : null,
+            onLongPressCancel: _holds ? _holdCancel : null,
+            child: _kind == null && !_holding
                 ? const SizedBox.expand()
                 : Center(child: _indicator()),
           );
@@ -111,6 +148,9 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   }
 
   void _verticalStart(DragStartDetails details) {
+    // A drag that takes over from a hold gives the rate back first, so the
+    // boost can never outlive the finger that asked for it.
+    _releaseHold();
     final bool left = details.localPosition.dx < _size.width / 2;
     setState(() {
       _kind = left ? _GestureKind.brightness : _GestureKind.volume;
@@ -120,7 +160,7 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
 
   void _verticalUpdate(DragUpdateDetails details) {
     final _GestureKind? kind = _kind;
-    if (kind == null || kind == _GestureKind.seek) return;
+    if (kind != _GestureKind.brightness && kind != _GestureKind.volume) return;
     final double next =
         (_level + verticalLevelDelta(details.delta.dy, _size.height)).clamp(
           0.0,
@@ -136,6 +176,7 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   }
 
   void _horizontalStart(DragStartDetails details) {
+    _releaseHold();
     setState(() {
       _kind = _GestureKind.seek;
       _seekTarget = widget.position;
@@ -162,8 +203,39 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
     setState(() => _kind = null);
   }
 
+  void _holdStart(LongPressStartDetails details) {
+    // One start per press: a repeated callback must not stack boosts.
+    if (_holding) return;
+    setState(() => _holding = true);
+    widget.onHoldStart?.call();
+  }
+
+  void _holdEnd(LongPressEndDetails details) => _releaseHold();
+
+  /// A cancelled hold (pointer cancel, another winner) restores exactly like a
+  /// release; leaving the rate boosted would strand the user at the fast rate.
+  void _holdCancel() => _releaseHold();
+
+  @override
+  void dispose() {
+    // The layer disappears mid-hold when the player locks, rotates or closes;
+    // hand the rate back instead of stranding the boost. No setState here —
+    // the element is already going away.
+    if (_holding) {
+      _holding = false;
+      widget.onHoldEnd?.call();
+    }
+    super.dispose();
+  }
+
+  void _releaseHold() {
+    if (!_holding) return;
+    setState(() => _holding = false);
+    widget.onHoldEnd?.call();
+  }
+
   Widget _indicator() {
-    final (IconData icon, String label) = switch (_kind!) {
+    final (IconData icon, String label) = switch (_kind) {
       _GestureKind.brightness => (
         Icons.brightness_6,
         '亮度 ${(_level * 100).round()}%',
@@ -175,6 +247,10 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
       _GestureKind.seek => (
         Icons.fast_forward,
         '${formatPlaybackTime(_seekTarget)} / ${formatPlaybackTime(widget.duration)}',
+      ),
+      null => (
+        Icons.fast_forward_rounded,
+        '${widget.holdRate ?? kPlayerHoldMinRate}x 加速中',
       ),
     };
     return Material(

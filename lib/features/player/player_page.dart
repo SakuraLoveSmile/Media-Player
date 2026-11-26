@@ -82,6 +82,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   String? _fatal;
   double _volume = 1;
 
+  /// S82: the rate to restore when a 按住加速 hold ends. Non-null exactly while
+  /// a hold is in flight. Never persisted: it is a gesture, not a preference,
+  /// so it reaches no store and adds no `PlaybackSettings` field.
+  double? _holdBaseRate;
+
   /// S53: current season's episodes, used by the S78 portrait info sheet
   /// (集 strip and 接下来 card) and to resolve richer episode stills.
   List<MediaItem> _seasonEpisodes = const <MediaItem>[];
@@ -202,6 +207,34 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       unawaited(_reload());
     }
   }
+
+  /// S82: 按住画面临时加速. The base rate is latched when the hold starts, the
+  /// temporary rate is `max(base, 2.0)`, and release / cancel restores the
+  /// base. 一起看 offers no personal boost: its 1 倍 rejection stays the only
+  /// path, and [_holdEnabled] keeps the recognizer out of the arena entirely.
+  void _beginHold(PlayerController controller) {
+    if (!_holdEnabled) return;
+    final double base = controller.state.rate;
+    // Latched first, so even an immediate release restores the base rate.
+    _holdBaseRate = base;
+    final double target = holdRateFor(base);
+    // A base already at or above the floor needs no write; the capsule still
+    // reports the rate, and the release below stays a no-op.
+    if (target != base) unawaited(controller.setRate(target));
+  }
+
+  void _endHold(PlayerController controller) {
+    final double? base = _holdBaseRate;
+    _holdBaseRate = null;
+    if (base == null) return;
+    if (controller.state.rate != base) unawaited(controller.setRate(base));
+  }
+
+  /// S82: the hold shortcut belongs to personal playback. A watch-together room
+  /// fixes the rate at 1 倍 (the controller rejects anything else with its own
+  /// 提示), so the page passes no hold callbacks at all there: no recognizer, no
+  /// capsule, and the sync protocol is untouched.
+  bool get _holdEnabled => widget.watchRoomId == null;
 
   @override
   void dispose() {
@@ -371,6 +404,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                               unawaited(controller.seekTo(target)),
                           brightness: _brightness,
                           onTap: _toggleControls,
+                          // S82: portrait 按住加速. 一起看 gets no callbacks, so
+                          // no long-press recognizer and no capsule.
+                          onHoldStart: _holdEnabled
+                              ? () => _beginHold(controller)
+                              : null,
+                          onHoldEnd: _holdEnabled
+                              ? () => _endHold(controller)
+                              : null,
+                          holdRate: holdRateFor(state.rate),
                         ),
                       // S79: the configured loader covers 开播, with the live
                       // network speed underneath it; buffering keeps a smaller
@@ -2085,6 +2127,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               onSeek: (Duration target) => unawaited(controller.seekTo(target)),
               brightness: _brightness,
               onTap: _toggleControls,
+              // S82: landscape 按住加速, same wiring as portrait; 一起看 opts
+              // out so its 1 倍 rejection stays the only rate path.
+              onHoldStart: _holdEnabled ? () => _beginHold(controller) : null,
+              onHoldEnd: _holdEnabled ? () => _endHold(controller) : null,
+              holdRate: holdRateFor(state.rate),
             ),
           ),
         // S79: see the portrait layout - loader + speed while opening, a

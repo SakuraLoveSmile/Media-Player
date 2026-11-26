@@ -18,6 +18,7 @@ import 'package:media_player/core/errors/app_error.dart';
 import 'package:media_player/core/errors/emby_exception.dart';
 import 'package:media_player/core/network/endpoint_kind.dart';
 import 'package:media_player/core/router/app_routes.dart';
+import 'package:media_player/data/auth/api_session.dart';
 import 'package:media_player/data/auth/auth_service.dart';
 import 'package:media_player/data/cast/dlna_cast_service.dart';
 import 'package:media_player/data/cast/dlna_device.dart';
@@ -32,11 +33,13 @@ import 'package:media_player/data/models/media_source.dart';
 import 'package:media_player/data/models/media_stream.dart';
 import 'package:media_player/data/models/person.dart';
 import 'package:media_player/data/models/playback_plan.dart';
+import 'package:media_player/data/models/resolved_endpoint.dart';
 import 'package:media_player/data/models/server_profile.dart';
 import 'package:media_player/data/playback/playback_engine.dart';
 import 'package:media_player/data/playback/playback_settings.dart';
 import 'package:media_player/data/playback/subtitle_repository.dart';
 import 'package:media_player/data/storage/key_value_store.dart';
+import 'package:media_player/data/watch_together/watch_together_client.dart';
 import 'package:media_player/features/player/player_page.dart';
 import 'package:media_player/ui/app_controls.dart';
 import 'package:media_player/ui/theme/app_theme.dart';
@@ -107,6 +110,63 @@ class HangingOpenEngine extends FakePlaybackEngine {
     openedPlans.add(plan);
     return gate.future;
   }
+}
+
+/// A room client with no socket: enough for the player page to open a
+/// watch-together session and wire the coordinator's 1 倍 rate rule.
+class RoomOnlyWatch extends WatchTogetherClient {
+  RoomOnlyWatch(this.watchRoom)
+    : super(session: StaticApiSession(), store: InMemoryKeyValueStore());
+
+  final WatchRoom watchRoom;
+  final List<String> commands = <String>[];
+
+  @override
+  WatchRoom? get room => watchRoom;
+
+  @override
+  bool get connected => true;
+
+  @override
+  int get serverNowMs => 0;
+
+  @override
+  Future<void> command(String action, {int? positionMs}) async {
+    commands.add(action);
+  }
+
+  @override
+  void reportStatus(String status, {int positionMs = 0}) {}
+}
+
+class StaticApiSession implements ApiSession {
+  @override
+  ResolvedEndpoint? endpoint;
+
+  @override
+  String? userId = 'u1';
+
+  @override
+  String? accessToken = 'token';
+
+  @override
+  String? get deviceId => 'd1';
+
+  @override
+  ServerProfile? get profile =>
+      const ServerProfile(serverId: 'server', name: 'Test server');
+
+  @override
+  Future<Map<String, dynamic>> authorizedGet(Uri url) async =>
+      <String, dynamic>{};
+
+  @override
+  Future<Map<String, dynamic>> authorizedPost(Uri url, {Object? body}) async =>
+      <String, dynamic>{};
+
+  @override
+  Future<Map<String, dynamic>> authorizedDelete(Uri url) async =>
+      <String, dynamic>{};
 }
 
 class StaticAuth implements AuthService {
@@ -238,7 +298,9 @@ void main() {
     KeyValueStore? store,
     DlnaCastService? cast,
     ScreenOrientationService? orientation,
+    WatchTogetherClient? watchTogether,
     bool legacyRoute = false,
+    String? room,
     String? source,
     bool waitForIdle = true,
   }) async {
@@ -263,6 +325,7 @@ void main() {
               playback: playback,
               createEngine: createEngine ?? () => engine,
               createReporter: createReporter ?? () => reporter,
+              watchTogether: watchTogether,
               subtitles: subtitles,
               localSubtitlePicker: localPicker,
               pip: pip,
@@ -282,7 +345,7 @@ void main() {
     if (legacyRoute) {
       ProviderScope.containerOf(tester.element(find.byType(MediaPlayerApp)))
           .read(appRouterProvider)
-          .go(AppRoutes.playerFor(media.id, source: source));
+          .go(AppRoutes.playerFor(media.id, source: source, room: room));
     } else {
       // P1: the post-login landing is home; open the library so the movie
       // poster is tapped in its grid (unique there, unlike the home rows).
@@ -1659,6 +1722,187 @@ void main() {
     await tester.pumpAndSettle();
     expect(engine.rates.last, 2.0);
     expect(find.text('2.0x'), findsOneWidget);
+  });
+
+  const String holdCapsule = '加速中';
+
+  /// Taps the rate menu and picks [label] (e.g. `1.25x`).
+  Future<void> pickRate(WidgetTester tester, String label) async {
+    await tester.tap(find.byKey(const Key('player-rate-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label).last);
+    await tester.pumpAndSettle();
+  }
+
+  Rect gestureRect(WidgetTester tester) =>
+      tester.getRect(find.byKey(const Key('player-gesture-area')));
+
+  /// Presses [at] past the 500 ms long-press deadline and keeps the finger down.
+  /// Returns the gesture so the caller can release or cancel it.
+  Future<TestGesture> pressAndHold(WidgetTester tester, Offset at) async {
+    final TestGesture gesture = await tester.startGesture(at);
+    await tester.pump(const Duration(milliseconds: 550));
+    await tester.pump();
+    return gesture;
+  }
+
+  group('press-and-hold speed boost (S82)', () {
+    /// The chrome auto-hides after 3 s; its fade leaves the bars ignoring
+    /// pointers, so a hold then lands on the gesture layer beneath them.
+    Future<void> hideChrome(WidgetTester tester) async {
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('landscape 1.25x holds at 2.0x and restores 1.25x', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      await pickRate(tester, '1.25x');
+      await hideChrome(tester);
+      final Rect area = gestureRect(tester);
+      final int before = engine.rates.length;
+
+      final TestGesture hold = await pressAndHold(
+        tester,
+        area.topLeft + const Offset(80, 80),
+      );
+      expect(find.text('2.0x 加速中'), findsOneWidget);
+      await hold.up();
+      await tester.pumpAndSettle();
+
+      expect(engine.rates.sublist(before), <double>[2.0, 1.25]);
+      expect(find.textContaining(holdCapsule), findsNothing);
+      expect(find.text('1.25x'), findsWidgets);
+    });
+
+    testWidgets('portrait 1.25x holds at 2.0x and restores 1.25x', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await pumpPlayer(tester, legacyRoute: true);
+      await tester.tap(find.byKey(const Key('player-orientation-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('player-portrait')), findsOneWidget);
+
+      await pickRate(tester, '1.25x');
+      await hideChrome(tester);
+      final Rect area = gestureRect(tester);
+      final int before = engine.rates.length;
+
+      final TestGesture hold = await pressAndHold(
+        tester,
+        area.topLeft + const Offset(40, 40),
+      );
+      expect(find.text('2.0x 加速中'), findsOneWidget);
+      await hold.up();
+      await tester.pumpAndSettle();
+
+      expect(engine.rates.sublist(before), <double>[2.0, 1.25]);
+      expect(find.textContaining(holdCapsule), findsNothing);
+      expect(find.text('1.25x'), findsWidgets);
+    });
+
+    testWidgets('holding at 3.0x never slows down and writes no rate', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      await pickRate(tester, '3.0x');
+      await hideChrome(tester);
+      final Rect area = gestureRect(tester);
+      final int before = engine.rates.length;
+
+      final TestGesture hold = await pressAndHold(
+        tester,
+        area.topLeft + const Offset(80, 80),
+      );
+      // max(3.0, 2.0) is 3.0: the capsule reports the unchanged rate.
+      expect(find.text('3.0x 加速中'), findsOneWidget);
+      await hold.up();
+      await tester.pumpAndSettle();
+
+      expect(engine.rates.sublist(before), isEmpty);
+      expect(engine.rates.last, 3.0);
+      expect(find.textContaining(holdCapsule), findsNothing);
+    });
+
+    testWidgets('a quick hold writes the boost first, then the base rate', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      await pickRate(tester, '1.25x');
+      await hideChrome(tester);
+      final Rect area = gestureRect(tester);
+      final int before = engine.rates.length;
+
+      final TestGesture hold = await tester.startGesture(
+        area.topLeft + const Offset(80, 80),
+      );
+      // Release the moment the deadline passes: one frame of boost, then back.
+      await tester.pump(const Duration(milliseconds: 510));
+      await hold.up();
+      await tester.pumpAndSettle();
+
+      // The order proves the restore is not a no-op that skipped the boost.
+      expect(engine.rates.sublist(before), <double>[2.0, 1.25]);
+      expect(find.textContaining(holdCapsule), findsNothing);
+    });
+
+    testWidgets('a watch-together room offers no personal boost', (
+      tester,
+    ) async {
+      // The room client below is connected and in-sync, so the page wires the
+      // coordinator and pins 1 倍 through PlayerController.setRate. It also
+      // passes no hold callbacks there (no recognizer, no capsule).
+      final RoomOnlyWatch watch = RoomOnlyWatch(
+        const WatchRoom(
+          roomId: 'room',
+          code: 'ABC123',
+          capacity: 4,
+          ownerMemberId: 'u1',
+          media: WatchMedia(
+            itemId: 'item-1',
+            mediaSourceId: null,
+            title: '测试影片',
+            type: 'Movie',
+            runTimeMs: 5400000,
+          ),
+          playback: WatchPlayback(
+            revision: 1,
+            state: 'playing',
+            positionMs: 0,
+            serverTime: 0,
+            waitingMemberIds: <String>[],
+          ),
+          members: <WatchMember>[],
+        ),
+      );
+      addTearDown(watch.dispose);
+      await pumpPlayer(
+        tester,
+        legacyRoute: true,
+        room: 'room',
+        watchTogether: watch,
+      );
+      final Rect area = gestureRect(tester);
+      final int before = engine.rates.length;
+
+      final TestGesture hold = await pressAndHold(
+        tester,
+        area.topLeft + const Offset(80, 80),
+      );
+      // No capsule: the room path has no personal boost at all.
+      expect(find.textContaining(holdCapsule), findsNothing);
+      await hold.up();
+      await tester.pumpAndSettle();
+
+      // No 2.0x write: the room's rate stays at 1 倍.
+      expect(engine.rates.sublist(before), isEmpty);
+      expect(engine.rates, isNot(contains(2.0)));
+    });
   });
 
   testWidgets('the subtitle menu lists off plus every server stream', (
