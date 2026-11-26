@@ -39,9 +39,17 @@ class PlaybackSettings {
   /// is not in this list is treated as [defaultSeekStepSeconds].
   static const List<int> seekStepPresets = <int>[5, 10, 15, 30, 60];
   /// Coerces a stored or edited jump length to one of [seekStepPresets];
-  /// absent, non-numeric and non-preset values all fall back to 10 s.
+  /// absent, non-numeric, fractional and non-preset values all fall back to
+  /// [defaultSeekStepSeconds].
+  ///
+  /// Non-finite values must be rejected before any `truncate()` / `toInt()`
+  /// call because those throw on `NaN` and `±Infinity`. Fractional values are
+  /// rejected rather than truncated so a hand-edited `5.5` cannot silently
+  /// become the legal 5 s preset; a whole-valued `double` such as `5.0` is
+  /// still accepted.
   static int normalizeSeekStepSeconds(Object? raw) {
-    if (raw is! num) return defaultSeekStepSeconds;
+    if (raw is! num || !raw.isFinite) return defaultSeekStepSeconds;
+    if (raw != raw.truncate()) return defaultSeekStepSeconds;
     final int value = raw.toInt();
     return seekStepPresets.contains(value) ? value : defaultSeekStepSeconds;
   }
