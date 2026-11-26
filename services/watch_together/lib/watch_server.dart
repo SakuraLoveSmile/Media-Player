@@ -59,12 +59,21 @@ class WatchFailure implements Exception {
   String toString() => 'WatchFailure($code)';
 }
 
+/// Internal sentinel: the upstream answered with something we cannot parse.
+class _BadResponse implements Exception {
+  const _BadResponse();
+}
+
 /// Only the configured Emby host receives credentials. Redirects are forbidden.
 class EmbyWatchVerifier implements WatchAuthVerifier {
-  EmbyWatchVerifier({required Uri baseUrl, required this.serverId})
-    : baseUrl = _validBase(baseUrl);
+  EmbyWatchVerifier({
+    required Uri baseUrl,
+    required this.serverId,
+    this.timeout = const Duration(seconds: 8),
+  }) : baseUrl = _validBase(baseUrl);
   final Uri baseUrl;
   final String serverId;
+  final Duration timeout;
   static Uri _validBase(Uri base) {
     if (!['http', 'https'].contains(base.scheme) ||
         base.host.isEmpty ||
@@ -76,17 +85,20 @@ class EmbyWatchVerifier implements WatchAuthVerifier {
     return Uri.parse(base.toString().replaceFirst(RegExp(r'/+$'), ''));
   }
 
+  /// When [configProbe] is set the request probes the credential itself, so a
+  /// 404 means the configured upstream is wrong rather than an item denial.
   Future<Map<String, dynamic>> _request(
     WatchIdentity id,
     String path, {
     Map<String, dynamic>? body,
+    bool configProbe = false,
   }) async {
-    final http = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+    final http = HttpClient()..connectionTimeout = timeout;
     try {
       final uri = Uri.parse('$baseUrl$path');
       final request = await http
           .openUrl(body == null ? 'GET' : 'POST', uri)
-          .timeout(const Duration(seconds: 5));
+          .timeout(timeout);
       request.followRedirects = false;
       request.headers.set('X-Emby-Token', id.token);
       request.headers.set('Accept', 'application/json');
@@ -94,30 +106,45 @@ class EmbyWatchVerifier implements WatchAuthVerifier {
         request.headers.contentType = ContentType.json;
         request.write(jsonEncode(body));
       }
-      final response = await request.close().timeout(
-        const Duration(seconds: 5),
-      );
+      final response = await request.close().timeout(timeout);
       if (response.statusCode == 401 || response.statusCode == 403) {
         throw const WatchFailure('AUTH_INVALID', '登录已失效或无权访问', 401);
       }
       if (response.statusCode == 404) {
-        throw const WatchFailure('ITEM_FORBIDDEN', '没有权限播放此影片', 403);
+        throw configProbe
+            ? const WatchFailure('EMBY_CONFIG', '服务端媒体服务器地址配置无效', 503)
+            : const WatchFailure('ITEM_FORBIDDEN', '没有权限播放此影片', 403);
       }
       if (response.statusCode != 200) {
-        throw const WatchFailure('EMBY_UNAVAILABLE', '媒体服务器暂不可用', 503);
+        throw const WatchFailure('EMBY_UPSTREAM_ERROR', '媒体服务器返回错误', 502);
       }
       final data = <int>[];
-      await for (final bytes in response.timeout(const Duration(seconds: 5))) {
+      await for (final bytes in response.timeout(timeout)) {
         if (data.length + bytes.length > 1024 * 1024) {
-          throw const WatchFailure('EMBY_UNAVAILABLE', '媒体服务器响应过大', 503);
+          throw const _BadResponse();
         }
         data.addAll(bytes);
       }
-      final decoded = jsonDecode(utf8.decode(data));
-      if (decoded is! Map<String, dynamic>) throw const FormatException();
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(utf8.decode(data));
+      } on FormatException {
+        throw const _BadResponse();
+      }
+      if (decoded is! Map<String, dynamic>) throw const _BadResponse();
       return decoded;
     } on WatchFailure {
       rethrow;
+    } on TimeoutException {
+      throw const WatchFailure('EMBY_TIMEOUT', '媒体服务器响应超时', 503);
+    } on TlsException {
+      throw const WatchFailure('EMBY_UNREACHABLE', '无法连接媒体服务器', 503);
+    } on SocketException {
+      throw const WatchFailure('EMBY_UNREACHABLE', '无法连接媒体服务器', 503);
+    } on HttpException {
+      throw const WatchFailure('EMBY_UNREACHABLE', '无法连接媒体服务器', 503);
+    } on _BadResponse {
+      throw const WatchFailure('EMBY_BAD_RESPONSE', '媒体服务器响应异常', 502);
     } catch (_) {
       throw const WatchFailure('EMBY_UNAVAILABLE', '媒体服务器暂不可用', 503);
     } finally {
@@ -140,7 +167,7 @@ class EmbyWatchVerifier implements WatchAuthVerifier {
       token: token,
       name: '',
     );
-    final user = await _request(candidate, '/Users/Me');
+    final user = await _request(candidate, '/Users/Me', configProbe: true);
     if (user['Id'] != userId ||
         user['Id'] is! String ||
         user['Name'] is! String) {
@@ -162,50 +189,62 @@ class EmbyWatchVerifier implements WatchAuthVerifier {
     String itemId,
     String? mediaSourceId,
   ) async {
+    // The item detail may already advertise a directly playable source, which
+    // lets the verifier skip the PlaybackInfo negotiation entirely.
     final item = await _request(
       identity,
-      '/Users/${Uri.encodeComponent(identity.userId)}/Items/${Uri.encodeComponent(itemId)}',
+      '/Users/${Uri.encodeComponent(identity.userId)}/Items/'
+      '${Uri.encodeComponent(itemId)}?Fields=MediaSources',
     );
     if (item['CanPlay'] == false ||
         item['PlayAccess'] == 'None' ||
         !['Movie', 'Episode'].contains(item['Type'])) {
       throw const WatchFailure('ITEM_FORBIDDEN', '没有权限播放此影片', 403);
     }
-    final info = await _request(
-      identity,
-      '/Items/${Uri.encodeComponent(itemId)}/PlaybackInfo',
-      body: {
-        'UserId': identity.userId,
-        'IsPlayback': false,
-        'AutoOpenLiveStream': false,
-        'EnableDirectPlay': true,
-        'EnableDirectStream': true,
-        'EnableTranscoding': false,
-        if (mediaSourceId != null) 'MediaSourceId': mediaSourceId,
-        'DeviceProfile': {
-          'Name': 'MediaPlayer watch permission',
-          'DirectPlayProfiles': [
-            {'Type': 'Video'},
-            {'Type': 'Audio'},
-          ],
+    final directSource = mediaSourceId == null
+        ? _directSource(item['MediaSources'])
+        : null;
+    final String sourceId;
+    if (directSource != null) {
+      sourceId = directSource;
+    } else {
+      final info = await _request(
+        identity,
+        '/Items/${Uri.encodeComponent(itemId)}/PlaybackInfo',
+        body: {
+          'UserId': identity.userId,
+          'IsPlayback': false,
+          'AutoOpenLiveStream': false,
+          'EnableDirectPlay': true,
+          'EnableDirectStream': true,
+          'EnableTranscoding': false,
+          if (mediaSourceId != null) 'MediaSourceId': mediaSourceId,
+          'DeviceProfile': {
+            'Name': 'MediaPlayer watch permission',
+            'DirectPlayProfiles': [
+              {'Type': 'Video'},
+              {'Type': 'Audio'},
+            ],
+          },
         },
-      },
-    );
-    final sources = info['MediaSources'];
-    if (sources is! List) {
-      throw const WatchFailure('ITEM_FORBIDDEN', '没有可直接播放的版本', 403);
-    }
-    final candidates = sources
-        .whereType<Map>()
-        .where((s) => mediaSourceId == null || s['Id'] == mediaSourceId)
-        .where(
-          (s) =>
-              s['SupportsDirectPlay'] == true ||
-              s['SupportsDirectStream'] == true,
-        )
-        .toList();
-    if (candidates.isEmpty || candidates.first['Id'] is! String) {
-      throw const WatchFailure('MEDIA_SOURCE_INVALID', '所选版本无法直接播放', 403);
+      );
+      final sources = info['MediaSources'];
+      if (sources is! List) {
+        throw const WatchFailure('ITEM_FORBIDDEN', '没有可直接播放的版本', 403);
+      }
+      final candidates = sources
+          .whereType<Map>()
+          .where((s) => mediaSourceId == null || s['Id'] == mediaSourceId)
+          .where(
+            (s) =>
+                s['SupportsDirectPlay'] == true ||
+                s['SupportsDirectStream'] == true,
+          )
+          .toList();
+      if (candidates.isEmpty || candidates.first['Id'] is! String) {
+        throw const WatchFailure('MEDIA_SOURCE_INVALID', '所选版本无法直接播放', 403);
+      }
+      sourceId = candidates.first['Id'] as String;
     }
     final duration = item['RunTimeTicks'];
     if (duration is! num || !duration.isFinite || duration <= 0) {
@@ -213,11 +252,26 @@ class EmbyWatchVerifier implements WatchAuthVerifier {
     }
     return WatchMedia(
       itemId: itemId,
-      mediaSourceId: candidates.first['Id'] as String,
+      mediaSourceId: sourceId,
       title: item['Name'] is String ? item['Name'] as String : '影片',
       type: item['Type'] as String,
       runTimeMs: duration ~/ 10000,
     );
+  }
+
+  /// Picks a playable source advertised by the item detail response.
+  String? _directSource(Object? sources) {
+    if (sources is! List) return null;
+    final match = sources
+        .whereType<Map>()
+        .where(
+          (s) =>
+              s['Id'] is String &&
+              (s['SupportsDirectPlay'] == true ||
+                  s['SupportsDirectStream'] == true),
+        )
+        .firstOrNull;
+    return match?['Id'] as String?;
   }
 }
 

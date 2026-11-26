@@ -33,6 +33,9 @@ class _WatchTogetherPageState extends ConsumerState<WatchTogetherPage> {
   LibraryService? _library;
   WatchMediaSelection? _selection;
   String? _error;
+  /// Replays the most recent user action so a transient upstream failure can be
+  /// retried in place instead of sending the user back through the picker.
+  Future<void> Function()? _retry;
   bool _busy = false;
   bool _openingPlayer = false;
   bool _fromProgress = false;
@@ -123,6 +126,10 @@ class _WatchTogetherPageState extends ConsumerState<WatchTogetherPage> {
 
   Future<void> _run(Future<void> Function() action) async {
     if (_busy) return;
+    _retry = action;
+    // A new attempt supersedes both the page banner and the client's copy of
+    // the previous failure, so a stale reason cannot linger at the top.
+    _client?.clearError();
     setState(() {
       _busy = true;
       _error = null;
@@ -136,6 +143,17 @@ class _WatchTogetherPageState extends ConsumerState<WatchTogetherPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _retryLast() {
+    final action = _retry;
+    if (action == null || _busy) return;
+    unawaited(_run(action));
+  }
+
+  void _dismissError() {
+    _client?.clearError();
+    if (mounted) setState(() => _error = null);
   }
 
   Future<bool> _confirm(String title, String message) async =>
@@ -267,9 +285,29 @@ class _WatchTogetherPageState extends ConsumerState<WatchTogetherPage> {
           if (_error != null || client?.error != null)
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Text(
-                _error ?? client!.error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      _error ?? client!.error!,
+                      key: const Key('watch-error'),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    key: const Key('watch-error-retry'),
+                    onPressed: _busy ? null : _retryLast,
+                    child: const Text('重试'),
+                  ),
+                  TextButton(
+                    key: const Key('watch-error-dismiss'),
+                    onPressed: _dismissError,
+                    child: const Text('关闭'),
+                  ),
+                ],
               ),
             ),
           AppSection(
