@@ -774,22 +774,65 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
-  /// Centre transport: ±10 s flanking play / pause.
+  /// S80: seek target for a transport tap of [seconds]. Back clamps at zero;
+  /// forward clamps at the item runtime, but only once the duration is known.
+  Duration _seekTarget(
+    PlayerState state, {
+    required int seconds,
+    required bool forward,
+  }) {
+    final Duration delta = Duration(seconds: seconds);
+    if (!forward) {
+      final Duration target = state.position - delta;
+      return target.isNegative ? Duration.zero : target;
+    }
+    final Duration target = state.position + delta;
+    return state.duration > Duration.zero && target > state.duration
+        ? state.duration
+        : target;
+  }
+
+  /// S80: Material ships dedicated 5/10/30 s glyphs; 15 and 60 s use the
+  /// generic arrow so the button never shows a misleading number.
+  IconData _seekIcon({required int seconds, required bool forward}) {
+    if (forward) {
+      return switch (seconds) {
+        5 => Icons.forward_5_rounded,
+        10 => Icons.forward_10_rounded,
+        30 => Icons.forward_30_rounded,
+        _ => Icons.forward_rounded,
+      };
+    }
+    return switch (seconds) {
+      5 => Icons.replay_5_rounded,
+      10 => Icons.replay_10_rounded,
+      30 => Icons.replay_30_rounded,
+      _ => Icons.replay_rounded,
+    };
+  }
+
+  /// Centre transport: back / forward around play / pause, sized by the
+  /// 快退/快进 settings.
   Widget _portraitTransport(PlayerController controller, PlayerState state) {
+    final int backSeconds = state.playbackSettings.seekBackSeconds;
+    final int forwardSeconds = state.playbackSettings.seekForwardSeconds;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         AppIconButton(
           key: const Key('player-seek-back-10'),
-          tooltip: '后退 10 秒',
+          tooltip: '后退 $backSeconds 秒',
           size: 44,
           iconSize: 28,
-          icon: const Icon(Icons.replay_10_rounded, color: Colors.white),
+          icon: Icon(
+            _seekIcon(seconds: backSeconds, forward: false),
+            color: Colors.white,
+          ),
           onPressed: () {
-            final Duration target =
-                state.position - const Duration(seconds: 10);
             unawaited(
-              controller.seekTo(target.isNegative ? Duration.zero : target),
+              controller.seekTo(
+                _seekTarget(state, seconds: backSeconds, forward: false),
+              ),
             );
             _scheduleHide();
           },
@@ -812,18 +855,19 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         const SizedBox(width: AppSpacing.md),
         AppIconButton(
           key: const Key('player-seek-forward-10'),
-          tooltip: '前进 10 秒',
+          tooltip: '前进 $forwardSeconds 秒',
           size: 44,
           iconSize: 28,
-          icon: const Icon(Icons.forward_10_rounded, color: Colors.white),
+          icon: Icon(
+            _seekIcon(seconds: forwardSeconds, forward: true),
+            color: Colors.white,
+          ),
           onPressed: () {
-            final Duration target =
-                state.position + const Duration(seconds: 10);
-            final Duration clamped =
-                state.duration > Duration.zero && target > state.duration
-                ? state.duration
-                : target;
-            unawaited(controller.seekTo(clamped));
+            unawaited(
+              controller.seekTo(
+                _seekTarget(state, seconds: forwardSeconds, forward: true),
+              ),
+            );
             _scheduleHide();
           },
         ),
@@ -2534,25 +2578,29 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
-  /// Centre transport: previous / play-pause / next.
+  /// Centre transport: back / forward around play / pause, sized by the
+  /// 快退/快进 settings (S80); episode switching lives in the bottom bar (S40).
   Widget _landscapeTransport(PlayerController controller, PlayerState state) {
+    final int backSeconds = state.playbackSettings.seekBackSeconds;
+    final int forwardSeconds = state.playbackSettings.seekForwardSeconds;
     return Center(
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          // Yamby's centre transport is ±10 s; episode switching lives in the
-          // bottom bar (S40).
           AppIconButton(
             key: const Key('player-seek-back-10'),
-            tooltip: '后退 10 秒',
+            tooltip: '后退 $backSeconds 秒',
             size: 56,
             iconSize: 34,
-            icon: const Icon(Icons.replay_10_rounded, color: Colors.white),
+            icon: Icon(
+              _seekIcon(seconds: backSeconds, forward: false),
+              color: Colors.white,
+            ),
             onPressed: () {
-              final Duration target =
-                  state.position - const Duration(seconds: 10);
               unawaited(
-                controller.seekTo(target.isNegative ? Duration.zero : target),
+                controller.seekTo(
+                  _seekTarget(state, seconds: backSeconds, forward: false),
+                ),
               );
               _scheduleHide();
             },
@@ -2575,18 +2623,19 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           const SizedBox(width: AppSpacing.xl),
           AppIconButton(
             key: const Key('player-seek-forward-10'),
-            tooltip: '前进 10 秒',
+            tooltip: '前进 $forwardSeconds 秒',
             size: 56,
             iconSize: 34,
-            icon: const Icon(Icons.forward_10_rounded, color: Colors.white),
+            icon: Icon(
+              _seekIcon(seconds: forwardSeconds, forward: true),
+              color: Colors.white,
+            ),
             onPressed: () {
-              final Duration target =
-                  state.position + const Duration(seconds: 10);
-              final Duration clamped =
-                  state.duration > Duration.zero && target > state.duration
-                  ? state.duration
-                  : target;
-              unawaited(controller.seekTo(clamped));
+              unawaited(
+                controller.seekTo(
+                  _seekTarget(state, seconds: forwardSeconds, forward: true),
+                ),
+              );
               _scheduleHide();
             },
           ),

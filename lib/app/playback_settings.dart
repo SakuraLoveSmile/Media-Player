@@ -72,6 +72,13 @@ class PlaybackSettingsController extends AsyncNotifier<PlaybackSettings> {
   Future<void> setForceStereo(bool enabled) =>
       _persist(_current.copyWith(forceStereo: enabled));
 
+  /// S80: back / forward transport jump length, set independently.
+  Future<void> setSeekBackSeconds(int seconds) =>
+      _persist(_current.copyWith(seekBackSeconds: seconds));
+
+  Future<void> setSeekForwardSeconds(int seconds) =>
+      _persist(_current.copyWith(seekForwardSeconds: seconds));
+
   /// S23/S33: advanced mpv video switches (also edited from the player sheet).
   Future<void> setAdvancedVideo({bool? gpuNext, bool? deband, bool? yuv420}) =>
       _persist(

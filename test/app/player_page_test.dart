@@ -726,6 +726,95 @@ void main() {
       expect(engine.screenshotPaths, hasLength(1));
     });
 
+    testWidgets('the portrait transport follows the 快退/快进 settings (S80)', (
+      tester,
+    ) async {
+      final store = InMemoryKeyValueStore();
+      await store.write(
+        PlaybackSettings.storageKey,
+        jsonEncode(
+          const PlaybackSettings(
+            seekBackSeconds: 5,
+            seekForwardSeconds: 30,
+          ).toJson(),
+        ),
+      );
+      portraitSurface(tester, const Size(400, 800));
+      await pumpPlayer(tester, legacyRoute: true, store: store);
+      await switchToPortrait(tester);
+
+      expect(find.byTooltip('后退 5 秒'), findsOneWidget);
+      expect(find.byTooltip('前进 30 秒'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('player-seek-forward-10')));
+      await tester.pumpAndSettle();
+      expect(engine.seeks.last, const Duration(seconds: 30));
+
+      // The head of the item still clamps a back tap at zero.
+      await tester.tap(find.byKey(const Key('player-seek-back-10')));
+      await tester.pumpAndSettle();
+      expect(engine.seeks.last, const Duration(seconds: 25));
+
+      // 30 s forward near the end clamps to the runtime.
+      engine.emit(
+        PlaybackSnapshot(
+          position: runtime - const Duration(seconds: 20),
+          duration: runtime,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('player-seek-forward-10')));
+      await tester.pumpAndSettle();
+      expect(engine.seeks.last, runtime);
+
+      // 5 s back from the head of the item clamps at zero.
+      engine.emit(
+        PlaybackSnapshot(
+          position: const Duration(seconds: 2),
+          duration: runtime,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('player-seek-back-10')));
+      await tester.pumpAndSettle();
+      expect(engine.seeks.last, Duration.zero);
+    });
+
+    testWidgets('a 15/60 s step uses the generic arrow glyph (S80)', (
+      tester,
+    ) async {
+      final store = InMemoryKeyValueStore();
+      await store.write(
+        PlaybackSettings.storageKey,
+        jsonEncode(
+          const PlaybackSettings(
+            seekBackSeconds: 15,
+            seekForwardSeconds: 60,
+          ).toJson(),
+        ),
+      );
+      portraitSurface(tester, const Size(400, 800));
+      await pumpPlayer(tester, legacyRoute: true, store: store);
+      await switchToPortrait(tester);
+
+      expect(find.byTooltip('后退 15 秒'), findsOneWidget);
+      expect(find.byTooltip('前进 60 秒'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('player-seek-back-10')),
+          matching: find.byIcon(Icons.replay_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('player-seek-forward-10')),
+          matching: find.byIcon(Icons.forward_rounded),
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('hangs a two-row dock off the video edge', (tester) async {
       portraitSurface(tester, const Size(400, 800));
       await pumpPlayer(tester, legacyRoute: true);
@@ -2039,6 +2128,81 @@ void main() {
     await tester.tap(find.byKey(const Key('player-seek-back-10')));
     await tester.pumpAndSettle();
     expect(engine.seeks.last, Duration.zero);
+  });
+
+  testWidgets('the centre transport follows the 快退/快进 settings (S80)', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    await store.write(
+      PlaybackSettings.storageKey,
+      jsonEncode(
+        const PlaybackSettings(
+          seekBackSeconds: 5,
+          seekForwardSeconds: 30,
+        ).toJson(),
+      ),
+    );
+    await pumpPlayer(tester, store: store);
+
+    // Landscape transport: the tooltip states the configured length and the
+    // keys stay as the stable test anchors.
+    expect(find.byTooltip('后退 5 秒'), findsOneWidget);
+    expect(find.byTooltip('前进 30 秒'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('player-seek-forward-10')));
+    await tester.pumpAndSettle();
+    expect(engine.seeks.last, const Duration(seconds: 30));
+
+    await tester.tap(find.byKey(const Key('player-seek-back-10')));
+    await tester.pumpAndSettle();
+    // Each tap applies to where the previous one seeked: 30 s forward, then
+    // 5 s back.
+    expect(engine.seeks.last, const Duration(seconds: 25));
+  });
+
+  testWidgets('a forward tap past the runtime clamps to the duration (S80)', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    await store.write(
+      PlaybackSettings.storageKey,
+      jsonEncode(
+        const PlaybackSettings(seekForwardSeconds: 60).toJson(),
+      ),
+    );
+    await pumpPlayer(tester, store: store);
+
+    engine.emit(
+      PlaybackSnapshot(
+        position: runtime - const Duration(seconds: 20),
+        duration: runtime,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('前进 60 秒'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('player-seek-forward-10')));
+    await tester.pumpAndSettle();
+    expect(engine.seeks.last, runtime);
+  });
+
+  testWidgets('a forward tap without a known duration does not clamp (S80)', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    await store.write(
+      PlaybackSettings.storageKey,
+      jsonEncode(
+        const PlaybackSettings(seekForwardSeconds: 60).toJson(),
+      ),
+    );
+    await pumpPlayer(tester, store: store);
+
+    // duration stays zero until the demuxer reports it.
+    await tester.tap(find.byKey(const Key('player-seek-forward-10')));
+    await tester.pumpAndSettle();
+    expect(engine.seeks.last, const Duration(seconds: 60));
   });
 
   testWidgets('the top bar offers capture and subtitles (S48)', (tester) async {

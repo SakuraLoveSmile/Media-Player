@@ -80,6 +80,14 @@ class PlayerSettingsPage extends ConsumerWidget {
               ),
             ],
           ),
+          _SeekStepSection(
+            settings: settings,
+            loading: loading,
+            onBack: (int seconds) =>
+                _save(context, playback.setSeekBackSeconds(seconds)),
+            onForward: (int seconds) =>
+                _save(context, playback.setSeekForwardSeconds(seconds)),
+          ),
           const PlaybackSettingsSection(),
           _LanguageSection(
             header: '音轨语言',
@@ -107,6 +115,118 @@ class PlayerSettingsPage extends ConsumerWidget {
     } catch (_) {
       messenger.showSnackBar(const SnackBar(content: Text('保存失败，请稍后重试')));
     }
+  }
+}
+
+/// S80: back / forward jump length, one chip row per direction. Each direction
+/// is chosen independently; the presets are fixed so the transport buttons can
+/// pick a matching icon and label.
+class _SeekStepSection extends StatelessWidget {
+  const _SeekStepSection({
+    required this.settings,
+    required this.loading,
+    required this.onBack,
+    required this.onForward,
+  });
+
+  final PlaybackSettings settings;
+  final bool loading;
+  final ValueChanged<int> onBack;
+  final ValueChanged<int> onForward;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSection(
+      header: '快进/快退',
+      footer: '下次打开播放器生效',
+      children: <Widget>[
+        _SeekStepRow(
+          keyPrefix: 'settings-seek-back',
+          title: '后退步长',
+          subtitle: '点击播放器「后退」按钮时跳过的时长',
+          selected: settings.seekBackSeconds,
+          loading: loading,
+          onSelect: onBack,
+          icon: Icons.fast_rewind,
+        ),
+        _SeekStepRow(
+          keyPrefix: 'settings-seek-forward',
+          title: '前进步长',
+          subtitle: '点击播放器「前进」按钮时跳过的时长',
+          selected: settings.seekForwardSeconds,
+          loading: loading,
+          onSelect: onForward,
+          icon: Icons.fast_forward,
+        ),
+      ],
+    );
+  }
+}
+
+/// One direction's chip row: 5 / 10 / 15 / 30 / 60 s.
+class _SeekStepRow extends StatelessWidget {
+  const _SeekStepRow({
+    required this.keyPrefix,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.loading,
+    required this.onSelect,
+    required this.icon,
+  });
+
+  final String keyPrefix;
+  final String title;
+  final String subtitle;
+  final int selected;
+  final bool loading;
+  final ValueChanged<int> onSelect;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme palette = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(icon, size: 20, color: palette.primary),
+              const SizedBox(width: AppSpacing.sm),
+              Text(title, style: Theme.of(context).textTheme.bodyLarge),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: palette.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: <Widget>[
+              for (final int seconds in PlaybackSettings.seekStepPresets)
+                ChoiceChip(
+                  key: Key('$keyPrefix-$seconds'),
+                  label: Text('$seconds 秒'),
+                  selected: selected == seconds,
+                  onSelected: loading ? null : (_) => onSelect(seconds),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 

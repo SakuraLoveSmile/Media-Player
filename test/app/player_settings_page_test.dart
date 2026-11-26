@@ -151,6 +151,129 @@ void main() {
     expect(json['autoPlayNext'], false);
   });
 
+  testWidgets('the 快进/快退 chips persist each direction (S80)', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    await tester.binding.setSurfaceSize(const Size(800, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpPage(tester, const PlayerSettingsPage(), store);
+
+    // The section sits right after 交互.
+    expect(find.text('快进/快退'), findsOneWidget);
+    final double interactionTop = tester.getTopLeft(find.text('交互')).dy;
+    final double seekTop = tester.getTopLeft(find.text('快进/快退')).dy;
+    final double playbackTop = tester.getTopLeft(find.text('播放/缓存')).dy;
+    expect(interactionTop, lessThan(seekTop));
+    expect(seekTop, lessThan(playbackTop));
+
+    // Every preset is offered for both directions, defaulting to 10 s.
+    for (final int seconds in PlaybackSettings.seekStepPresets) {
+      expect(find.byKey(Key('settings-seek-back-$seconds')), findsOneWidget);
+      expect(find.byKey(Key('settings-seek-forward-$seconds')), findsOneWidget);
+    }
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('settings-seek-back-10')))
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('settings-seek-forward-10')))
+          .selected,
+      isTrue,
+    );
+
+    await tester.tap(find.byKey(const Key('settings-seek-back-5')));
+    await tester.pumpAndSettle();
+    Map<String, dynamic> json = jsonDecode(
+      (await store.read(PlaybackSettings.storageKey))!,
+    ) as Map<String, dynamic>;
+    expect(json['seekBackSeconds'], 5);
+    // The other direction keeps its value.
+    expect(json['seekForwardSeconds'], 10);
+
+    await tester.tap(find.byKey(const Key('settings-seek-forward-60')));
+    await tester.pumpAndSettle();
+    json = jsonDecode(
+      (await store.read(PlaybackSettings.storageKey))!,
+    ) as Map<String, dynamic>;
+    expect(json['seekBackSeconds'], 5);
+    expect(json['seekForwardSeconds'], 60);
+  });
+
+  testWidgets('reopening the 快进/快退 page shows the stored choices (S80)', (
+    tester,
+  ) async {
+    final store = InMemoryKeyValueStore();
+    await store.write(
+      PlaybackSettings.storageKey,
+      jsonEncode(
+        const PlaybackSettings(
+          seekBackSeconds: 30,
+          seekForwardSeconds: 15,
+        ).toJson(),
+      ),
+    );
+    await tester.binding.setSurfaceSize(const Size(800, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpPage(tester, const PlayerSettingsPage(), store);
+
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('settings-seek-back-30')))
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('settings-seek-forward-15')))
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('settings-seek-back-10')))
+          .selected,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('settings-seek-forward-60')))
+          .selected,
+      isFalse,
+    );
+  });
+
+  testWidgets('a failed seek-step write keeps the old choice and warns (S80)', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpPage(tester, const PlayerSettingsPage(), _ThrowingStore());
+
+    await tester.tap(find.byKey(const Key('settings-seek-back-30')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('保存失败，请稍后重试'), findsOneWidget);
+    // The in-memory state is untouched, so 10 s stays selected.
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('settings-seek-back-10')))
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('settings-seek-back-30')))
+          .selected,
+      isFalse,
+    );
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+  });
+
   /// The 播放/缓存 partition now sits below 交互, so the migrated cases render
   /// the page on a tall canvas and reset the surface afterwards.
   Future<void> pumpPlayer(
@@ -361,4 +484,12 @@ void main() {
     ) as Map<String, dynamic>;
     expect(json['gpuNext'], true);
   });
+}
+
+/// A store whose writes always fail, to exercise the save-failure snackbar.
+class _ThrowingStore extends InMemoryKeyValueStore {
+  @override
+  Future<void> write(String key, String value) async {
+    throw StateError('disk full');
+  }
 }
