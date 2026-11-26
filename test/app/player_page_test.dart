@@ -18,6 +18,7 @@ import 'package:media_player/core/errors/app_error.dart';
 import 'package:media_player/core/errors/emby_exception.dart';
 import 'package:media_player/core/network/endpoint_kind.dart';
 import 'package:media_player/core/router/app_routes.dart';
+import 'package:media_player/data/auth/api_session.dart';
 import 'package:media_player/data/auth/auth_service.dart';
 import 'package:media_player/data/cast/dlna_cast_service.dart';
 import 'package:media_player/data/cast/dlna_device.dart';
@@ -32,11 +33,13 @@ import 'package:media_player/data/models/media_source.dart';
 import 'package:media_player/data/models/media_stream.dart';
 import 'package:media_player/data/models/person.dart';
 import 'package:media_player/data/models/playback_plan.dart';
+import 'package:media_player/data/models/resolved_endpoint.dart';
 import 'package:media_player/data/models/server_profile.dart';
 import 'package:media_player/data/playback/playback_engine.dart';
 import 'package:media_player/data/playback/playback_settings.dart';
 import 'package:media_player/data/playback/subtitle_repository.dart';
 import 'package:media_player/data/storage/key_value_store.dart';
+import 'package:media_player/data/watch_together/watch_together_client.dart';
 import 'package:media_player/features/player/player_page.dart';
 import 'package:media_player/ui/app_controls.dart';
 import 'package:media_player/ui/theme/app_theme.dart';
@@ -107,6 +110,63 @@ class HangingOpenEngine extends FakePlaybackEngine {
     openedPlans.add(plan);
     return gate.future;
   }
+}
+
+/// A room client with no socket: enough for the player page to open a
+/// watch-together session and wire the coordinator's 1 倍 rate rule.
+class RoomOnlyWatch extends WatchTogetherClient {
+  RoomOnlyWatch(this.watchRoom)
+    : super(session: StaticApiSession(), store: InMemoryKeyValueStore());
+
+  final WatchRoom watchRoom;
+  final List<String> commands = <String>[];
+
+  @override
+  WatchRoom? get room => watchRoom;
+
+  @override
+  bool get connected => true;
+
+  @override
+  int get serverNowMs => 0;
+
+  @override
+  Future<void> command(String action, {int? positionMs}) async {
+    commands.add(action);
+  }
+
+  @override
+  void reportStatus(String status, {int positionMs = 0}) {}
+}
+
+class StaticApiSession implements ApiSession {
+  @override
+  ResolvedEndpoint? endpoint;
+
+  @override
+  String? userId = 'u1';
+
+  @override
+  String? accessToken = 'token';
+
+  @override
+  String? get deviceId => 'd1';
+
+  @override
+  ServerProfile? get profile =>
+      const ServerProfile(serverId: 'server', name: 'Test server');
+
+  @override
+  Future<Map<String, dynamic>> authorizedGet(Uri url) async =>
+      <String, dynamic>{};
+
+  @override
+  Future<Map<String, dynamic>> authorizedPost(Uri url, {Object? body}) async =>
+      <String, dynamic>{};
+
+  @override
+  Future<Map<String, dynamic>> authorizedDelete(Uri url) async =>
+      <String, dynamic>{};
 }
 
 class StaticAuth implements AuthService {
@@ -238,7 +298,9 @@ void main() {
     KeyValueStore? store,
     DlnaCastService? cast,
     ScreenOrientationService? orientation,
+    WatchTogetherClient? watchTogether,
     bool legacyRoute = false,
+    String? room,
     String? source,
     bool waitForIdle = true,
   }) async {
@@ -263,6 +325,7 @@ void main() {
               playback: playback,
               createEngine: createEngine ?? () => engine,
               createReporter: createReporter ?? () => reporter,
+              watchTogether: watchTogether,
               subtitles: subtitles,
               localSubtitlePicker: localPicker,
               pip: pip,
@@ -282,7 +345,7 @@ void main() {
     if (legacyRoute) {
       ProviderScope.containerOf(tester.element(find.byType(MediaPlayerApp)))
           .read(appRouterProvider)
-          .go(AppRoutes.playerFor(media.id, source: source));
+          .go(AppRoutes.playerFor(media.id, source: source, room: room));
     } else {
       // P1: the post-login landing is home; open the library so the movie
       // poster is tapped in its grid (unique there, unlike the home rows).
@@ -348,9 +411,7 @@ void main() {
     final Completer<AppServices> bootstrap = Completer<AppServices>();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          bootstrapProvider.overrideWith((ref) => bootstrap.future),
-        ],
+        overrides: [bootstrapProvider.overrideWith((ref) => bootstrap.future)],
         child: MaterialApp(
           theme: buildAppTheme(Brightness.dark),
           home: const PlayerPage(itemId: 'item-1'),
@@ -1661,6 +1722,334 @@ void main() {
     expect(find.text('2.0x'), findsOneWidget);
   });
 
+  const String holdCapsule = '加速中';
+
+  /// Taps the rate menu and picks [label] (e.g. `1.25x`).
+  Future<void> pickRate(WidgetTester tester, String label) async {
+    await tester.tap(find.byKey(const Key('player-rate-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label).last);
+    await tester.pumpAndSettle();
+  }
+
+  Rect gestureRect(WidgetTester tester) =>
+      tester.getRect(find.byKey(const Key('player-gesture-area')));
+
+  /// Presses [at] past the 500 ms long-press deadline and keeps the finger down.
+  /// Returns the gesture so the caller can release or cancel it.
+  Future<TestGesture> pressAndHold(WidgetTester tester, Offset at) async {
+    final TestGesture gesture = await tester.startGesture(at);
+    await tester.pump(const Duration(milliseconds: 550));
+    await tester.pump();
+    return gesture;
+  }
+
+  group('press-and-hold speed boost (S82)', () {
+    /// The chrome auto-hides after 3 s; its fade leaves the bars ignoring
+    /// pointers, so a hold then lands on the gesture layer beneath them.
+    Future<void> hideChrome(WidgetTester tester) async {
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('landscape 1.25x holds at 2.0x and restores 1.25x', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      await pickRate(tester, '1.25x');
+      await hideChrome(tester);
+      final Rect area = gestureRect(tester);
+      final int before = engine.rates.length;
+
+      final TestGesture hold = await pressAndHold(
+        tester,
+        area.topLeft + const Offset(80, 80),
+      );
+      expect(find.text('2.0x 加速中'), findsOneWidget);
+      await hold.up();
+      await tester.pumpAndSettle();
+
+      expect(engine.rates.sublist(before), <double>[2.0, 1.25]);
+      expect(find.textContaining(holdCapsule), findsNothing);
+      expect(find.text('1.25x'), findsWidgets);
+    });
+
+    testWidgets('portrait 1.25x holds at 2.0x and restores 1.25x', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await pumpPlayer(tester, legacyRoute: true);
+      await tester.tap(find.byKey(const Key('player-orientation-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('player-portrait')), findsOneWidget);
+
+      await pickRate(tester, '1.25x');
+      await hideChrome(tester);
+      final Rect area = gestureRect(tester);
+      final int before = engine.rates.length;
+
+      final TestGesture hold = await pressAndHold(
+        tester,
+        area.topLeft + const Offset(40, 40),
+      );
+      expect(find.text('2.0x 加速中'), findsOneWidget);
+      await hold.up();
+      await tester.pumpAndSettle();
+
+      expect(engine.rates.sublist(before), <double>[2.0, 1.25]);
+      expect(find.textContaining(holdCapsule), findsNothing);
+      expect(find.text('1.25x'), findsWidgets);
+    });
+
+    testWidgets('holding at 3.0x never slows down and writes no rate', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      await pickRate(tester, '3.0x');
+      await hideChrome(tester);
+      final Rect area = gestureRect(tester);
+      final int before = engine.rates.length;
+
+      final TestGesture hold = await pressAndHold(
+        tester,
+        area.topLeft + const Offset(80, 80),
+      );
+      // max(3.0, 2.0) is 3.0: the capsule reports the unchanged rate.
+      expect(find.text('3.0x 加速中'), findsOneWidget);
+      await hold.up();
+      await tester.pumpAndSettle();
+
+      expect(engine.rates.sublist(before), isEmpty);
+      expect(engine.rates.last, 3.0);
+      expect(find.textContaining(holdCapsule), findsNothing);
+    });
+
+    testWidgets('a quick hold writes the boost first, then the base rate', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      await pickRate(tester, '1.25x');
+      await hideChrome(tester);
+      final Rect area = gestureRect(tester);
+      final int before = engine.rates.length;
+
+      final TestGesture hold = await tester.startGesture(
+        area.topLeft + const Offset(80, 80),
+      );
+      // Release the moment the deadline passes: one frame of boost, then back.
+      await tester.pump(const Duration(milliseconds: 510));
+      await hold.up();
+      await tester.pumpAndSettle();
+
+      // The order proves the restore is not a no-op that skipped the boost.
+      expect(engine.rates.sublist(before), <double>[2.0, 1.25]);
+      expect(find.textContaining(holdCapsule), findsNothing);
+    });
+
+    testWidgets('a watch-together room offers no personal boost', (
+      tester,
+    ) async {
+      // The room client below is connected and in-sync, so the page wires the
+      // coordinator and pins 1 倍 through PlayerController.setRate. It also
+      // passes no hold callbacks there (no recognizer, no capsule).
+      final RoomOnlyWatch watch = RoomOnlyWatch(
+        const WatchRoom(
+          roomId: 'room',
+          code: 'ABC123',
+          capacity: 4,
+          ownerMemberId: 'u1',
+          media: WatchMedia(
+            itemId: 'item-1',
+            mediaSourceId: null,
+            title: '测试影片',
+            type: 'Movie',
+            runTimeMs: 5400000,
+          ),
+          playback: WatchPlayback(
+            revision: 1,
+            state: 'playing',
+            positionMs: 0,
+            serverTime: 0,
+            waitingMemberIds: <String>[],
+          ),
+          members: <WatchMember>[],
+        ),
+      );
+      addTearDown(watch.dispose);
+      await pumpPlayer(
+        tester,
+        legacyRoute: true,
+        room: 'room',
+        watchTogether: watch,
+      );
+      final Rect area = gestureRect(tester);
+      final int before = engine.rates.length;
+
+      final TestGesture hold = await pressAndHold(
+        tester,
+        area.topLeft + const Offset(80, 80),
+      );
+      // No capsule: the room path has no personal boost at all.
+      expect(find.textContaining(holdCapsule), findsNothing);
+      await hold.up();
+      await tester.pumpAndSettle();
+
+      // No 2.0x write: the room's rate stays at 1 倍.
+      expect(engine.rates.sublist(before), isEmpty);
+      expect(engine.rates, isNot(contains(2.0)));
+    });
+
+    testWidgets(
+      'a release before the boost lands still restores the base rate',
+      (tester) async {
+        // The engine stalls every write, so the release arrives while the boost
+        // is still in flight - the case the old fire-and-forget pair got wrong
+        // by comparing against a `state.rate` the engine had not written yet.
+        final GatedRateFakePlaybackEngine gated = GatedRateFakePlaybackEngine();
+        await pumpPlayer(tester, createEngine: () => gated);
+        await pickRate(tester, '1.25x');
+        // The gate is armed only now: the 1.25x base must really be applied
+        // before the hold's writes start stalling, or the base would be 1.0x.
+        gated.holdingRates = true;
+        gated.rates.clear();
+        await hideChrome(tester);
+        final Rect area = gestureRect(tester);
+        gated.rateRequests.clear();
+        gated.rateGates.clear();
+
+        final TestGesture hold = await pressAndHold(
+          tester,
+          area.topLeft + const Offset(80, 80),
+        );
+        // The boost reached the engine but is still stalled there.
+        expect(gated.rateRequests, <double>[2.0]);
+        expect(gated.rates, isEmpty);
+        expect(gated.stalledRates, 1);
+
+        await hold.up();
+        await tester.pump();
+        // Serialised: the restore is queued behind the boost, not issued on top
+        // of it, and the release did not skip it by reading `state.rate`.
+        expect(gated.rateGates, hasLength(1));
+        expect(gated.rates, isEmpty);
+
+        // Opening the boost lets the queued restore reach the engine, where it
+        // stalls on its own gate: one write at a time, boost first.
+        expect(gated.releaseNextRate(), isTrue);
+        await tester.pumpAndSettle();
+        expect(gated.rateRequests, <double>[2.0, 1.25]);
+        expect(gated.rates, <double>[2.0]);
+
+        expect(gated.releaseNextRate(), isTrue);
+        await tester.pumpAndSettle();
+        expect(gated.rates, <double>[2.0, 1.25]);
+        expect(gated.releaseNextRate(), isFalse);
+        expect(gated.rates.last, 1.25);
+        expect(find.textContaining(holdCapsule), findsNothing);
+        expect(find.text('1.25x'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'losing the gesture layer mid-boost still restores the base rate',
+      (tester) async {
+        // Locking the interface tears the gesture layer down while the finger is
+        // still down - the same re-layout a lock screen forces - so the restore
+        // hinges on `PlayerGestureLayer.dispose()` reaching _endHold.
+        final GatedRateFakePlaybackEngine gated = GatedRateFakePlaybackEngine();
+        await pumpPlayer(tester, createEngine: () => gated);
+        await pickRate(tester, '1.25x');
+        gated.holdingRates = true;
+        gated.rates.clear();
+        final Rect area = gestureRect(tester);
+        gated.rateRequests.clear();
+        gated.rateGates.clear();
+
+        // The chrome stays up so the lock control is live; this point sits clear
+        // of the top/bottom bars, the side rails and the centred transport row,
+        // so the long press still reaches the gesture layer beneath them.
+        final Offset clear = Offset(
+          area.left + area.width * 0.3,
+          area.top + area.height * 0.3,
+        );
+        final TestGesture hold = await pressAndHold(tester, clear);
+        expect(find.text('2.0x 加速中'), findsOneWidget);
+        expect(gated.rateRequests, <double>[2.0]);
+
+        // A second finger locks the interface: the layer goes away under the
+        // first one, which is exactly what a lock screen re-layout does.
+        await tester.tap(find.byKey(const Key('player-quick-lock')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('player-gesture-area')), findsNothing);
+
+        // Both queued writes land in order once the engine is let through.
+        expect(gated.releaseNextRate(), isTrue);
+        await tester.pumpAndSettle();
+        expect(gated.releaseNextRate(), isTrue);
+        await tester.pumpAndSettle();
+        await hold.up();
+        await tester.pumpAndSettle();
+
+        // Dispose queued the latched base after the boost: no stranded 2.0x.
+        expect(gated.rates, <double>[2.0, 1.25]);
+        expect(gated.rates.last, 1.25);
+        expect(find.textContaining(holdCapsule), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a second hold during the pending restore keeps the latched base rate',
+      (tester) async {
+        // A second hold lands while the restore is still queued. It must take
+        // the logical rate (the latched 1.25x), not the 2.0x this page last
+        // asked for, or the user would be stranded at the boost.
+        final GatedRateFakePlaybackEngine gated = GatedRateFakePlaybackEngine();
+        await pumpPlayer(tester, createEngine: () => gated);
+        await pickRate(tester, '1.25x');
+        gated.holdingRates = true;
+        gated.rates.clear();
+        await hideChrome(tester);
+        final Rect area = gestureRect(tester);
+        gated.rateRequests.clear();
+        gated.rateGates.clear();
+
+        final TestGesture first = await pressAndHold(
+          tester,
+          area.topLeft + const Offset(80, 80),
+        );
+        await first.up();
+        await tester.pump();
+        expect(gated.rateRequests, <double>[2.0]);
+        // The boost is still stalled, so `state.rate` is still 1.25x and the
+        // queue owes 1.25x: the second hold must start from that base.
+        expect(gated.rates, isEmpty);
+
+        final TestGesture second = await pressAndHold(
+          tester,
+          area.topLeft + const Offset(80, 80),
+        );
+        await second.up();
+        await tester.pumpAndSettle();
+
+        while (gated.releaseNextRate()) {
+          await tester.pumpAndSettle();
+        }
+
+        // Real order: boost, latched base, boost again, latched base again. The
+        // second hold neither re-latched 2.0x nor finished on it.
+        expect(gated.rateRequests, <double>[2.0, 1.25, 2.0, 1.25]);
+        expect(gated.rates, <double>[2.0, 1.25, 2.0, 1.25]);
+        expect(gated.rates.last, 1.25);
+        expect(gated.rates, isNot(contains(<double>[2.0, 1.25, 2.0, 2.0])));
+        expect(find.text('1.25x'), findsWidgets);
+        expect(find.textContaining(holdCapsule), findsNothing);
+      },
+    );
+  });
+
   testWidgets('the subtitle menu lists off plus every server stream', (
     tester,
   ) async {
@@ -2167,9 +2556,7 @@ void main() {
     final store = InMemoryKeyValueStore();
     await store.write(
       PlaybackSettings.storageKey,
-      jsonEncode(
-        const PlaybackSettings(seekForwardSeconds: 60).toJson(),
-      ),
+      jsonEncode(const PlaybackSettings(seekForwardSeconds: 60).toJson()),
     );
     await pumpPlayer(tester, store: store);
 
@@ -2193,9 +2580,7 @@ void main() {
     final store = InMemoryKeyValueStore();
     await store.write(
       PlaybackSettings.storageKey,
-      jsonEncode(
-        const PlaybackSettings(seekForwardSeconds: 60).toJson(),
-      ),
+      jsonEncode(const PlaybackSettings(seekForwardSeconds: 60).toJson()),
     );
     await pumpPlayer(tester, store: store);
 

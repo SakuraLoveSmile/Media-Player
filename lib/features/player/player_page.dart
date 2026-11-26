@@ -82,6 +82,33 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   String? _fatal;
   double _volume = 1;
 
+  /// S82: the rate to restore when a 按住加速 hold ends. Non-null exactly while
+  /// a hold is in flight. Never persisted: it is a gesture, not a preference,
+  /// so it reaches no store and adds no `PlaybackSettings` field.
+  double? _holdBaseRate;
+
+  /// S82: whether that hold was a real boost (its target differed from the
+  /// base). A 3.0x base needs no write at all, so the release must stay a
+  /// no-op there instead of re-writing the rate it already has.
+  bool _holdBoosted = false;
+
+  /// S82: the rate this page last asked the engine for through the hold queue.
+  /// Valid only while that queue has writes outstanding ([_holdWritesPending] >
+  /// 0): a release that has not landed yet still owns the logical rate, so the
+  /// next hold starts from it instead of from a `state.rate` that the engine
+  /// has not caught up with.
+  double? _holdRequestedRate;
+
+  /// S82: how many hold writes are queued and not yet applied.
+  int _holdWritesPending = 0;
+
+  /// S82: serial queue for the hold's two writes. Chaining them keeps the
+  /// order「先加速值、后 base」no matter how slowly the engine answers, which
+  /// is what the earlier fire-and-forget pair could not promise: a release
+  /// arriving while the boost was still in flight used to skip the restore
+  /// and strand the user at the temporary rate.
+  Future<void> _holdRateQueue = Future<void>.value();
+
   /// S53: current season's episodes, used by the S78 portrait info sheet
   /// (集 strip and 接下来 card) and to resolve richer episode stills.
   List<MediaItem> _seasonEpisodes = const <MediaItem>[];
@@ -202,6 +229,60 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       unawaited(_reload());
     }
   }
+
+  /// S82: 按住画面临时加速. The base rate is latched when the hold starts, the
+  /// temporary rate is `max(base, 2.0)`, and release / cancel restores the
+  /// base. 一起看 offers no personal boost: its 1 倍 rejection stays the only
+  /// path, and [_holdEnabled] keeps the recognizer out of the arena entirely.
+  void _beginHold(PlayerController controller) {
+    if (!_holdEnabled) return;
+    // The base is the rate the user is logically on: a write the queue still
+    // owes ([_holdRequestedRate]) wins over `state.rate`, which only catches up
+    // once the engine has answered.
+    final double base = _holdRequestedRate ?? controller.state.rate;
+    // Latched first, so even an immediate release restores the base rate.
+    _holdBaseRate = base;
+    final double target = holdRateFor(base);
+    // A base already at or above the floor needs no write; the capsule still
+    // reports the rate, and the release below stays a no-op.
+    _holdBoosted = target != base;
+    if (_holdBoosted) _enqueueHoldRate(controller, target);
+  }
+
+  void _endHold(PlayerController controller) {
+    final double? base = _holdBaseRate;
+    final bool boosted = _holdBoosted;
+    _holdBaseRate = null;
+    _holdBoosted = false;
+    // Nothing to restore: no hold, or a hold whose base already met the floor.
+    // The latched base is what the queue owes - never the controller's own
+    // state, whose rate lags the engine and made the old check skip the restore.
+    if (base == null || !boosted) return;
+    _enqueueHoldRate(controller, base);
+  }
+
+  /// S82: puts one hold rate write behind the previous one. A single chain makes
+  ///「先加速值、后 base」an invariant instead of a hope: a release that arrives
+  /// while the boost is still in flight still lands after it, and a destroyed
+  /// controller skips its own write naturally (setRate returns early).
+  void _enqueueHoldRate(PlayerController controller, double rate) {
+    _holdWritesPending++;
+    _holdRequestedRate = rate;
+    _holdRateQueue = _holdRateQueue.then((_) async {
+      await controller.setRate(rate);
+      _holdWritesPending--;
+      // Only the last write may hand the logical rate back to the controller;
+      // an earlier one leaving it unset would let a queued second hold read a
+      // stale `state.rate` again.
+      if (_holdWritesPending == 0) _holdRequestedRate = null;
+    });
+  }
+
+  /// S82: the hold shortcut belongs to personal playback. A watch-together room
+  /// fixes the rate at 1 倍 (the controller rejects anything else with its own
+  /// 提示), so the page passes no hold callbacks at all there: no recognizer, no
+  /// capsule, and the sync protocol is untouched.
+  bool get _holdEnabled => widget.watchRoomId == null;
 
   @override
   void dispose() {
@@ -371,6 +452,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                               unawaited(controller.seekTo(target)),
                           brightness: _brightness,
                           onTap: _toggleControls,
+                          // S82: portrait 按住加速. 一起看 gets no callbacks, so
+                          // no long-press recognizer and no capsule.
+                          onHoldStart: _holdEnabled
+                              ? () => _beginHold(controller)
+                              : null,
+                          onHoldEnd: _holdEnabled
+                              ? () => _endHold(controller)
+                              : null,
+                          holdRate: holdRateFor(state.rate),
                         ),
                       // S79: the configured loader covers 开播, with the live
                       // network speed underneath it; buffering keeps a smaller
@@ -2085,6 +2175,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               onSeek: (Duration target) => unawaited(controller.seekTo(target)),
               brightness: _brightness,
               onTap: _toggleControls,
+              // S82: landscape 按住加速, same wiring as portrait; 一起看 opts
+              // out so its 1 倍 rejection stays the only rate path.
+              onHoldStart: _holdEnabled ? () => _beginHold(controller) : null,
+              onHoldEnd: _holdEnabled ? () => _endHold(controller) : null,
+              holdRate: holdRateFor(state.rate),
             ),
           ),
         // S79: see the portrait layout - loader + speed while opening, a

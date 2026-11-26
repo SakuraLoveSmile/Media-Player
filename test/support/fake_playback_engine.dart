@@ -198,3 +198,51 @@ class FakePlaybackEngine implements PlaybackEngine, PausedOpenEngine {
     if (!_states.isClosed) await _states.close();
   }
 }
+
+/// S82 playback double whose [setRate] can be let through one write at a time.
+///
+/// The hold-to-boost queue is only observable if the engine stalls: with an
+/// instant double the boost has already landed by the time the finger lifts, so
+/// the release would never exercise the in-flight path. [holdRates] arms the
+/// gate, [releaseRate] lets a specific write finish, and [rates] keeps the order
+/// the engine really applied the writes in.
+class GatedRateFakePlaybackEngine extends FakePlaybackEngine {
+  /// Every rate the page asked for, in call order — including calls whose gate
+  /// is still shut, so a skipped restore is visible.
+  final List<double> rateRequests = <double>[];
+
+  /// One gate per [setRate] call made while [holdingRates] was true.
+  final List<Completer<void>> rateGates = <Completer<void>>[];
+
+  /// Whether [setRate] waits for its gate before touching the engine.
+  bool holdingRates = false;
+
+  /// Armed gates that the test has not released yet.
+  int get stalledRates => rateGates.where((g) => !g.isCompleted).length;
+
+  @override
+  Future<void> setRate(double rate) async {
+    rateRequests.add(rate);
+    if (holdingRates) {
+      final Completer<void> gate = Completer<void>();
+      rateGates.add(gate);
+      await gate.future;
+    }
+    await super.setRate(rate);
+  }
+
+  /// Lets the [index]-th gated write through. The continuation runs on
+  /// microtasks, so the caller pumps a frame to let the queue advance.
+  void releaseRate(int index) => rateGates[index].complete();
+
+  /// Releases the oldest write that is still stalled; false when the queue has
+  /// no gate left to open.
+  bool releaseNextRate() {
+    final int index = rateGates.indexWhere(
+      (Completer<void> gate) => !gate.isCompleted,
+    );
+    if (index < 0) return false;
+    rateGates[index].complete();
+    return true;
+  }
+}
