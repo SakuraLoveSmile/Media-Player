@@ -11,21 +11,42 @@ import '../storage/key_value_store.dart';
 import 'models.dart';
 export 'models.dart';
 
+/// Diagnostics sink for watch-together transport events. The field set is
+/// fixed to event name, status, duration and error code, so service URLs,
+/// room codes and tickets can never be recorded.
+abstract interface class WatchLogSink {
+  void record({
+    required String event,
+    int? status,
+    int? durationMs,
+    String? code,
+  });
+}
+
 /// Coordinates room metadata only. Video URLs and playback remain with Emby.
 class WatchTogetherClient extends ChangeNotifier {
   WatchTogetherClient({
     required ApiSession session,
     required KeyValueStore store,
+    WatchLogSink? sink,
     // Keep credential-bearing dependencies private.
     // ignore: prefer_initializing_formals
   }) : _session = session,
        // ignore: prefer_initializing_formals
-       _store = store;
+       _store = store,
+       // ignore: prefer_initializing_formals
+       _sink = sink;
   final ApiSession _session;
   final KeyValueStore _store;
+  final WatchLogSink? _sink;
   static const serviceKey = 'watchTogether.service.v1';
   static const recoveryKey = 'watchTogether.recovery.v1';
   static const clientIdKey = 'watchTogether.clientId.v1';
+
+  // Health must fail fast; room metadata requests may wait for a slow server.
+  static const _healthTimeout = Duration(seconds: 8);
+  static const _requestTimeout = Duration(seconds: 30);
+  static const _socketTimeout = Duration(seconds: 15);
   final HttpClient _http = HttpClient()
     ..connectionTimeout = const Duration(seconds: 8);
   final _socketHttp = _SocketHttpClient();
@@ -61,6 +82,17 @@ class WatchTogetherClient extends ChangeNotifier {
   bool get connected => _connected;
   bool get reconnecting => _reconnecting;
   String? get error => _error;
+
+  /// Clears a stale message once the caller has shown it; transport state is
+  /// untouched so reconnecting rooms keep their own error text.
+  void clearError() {
+    if (_error == null) {
+      return;
+    }
+    _error = null;
+    _notify();
+  }
+
   bool get isOwner => _room != null && _room!.ownerMemberId == _memberId;
   int get serverNowMs =>
       _now +
@@ -199,13 +231,15 @@ class WatchTogetherClient extends ChangeNotifier {
     String path, {
     Map<String, dynamic>? body,
     _Identity? identity,
+    Duration timeout = _requestTimeout,
+    String? event,
   }) async {
     final who = identity ?? _identity();
     final uri = _uri(path);
+    final elapsed = Stopwatch()..start();
+    int? status;
     try {
-      final request = await _http
-          .openUrl(method, uri)
-          .timeout(const Duration(seconds: 8));
+      final request = await _http.openUrl(method, uri).timeout(timeout);
       if (!who.matches(_session)) {
         request.abort();
         throw const WatchTogetherException('SESSION_CHANGED', '登录会话已变更，请重新加入');
@@ -218,12 +252,11 @@ class WatchTogetherClient extends ChangeNotifier {
       if (body != null) {
         request.write(jsonEncode(body));
       }
-      final response = await request.close().timeout(
-        const Duration(seconds: 8),
-      );
+      final response = await request.close().timeout(timeout);
+      status = response.statusCode;
       var length = 0;
       final bytes = <int>[];
-      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
+      await for (final chunk in response.timeout(timeout)) {
         length += chunk.length;
         if (length > 131072) {
           throw const FormatException();
@@ -239,17 +272,45 @@ class WatchTogetherClient extends ChangeNotifier {
         final code = error?['code'] as String? ?? 'REQUEST_FAILED';
         throw WatchTogetherException(code, _message(code));
       }
+      _log(event, status: status, elapsed: elapsed);
       return decoded['data'] as Map<String, dynamic>;
-    } on WatchTogetherException {
+    } on WatchTogetherException catch (e) {
+      _log(event, status: status, elapsed: elapsed, code: e.code);
       rethrow;
     } catch (_) {
+      _log(event, status: status, elapsed: elapsed, code: 'UNAVAILABLE');
       throw const WatchTogetherException('UNAVAILABLE', '无法连接一起看服务，请检查地址与网络');
+    }
+  }
+
+  /// Fixed-shape diagnostics: event name, status, duration and error code only.
+  /// Service URLs, room codes, tickets and tokens can never reach the sink, and
+  /// a failing sink must never disturb the transport.
+  void _log(String? event, {int? status, String? code, Stopwatch? elapsed}) {
+    final sink = _sink;
+    if (sink == null || event == null) {
+      return;
+    }
+    try {
+      sink.record(
+        event: event,
+        status: status,
+        durationMs: elapsed?.elapsedMilliseconds,
+        code: code,
+      );
+    } catch (_) {
+      // Diagnostics never alter behaviour.
     }
   }
 
   Future<void> _health() async {
     // Uses the same authenticated transport; health itself is public.
-    final data = await _request('GET', '/health');
+    final data = await _request(
+      'GET',
+      '/health',
+      timeout: _healthTimeout,
+      event: 'watch.health',
+    );
     if (data['enabled'] != true || data['protocol'] != 1) {
       throw const WatchTogetherException('PROTOCOL', '一起看服务不可用或协议不兼容');
     }
@@ -289,6 +350,7 @@ class WatchTogetherClient extends ChangeNotifier {
         path,
         body: {...body, 'clientId': _clientId},
         identity: identity,
+        event: path == '/rooms' ? 'watch.room.create' : 'watch.room.join',
       );
       if (generation != _generation || _disposed) {
         return;
@@ -333,11 +395,13 @@ class WatchTogetherClient extends ChangeNotifier {
         '/rooms/${Uri.encodeComponent(json['roomId'] as String)}/ticket',
         body: {'clientId': _clientId},
         identity: who,
+        event: 'watch.room.ticket',
       );
       if (generation != _generation || _disposed) {
         return;
       }
       _accept(data);
+      _error = null;
       await _connect(data['ticket'] as String, generation);
     } on WatchTogetherException catch (e) {
       if (generation != _generation) {
@@ -413,8 +477,9 @@ class WatchTogetherClient extends ChangeNotifier {
     );
     late WebSocket socket;
     try {
-      socket = await opening.timeout(const Duration(seconds: 8));
+      socket = await opening.timeout(_socketTimeout);
     } catch (_) {
+      _log('watch.socket', code: 'DISCONNECTED');
       // timeout() does not cancel a handshake. Dispose a late socket instead
       // of retaining an unowned connection after reconnect/leave.
       unawaited(
@@ -505,7 +570,12 @@ class WatchTogetherClient extends ChangeNotifier {
       jsonEncode({'type': 'hello', 'ticket': ticket, 'clientId': _clientId}),
     );
     _lastMessage = _now;
-    await hello.future.timeout(const Duration(seconds: 6));
+    try {
+      await hello.future.timeout(const Duration(seconds: 6));
+    } catch (_) {
+      _log('watch.socket', code: 'DISCONNECTED');
+      rethrow;
+    }
     if (generation != _generation || _socket != socket) {
       return;
     }
@@ -580,6 +650,7 @@ class WatchTogetherClient extends ChangeNotifier {
           '/rooms/${Uri.encodeComponent(current.roomId)}/ticket',
           body: {'clientId': _clientId},
           identity: who,
+          event: 'watch.room.ticket',
         );
         if (generation != _generation || _disposed) {
           return;
@@ -673,6 +744,7 @@ class WatchTogetherClient extends ChangeNotifier {
           '/rooms/${Uri.encodeComponent(current.roomId)}/leave',
           body: {},
           identity: who,
+          event: 'watch.room.leave',
         );
       } catch (_) {
         _error = '已断开本机连接；服务端座位将在断线期限后释放';
@@ -691,6 +763,7 @@ class WatchTogetherClient extends ChangeNotifier {
       '/rooms/${Uri.encodeComponent(current.roomId)}/kick',
       body: {'memberId': memberId},
       identity: _bound,
+      event: 'watch.room.kick',
     );
   }
 
@@ -705,6 +778,7 @@ class WatchTogetherClient extends ChangeNotifier {
       '/rooms/${Uri.encodeComponent(current.roomId)}/end',
       body: {},
       identity: _bound,
+      event: 'watch.room.end',
     );
     // A delayed response belongs to the room that issued it. Leaving or
     // joining another room while it is in flight must not close the new room.
@@ -834,6 +908,11 @@ String _message(String code) => switch (code) {
   'RATE_LIMITED' => '操作太频繁，请稍后再试',
   'NOT_FOUND' => '服务地址无效：应填写站点根地址或 /watch/v1 前缀',
   'EMBY_UNAVAILABLE' => '媒体服务器暂不可用，请稍后再试',
+  'EMBY_TIMEOUT' => '媒体服务器响应超时，请稍后再试',
+  'EMBY_UNREACHABLE' => '无法连接媒体服务器，请检查网络与服务器设置',
+  'EMBY_UPSTREAM_ERROR' => '媒体服务器返回错误，请稍后再试',
+  'EMBY_BAD_RESPONSE' => '媒体服务器响应异常，请稍后再试',
+  'EMBY_CONFIG' => '服务端媒体服务器地址配置无效，请联系服务维护者',
   'INVALID_REQUEST' => '请求无效，请更新一起看服务后重试',
   'WATCH_CAPACITY' => '一起看服务已满，请稍后再试',
   'WATCH_UNAVAILABLE' => '一起看服务正在维护，请稍后再试',

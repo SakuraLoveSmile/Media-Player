@@ -79,6 +79,20 @@ class _Client extends WatchTogetherClient {
   String? createdItem, createdSource, joinedCode, kickedMember;
   int? createdPosition;
   bool ended = false;
+  /// Simulates one transient upstream failure: the first [create] throws with
+  /// this message, the retry is allowed to succeed.
+  String? failNextCreate;
+  int createCalls = 0;
+  int clearedErrors = 0;
+  String? clientError;
+  @override
+  String? get error => clientError;
+  @override
+  void clearError() {
+    clearedErrors++;
+    clientError = null;
+    notifyListeners();
+  }
   @override
   WatchRoom? get room => currentRoom;
   @override
@@ -93,6 +107,13 @@ class _Client extends WatchTogetherClient {
     String? mediaSourceId,
     int positionMs = 0,
   }) async {
+    createCalls++;
+    final failure = failNextCreate;
+    if (failure != null) {
+      failNextCreate = null;
+      clientError = failure;
+      throw WatchTogetherException('EMBY_TIMEOUT', failure);
+    }
     createdItem = itemId;
     createdSource = mediaSourceId;
     createdPosition = positionMs;
@@ -445,4 +466,74 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets(
+    'a failed create shows the upstream reason and retries in place',
+    (tester) async {
+      await tester.runAsync(
+        () => client.configure(Uri.parse('http://127.0.0.1:3456')),
+      );
+      client.failNextCreate = '媒体服务器响应超时，请稍后再试';
+      await pumpPage(tester, itemId: 'movie', sourceId: 'source-b');
+      await tester.tap(find.byKey(const Key('watch-create')));
+      await tester.pumpAndSettle();
+      expect(client.createCalls, 1);
+      expect(find.byKey(const Key('watch-error')), findsOneWidget);
+      expect(find.text('媒体服务器响应超时，请稍后再试'), findsOneWidget);
+      expect(find.byKey(const Key('watch-error-retry')), findsOneWidget);
+      expect(find.byKey(const Key('watch-error-dismiss')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // The retry replays the same action, clears the stale copy first and
+      // then admits the room.
+      final cleared = client.clearedErrors;
+      await tester.ensureVisible(find.byKey(const Key('watch-error-retry')));
+      await tester.tap(find.byKey(const Key('watch-error-retry')));
+      await tester.pump();
+      expect(client.createCalls, 2);
+      expect(client.clearedErrors, greaterThan(cleared));
+      expect(find.byKey(const Key('watch-error')), findsNothing);
+      client.connect();
+      await tester.pumpAndSettle();
+      expect(find.text('ABC234'), findsOneWidget);
+      expect(find.byKey(const Key('watch-error')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a new action clears the previous client error', (tester) async {
+    await tester.runAsync(
+      () => client.configure(Uri.parse('http://127.0.0.1:3456')),
+    );
+    client.clientError = '媒体服务器暂不可用，请稍后再试';
+    await pumpPage(tester);
+    expect(find.byKey(const Key('watch-error')), findsOneWidget);
+    expect(find.text('媒体服务器暂不可用，请稍后再试'), findsOneWidget);
+
+    final cleared = client.clearedErrors;
+    await tester.ensureVisible(find.byKey(const Key('watch-room-code')));
+    await tester.enterText(find.byKey(const Key('watch-room-code')), 'abc234');
+    await tester.ensureVisible(find.byKey(const Key('watch-join')));
+    await tester.tap(find.byKey(const Key('watch-join')));
+    await tester.pumpAndSettle();
+    expect(client.clearedErrors, greaterThan(cleared));
+    expect(find.byKey(const Key('watch-error')), findsNothing);
+    expect(client.joinedCode, 'abc234');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('dismissing the error clears it from the page and the client', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => client.configure(Uri.parse('http://127.0.0.1:3456')),
+    );
+    client.clientError = '无法连接媒体服务器，请检查网络与服务器设置';
+    await pumpPage(tester);
+    expect(find.byKey(const Key('watch-error')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('watch-error-dismiss')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('watch-error')), findsNothing);
+    expect(client.clientError, isNull);
+    expect(tester.takeException(), isNull);
+  });
 }

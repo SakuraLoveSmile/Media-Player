@@ -60,6 +60,9 @@ class RoomServer {
   bool redirect = false;
   Uri? socketRedirect;
   Completer<void>? entering;
+  /// When set, [failStatus]/[failCode] apply only to paths ending with it, so
+  /// the health probe can still succeed while a room request fails.
+  String? failPathEndsWith;
   int? failStatus;
   String? failCode;
   Completer<void>? ending;
@@ -108,7 +111,9 @@ class RoomServer {
         return;
       }
       await utf8.decoder.bind(request).join();
-      if (failStatus != null) {
+      if (failStatus != null &&
+          (failPathEndsWith == null ||
+              request.uri.path.endsWith(failPathEndsWith!))) {
         request.response.statusCode = failStatus!;
         request.response.headers.contentType = ContentType.json;
         request.response.write(jsonEncode({'error': {'code': failCode}}));
@@ -173,6 +178,28 @@ class BlockingStore extends InMemoryKeyValueStore {
     }
     await super.write(key, value);
   }
+}
+
+/// Collects every diagnostics event so tests can prove which fields reach the
+/// sink. Only the fixed record shape is stored, never anything else.
+class RecordingLogSink implements WatchLogSink {
+  final events = <({String event, int? status, int? durationMs, String? code})>[];
+  Iterable<String> get names => events.map((e) => e.event);
+  List<({String event, int? status, int? durationMs, String? code})> of(
+    String name,
+  ) => events.where((e) => e.event == name).toList();
+  @override
+  void record({
+    required String event,
+    int? status,
+    int? durationMs,
+    String? code,
+  }) => events.add((
+    event: event,
+    status: status,
+    durationMs: durationMs,
+    code: code,
+  ));
 }
 
 void main() {
@@ -510,4 +537,157 @@ void main() {
     );
     expect(client.error, contains('媒体服务器暂不可用'));
   });
+
+  test(
+    'new Emby transport codes keep their own message and never the fallback',
+    () async {
+      const expected = <({int status, String code, String message})>[
+        (
+          status: 503,
+          code: 'EMBY_TIMEOUT',
+          message: '媒体服务器响应超时，请稍后再试',
+        ),
+        (
+          status: 503,
+          code: 'EMBY_UNREACHABLE',
+          message: '无法连接媒体服务器，请检查网络与服务器设置',
+        ),
+        (
+          status: 502,
+          code: 'EMBY_UPSTREAM_ERROR',
+          message: '媒体服务器返回错误，请稍后再试',
+        ),
+        (
+          status: 502,
+          code: 'EMBY_BAD_RESPONSE',
+          message: '媒体服务器响应异常，请稍后再试',
+        ),
+        (
+          status: 503,
+          code: 'EMBY_CONFIG',
+          message: '服务端媒体服务器地址配置无效，请联系服务维护者',
+        ),
+      ];
+      for (final entry in expected) {
+        server.failStatus = entry.status;
+        server.failCode = entry.code;
+        server.failPathEndsWith = '/rooms';
+        await expectLater(
+          client.create(itemId: 'movie'),
+          throwsA(
+            isA<WatchTogetherException>()
+                .having((e) => e.code, 'code', entry.code)
+                .having((e) => e.message, 'message', entry.message)
+                .having(
+                  (e) => e.message,
+                  'message',
+                  isNot('一起看操作失败，请稍后重试'),
+                ),
+          ),
+          reason: entry.code,
+        );
+        expect(client.error, entry.message, reason: entry.code);
+        expect(client.room, isNull, reason: entry.code);
+        client.clearError();
+      }
+    },
+  );
+
+  test(
+    'diagnostics record fixed events and never leak URLs, codes or tickets',
+    () async {
+      client.dispose();
+      final sink = RecordingLogSink();
+      client = WatchTogetherClient(session: session, store: store, sink: sink);
+      await client.initialize();
+      await client.configure(server.uri);
+
+      await client.create(itemId: 'movie', mediaSourceId: 'source');
+      await client.leave();
+
+      expect(
+        sink.names,
+        containsAll(<String>[
+          'watch.health',
+          'watch.room.create',
+          'watch.room.leave',
+        ]),
+      );
+      final created = sink.of('watch.room.create').single;
+      expect(created.status, 200);
+      expect(created.durationMs, isNotNull);
+      expect(created.durationMs!, greaterThanOrEqualTo(0));
+      expect(created.code, isNull);
+      expect(sink.of('watch.room.leave').single.status, 200);
+      expect(sink.of('watch.health').single.status, 200);
+
+      // A failed room request reports its error code, never the message text.
+      server.failStatus = 503;
+      server.failCode = 'EMBY_TIMEOUT';
+      server.failPathEndsWith = '/rooms';
+      await expectLater(
+        client.create(itemId: 'movie'),
+        throwsA(
+          isA<WatchTogetherException>().having(
+            (e) => e.code,
+            'code',
+            'EMBY_TIMEOUT',
+          ),
+        ),
+      );
+      final failed = sink.of('watch.room.create').last;
+      expect(failed.code, 'EMBY_TIMEOUT');
+      expect(failed.status, 503);
+      expect(failed.durationMs, isNotNull);
+
+      const allowed = {
+        'watch.health',
+        'watch.room.create',
+        'watch.room.join',
+        'watch.room.ticket',
+        'watch.room.leave',
+        'watch.room.kick',
+        'watch.room.end',
+        'watch.socket',
+      };
+      expect(sink.events, isNotEmpty);
+      for (final event in sink.events) {
+        expect(allowed, contains(event.event));
+        final flattened = [
+          event.event,
+          '${event.status}',
+          '${event.durationMs}',
+          '${event.code}',
+        ].join('|');
+        for (final secret in <String>[
+          server.uri.host,
+          '${server.uri.port}',
+          'ABC123',
+          'secret-token',
+          'opaque-ticket',
+          'replacement-token',
+        ]) {
+          expect(flattened, isNot(contains(secret)), reason: event.event);
+        }
+      }
+    },
+  );
+
+  test('clearError drops a visible message without touching the room', () async {
+    server.failStatus = 503;
+    server.failCode = 'EMBY_TIMEOUT';
+    server.failPathEndsWith = '/rooms';
+    await expectLater(
+      client.create(itemId: 'movie'),
+      throwsA(isA<WatchTogetherException>()),
+    );
+    expect(client.error, isNotNull);
+    client.clearError();
+    expect(client.error, isNull);
+    // Clearing twice stays silent and still leaves the room state alone.
+    client.clearError();
+    expect(client.error, isNull);
+    expect(client.room, isNull);
+  });
+
 }

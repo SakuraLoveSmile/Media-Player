@@ -112,6 +112,77 @@ class _Peer {
   }
 }
 
+class _Upstream {
+  _Upstream(this.server, this.handler) {
+    server.listen((request) async {
+      seen.add('${request.method} ${request.uri.path}?${request.uri.query}');
+      await handler(request);
+    });
+  }
+  final HttpServer server;
+  final Future<void> Function(HttpRequest) handler;
+  final seen = <String>[];
+
+  Uri get url => Uri.parse('http://127.0.0.1:${server.port}');
+
+  Future<void> close() => server.close(force: true);
+}
+
+Future<_Upstream> _startUpstream(
+  Future<void> Function(HttpRequest) handler,
+) async => _Upstream(
+  await HttpServer.bind(InternetAddress.loopbackIPv4, 0),
+  handler,
+);
+
+Future<void> _jsonResponse(HttpRequest request, Map<String, dynamic> body) async {
+  request.response.headers.contentType = ContentType.json;
+  request.response.write(jsonEncode(body));
+  await request.response.close();
+}
+
+Future<void> _movieUpstream(
+  HttpRequest request,
+  List<Map<String, dynamic>> playbackBodies,
+) async {
+  if (request.uri.path == '/Users/Me') {
+    return _jsonResponse(request, {
+      'Id': 'u',
+      'Name': 'member',
+      'Policy': {'IsAdministrator': false},
+    });
+  }
+  if (request.uri.path.endsWith('/PlaybackInfo')) {
+    playbackBodies.add(
+      jsonDecode(await utf8.decoder.bind(request).join()) as Map<String, dynamic>,
+    );
+    return _jsonResponse(request, {
+      'MediaSources': [
+        {'Id': 's1', 'SupportsDirectPlay': true},
+      ],
+    });
+  }
+  return _jsonResponse(request, {
+    'Id': 'movie',
+    'Name': 'test',
+    'Type': 'Movie',
+    'RunTimeTicks': 600000000,
+    'CanPlay': true,
+    'MediaSources': [
+      {'Id': 's1', 'SupportsDirectPlay': true},
+    ],
+  });
+}
+
+Future<WatchFailure> _failureOf(Future<Object?> future) async {
+  try {
+    await future;
+  } on WatchFailure catch (error) {
+    return error;
+  }
+  fail('Expected a WatchFailure');
+}
+
 void main() {
   late _Verifier verifier;
   late WatchServer server;
@@ -838,4 +909,210 @@ void main() {
       expect(a.closed.isCompleted, false);
     },
   );
+  test('Emby verifier reports EMBY_TIMEOUT when the upstream stalls', () async {
+    final upstream = await _startUpstream((request) async {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await _jsonResponse(request, {
+        'Id': 'u',
+        'Name': 'member',
+        'Policy': {'IsAdministrator': false},
+      });
+    });
+    addTearDown(upstream.close);
+    final real = EmbyWatchVerifier(
+      baseUrl: upstream.url,
+      serverId: 'server',
+      timeout: const Duration(milliseconds: 100),
+    );
+    final failure = await _failureOf(
+      real.verify(token: 'private-token', userId: 'u', serverId: 'server'),
+    );
+    expect(failure.code, 'EMBY_TIMEOUT');
+    expect(failure.status, 503);
+  });
+
+  test('Emby verifier reports EMBY_UPSTREAM_ERROR for upstream errors', () async {
+    final upstream = await _startUpstream((request) async {
+      request.response.statusCode = 500;
+      await _jsonResponse(request, {'error': 'boom'});
+    });
+    addTearDown(upstream.close);
+    final real = EmbyWatchVerifier(
+      baseUrl: upstream.url,
+      serverId: 'server',
+    );
+    final failure = await _failureOf(
+      real.verify(token: 'private-token', userId: 'u', serverId: 'server'),
+    );
+    expect(failure.code, 'EMBY_UPSTREAM_ERROR');
+    expect(failure.status, 502);
+  });
+
+  test('Emby verifier reports EMBY_CONFIG when /Users/Me is missing', () async {
+    final upstream = await _startUpstream((request) async {
+      request.response.statusCode = 404;
+      await _jsonResponse(request, {'error': 'missing'});
+    });
+    addTearDown(upstream.close);
+    final real = EmbyWatchVerifier(
+      baseUrl: upstream.url,
+      serverId: 'server',
+    );
+    final failure = await _failureOf(
+      real.verify(token: 'private-token', userId: 'u', serverId: 'server'),
+    );
+    expect(failure.code, 'EMBY_CONFIG');
+    expect(failure.status, 503);
+  });
+
+  test('Emby verifier keeps item 404 as ITEM_FORBIDDEN', () async {
+    final upstream = await _startUpstream((request) async {
+      if (request.uri.path == '/Users/Me') {
+        await _jsonResponse(request, {
+          'Id': 'u',
+          'Name': 'member',
+          'Policy': {'IsAdministrator': false},
+        });
+        return;
+      }
+      request.response.statusCode = 404;
+      await _jsonResponse(request, {'error': 'missing'});
+    });
+    addTearDown(upstream.close);
+    final real = EmbyWatchVerifier(
+      baseUrl: upstream.url,
+      serverId: 'server',
+    );
+    final identity = await real.verify(
+      token: 'private-token',
+      userId: 'u',
+      serverId: 'server',
+    );
+    final failure = await _failureOf(real.media(identity, 'movie', null));
+    expect(failure.code, 'ITEM_FORBIDDEN');
+    expect(failure.status, 403);
+    expect(
+      upstream.seen.where((r) => r.contains('Fields=MediaSources')),
+      hasLength(1),
+    );
+  });
+
+  test('Emby verifier skips PlaybackInfo for an advertised source', () async {
+    final playbackBodies = <Map<String, dynamic>>[];
+    final upstream = await _startUpstream(
+      (request) => _movieUpstream(request, playbackBodies),
+    );
+    addTearDown(upstream.close);
+    final real = EmbyWatchVerifier(
+      baseUrl: upstream.url,
+      serverId: 'server',
+    );
+    final identity = await real.verify(
+      token: 'private-token',
+      userId: 'u',
+      serverId: 'server',
+    );
+    final media = await real.media(identity, 'movie', null);
+    expect(media.mediaSourceId, 's1');
+    expect(playbackBodies, isEmpty);
+    expect(upstream.seen.any((r) => r.contains('PlaybackInfo')), false);
+    expect(
+      upstream.seen.where((r) => r.contains('Fields=MediaSources')),
+      hasLength(1),
+    );
+  });
+
+  test('Emby verifier negotiates when a source is requested', () async {
+    final playbackBodies = <Map<String, dynamic>>[];
+    final upstream = await _startUpstream(
+      (request) => _movieUpstream(request, playbackBodies),
+    );
+    addTearDown(upstream.close);
+    final real = EmbyWatchVerifier(
+      baseUrl: upstream.url,
+      serverId: 'server',
+    );
+    final identity = await real.verify(
+      token: 'private-token',
+      userId: 'u',
+      serverId: 'server',
+    );
+    final media = await real.media(identity, 'movie', 's1');
+    expect(media.mediaSourceId, 's1');
+    expect(playbackBodies, hasLength(1));
+    expect(playbackBodies.single['EnableTranscoding'], false);
+    expect(playbackBodies.single['MediaSourceId'], 's1');
+    expect(upstream.seen.any((r) => r.contains('PlaybackInfo')), true);
+  });
+
+  test('Emby verifier reports EMBY_BAD_RESPONSE for malformed JSON', () async {
+    final upstream = await _startUpstream((request) async {
+      request.response.headers.contentType = ContentType.json;
+      request.response.write('not-json');
+      await request.response.close();
+    });
+    addTearDown(upstream.close);
+    final real = EmbyWatchVerifier(
+      baseUrl: upstream.url,
+      serverId: 'server',
+    );
+    final failure = await _failureOf(
+      real.verify(token: 'private-token', userId: 'u', serverId: 'server'),
+    );
+    expect(failure.code, 'EMBY_BAD_RESPONSE');
+    expect(failure.status, 502);
+  });
+
+  test('Emby verifier rejects an oversized upstream response', () async {
+    final upstream = await _startUpstream((request) async {
+      request.response.headers.contentType = ContentType.json;
+      // A well-formed object that still exceeds the 1MiB read budget.
+      request.response.write('{"Id":"u","Pad":"');
+      request.response.write('x' * (1024 * 1024 + 1));
+      request.response.write('"}');
+      await request.response.close();
+    });
+    addTearDown(upstream.close);
+    final real = EmbyWatchVerifier(baseUrl: upstream.url, serverId: 'server');
+    final failure = await _failureOf(
+      real.verify(token: 'private-token', userId: 'u', serverId: 'server'),
+    );
+    expect(failure.code, 'EMBY_BAD_RESPONSE');
+    expect(failure.status, 502);
+  });
+
+  test('Emby verifier reports EMBY_UNREACHABLE when the upstream is down', () async {
+    final probe = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = probe.port;
+    await probe.close();
+    final real = EmbyWatchVerifier(
+      baseUrl: Uri.parse('http://127.0.0.1:$port'),
+      serverId: 'server',
+      timeout: const Duration(milliseconds: 500),
+    );
+    final failure = await _failureOf(
+      real.verify(token: 'private-token', userId: 'u', serverId: 'server'),
+    );
+    expect(failure.code, 'EMBY_UNREACHABLE');
+    expect(failure.status, 503);
+  });
+
+  test('Emby failures never expose the upstream URL or token', () async {
+    final upstream = await _startUpstream((request) async {
+      request.response.statusCode = 500;
+      await _jsonResponse(request, {'error': 'boom'});
+    });
+    addTearDown(upstream.close);
+    final real = EmbyWatchVerifier(
+      baseUrl: upstream.url,
+      serverId: 'server',
+    );
+    final failure = await _failureOf(
+      real.verify(token: 'private-token', userId: 'u', serverId: 'server'),
+    );
+    expect(failure.toJson().keys.toSet(), {'code', 'message'});
+    expect(failure.message.contains('127.0.0.1'), false);
+    expect(failure.message.contains('private-token'), false);
+    expect(failure.message.contains('http'), false);
+  });
 }

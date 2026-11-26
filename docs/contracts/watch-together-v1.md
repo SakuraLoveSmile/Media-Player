@@ -9,6 +9,9 @@ API前缀 `/watch/v1`；HTTPS（loopback/LAN调试允许HTTP）。服务端配�
 服务仅内存保存房间与成员token，离开/到期清理；最多50房间、普通4人/管理员20人、24h到期。房间码6位无歧义大写字母数字，不公开列房。匿名只有health；不返回原userId/token/endpoint。
 
 REST返回成功HTTP200 `{ "data": {...} }`；错误相应4xx/5xx `{ "error": {"code":"...","message":"..."} }`。未授权401、权限403、房间失效404、满房/版本冲突409、参数400、限流429、上游不可用503。message固定安全文案，不带URL或异常正文。REST只接受JSON有界body(16KiB)。所有变更异步鉴权结束后复核房间、成员、revision，目标加入失败不离开旧房。
+上游失败归因（错误体仍只有`code`/`message`，不含上游URL、token或异常正文）：连接/请求/读响应超时 `EMBY_TIMEOUT` 503「媒体服务器响应超时」；`TlsException`/`SocketException`/`HttpException` `EMBY_UNREACHABLE` 503「无法连接媒体服务器」；上游非200（401/403/404除外）`EMBY_UPSTREAM_ERROR` 502「媒体服务器返回错误」；JSON解析失败、顶层形状不符或响应超过1MiB `EMBY_BAD_RESPONSE` 502「媒体服务器响应异常」；`/Users/Me` 返回404 `EMBY_CONFIG` 503「服务端媒体服务器地址配置无效」。条目路径404仍为`ITEM_FORBIDDEN` 403，401/403仍为`AUTH_INVALID` 401，其它未知异常仍为`EMBY_UNAVAILABLE` 503「媒体服务器暂不可用」。新增code只细分上游失败原因，不改变原有code的含义与语义。
+
+超时预算为同一会话内稳定的预算，不改变任何协议数据结构：服务端上游连接、请求与读响应默认8秒，可由构造参数调整；客户端health 8秒、房间读写与票据30秒、WebSocket握手15秒。
 
 ## 数据
 
@@ -46,3 +49,9 @@ POST `/rooms/{roomId}/end` `{}` ->data `{ended:true}`；仅owner，发closed事�
 房间页展示房间码/复制、影片/版本、成员/状态、开始放映/进入播放、换片、离开与房主kick/end。create选择电影/剧集单集及版本；支持从详情与季页单集带选片进入。新页沿AppPage/AppSection +现有ListTile/按钮，窄屏Wrap与列表换行，不更换theme。
 播放器由roomId绑定；加载就暂停并ready，服务器锚点开始。用户按钮/手势/章节跳过统一走远程command，应用远端状态调用本地无回声入口并保持正常Emby进度上报。小偏差250ms内不处理，250..2000ms用0.95/1.05调速，大于2000ms seek；暂停/等待强制定位且pause；用户倍速固定1，仅协调器内部可微调。后台/退出播放器发away+本地pause，不能暂停别人；回来对齐。房间结束/被踢/会话失效暂停并清晰提示，停止同步；不会悄悄变成个人继续播放。
 换片统一先服务端changeItem，收到新media后当前一起看播放器重建并关闭旧会话；自动下一集通过room changeItem一次提交，不能各端独立导航。局域网视频不转码、每人原有进度上报均保留。
+
+服务端获取媒体信息：条目详情请求带上游参数`Fields=MediaSources`；未指定版本且详情已含`SupportsDirectPlay || SupportsDirectStream`的源时直接采用该源并跳过`PlaybackInfo`，因为该`MediaSources`已由Emby按当前用户权限过滤，局域网不转码时多一次往返只增加失败面与延迟。指定版本、或详情没有可用源时仍走原`PlaybackInfo`协商（`EnableTranscoding=false`，版本与权限校验不变）。跳过与否不改变Media的`itemId`/`mediaSourceId`语义，客户端无需区分。
+
+客户端失败界面：错误条显示具体原因（新code各自的中文文案，见「传输与认证」）并提供「重试」与「关闭」；「重试」重跑最近一次动作，新动作开始同时清除页面错误与客户端`error`，恢复成功也清除旧错误。旧客户端遇到新增code走通用兜底文案「一起看操作失败，请稍后重试」，不崩溃、不改变流程。
+
+客户端诊断日志：客户端`WatchLogSink`只接收四字段（事件名、`status`、`durationMs`、`code`），事件名限定白名单`watch.health`、`watch.room.create`、`watch.room.join`、`watch.room.ticket`、`watch.room.leave`、`watch.room.kick`、`watch.room.end`、`watch.socket`。事件名不由URL或房间码生成，不包含服务地址、房间码、token或票据；协议本身不新增日志字段或接口。

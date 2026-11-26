@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:feedback_widget/feedback_widget.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/config/app_config.dart';
@@ -143,7 +144,14 @@ final bootstrapProvider = FutureProvider<AppServices>((ref) async {
     // Keep the existing online graph available if local storage is unavailable.
   }
   WatchTogetherClient? watchTogether;
-  final watchCandidate = WatchTogetherClient(session: auth, store: store);
+  // Feedback diagnostics receive watch-together transport events by fixed
+  // event name and never see a service URL, room code or ticket.
+  final watchLog = _WatchFeedbackLog(feedbackDiagnostics);
+  final watchCandidate = WatchTogetherClient(
+    session: auth,
+    store: store,
+    sink: watchLog,
+  );
   try {
     await watchCandidate.initialize();
     watchTogether = watchCandidate;
@@ -217,3 +225,25 @@ final bootstrapProvider = FutureProvider<AppServices>((ref) async {
 final playerOrientationServiceProvider = Provider<ScreenOrientationService>(
   (ref) => const SystemScreenOrientationService(),
 );
+
+/// Adapts the watch-together client's four-field log events onto the feedback
+/// diagnostics buffer: a failure code records `warn`, everything else `info`.
+class _WatchFeedbackLog implements WatchLogSink {
+  const _WatchFeedbackLog(this._recorder);
+  final FeedbackDiagnosticsRecorder _recorder;
+  @override
+  void record({
+    required String event,
+    int? status,
+    int? durationMs,
+    String? code,
+  }) {
+    _recorder.record(
+      level: code == null ? 'info' : 'warn',
+      event: event,
+      status: status,
+      durationMs: durationMs,
+      code: code,
+    );
+  }
+}
